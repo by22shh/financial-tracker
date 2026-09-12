@@ -183,6 +183,9 @@ async def _write_revision(
                 tag_id=tag_id,
             )
         )
+    # Сессия работает с autoflush=False, поэтому части записываются явно:
+    # последующее чтение внутри той же команды должно видеть их.
+    await session.flush()
     return row
 
 
@@ -219,6 +222,7 @@ async def _create_effect(
                 effective_date=spec.occurred_date,
             )
         )
+    await session.flush()
     return effect
 
 
@@ -266,6 +270,7 @@ async def _reverse_effect(
                 reverses_entry_id=entry.id,
             )
         )
+    await session.flush()
 
 
 async def _active_effect(

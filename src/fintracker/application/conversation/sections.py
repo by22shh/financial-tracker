@@ -391,6 +391,20 @@ async def confirm_draft(
             workspace_currency=workspace.currency,
             origin=origin,
         )
+        if posted:
+            # Пороговые события пересчитываются под той же блокировкой (FR-52).
+            from fintracker.application.delivery.thresholds import evaluate_thresholds
+            from fintracker.application.planning.periods import period_for_date
+
+            today = dt.datetime.now(ZoneInfo(workspace.timezone)).date()
+            period = await period_for_date(session, workspace_id=workspace_id, day=today)
+            await evaluate_thresholds(
+                session,
+                uow,
+                workspace=workspace,
+                period_id=period.id,
+                today=today,
+            )
     if not posted:
         return [Reply(text="Нечего записывать: все кандидаты исключены.")]
     if len(posted) == 1:
