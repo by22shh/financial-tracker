@@ -146,6 +146,16 @@ async def dispatch_callback(
     )
 
     match action:
+        case "ws":
+            return await _workspace_action(
+                settings,
+                actor=actor,
+                workspace=workspace,
+                action=argument,
+                rest=rest,
+                message=message,
+                user_id=user_id,
+            )
         case "menu":
             return await _menu(settings, actor=actor, workspace=workspace, section=argument)
         case "budget":
@@ -546,3 +556,234 @@ async def _invite_action(
             ),
         )
     ]
+
+
+async def _workspace_action(
+    settings: Settings,
+    *,
+    actor: ActorContext,
+    workspace: Workspace,
+    action: str,
+    rest: list[str],
+    message: IncomingMessage,
+    user_id: uuid.UUID,
+) -> list[Reply]:
+    """Выход, передача роли и удаление бюджета (FR-80–FR-83)."""
+    from fintracker.application.identity.membership import (
+        accept_admin_transfer,
+        delete_workspace,
+        deletion_preview,
+        leave_workspace,
+        propose_admin_transfer,
+    )
+    from fintracker.core.errors import ConflictError
+    from fintracker.db.uow import UnitOfWork
+
+    workspace_id = actor.require_workspace()
+    correlation = message.correlation_id or uuid.uuid4().hex
+
+    match action:
+        case "leave":
+            if actor.is_admin:
+                # Действующий бюджет не остаётся без администратора (A172).
+                return [
+                    Reply(
+                        text=(
+                            "Вы администратор этого бюджета. Сначала передайте "
+                            "администрирование другому участнику либо удалите бюджет."
+                        ),
+                        buttons=(
+                            (
+                                Button("Передать роль", callback("ws", "transfer")),
+                                Button("Удалить бюджет", callback("ws", "delete")),
+                            ),
+                        ),
+                    )
+                ]
+            return [
+                Reply(
+                    text=(
+                        f"Выйти из бюджета «{workspace.name}»?\n"
+                        "Общая история и ваши записи сохранятся, доступ прекратится."
+                    ),
+                    buttons=(
+                        (
+                            Button("Выйти", callback("ws", "leaveok")),
+                            Button("Остаться", callback("noop", "x")),
+                        ),
+                    ),
+                )
+            ]
+        case "leaveok":
+            try:
+                await leave_workspace(
+                    settings,
+                    workspace_id=workspace_id,
+                    user_id=user_id,
+                    correlation_id=correlation,
+                )
+            except ConflictError as exc:
+                return [Reply(text=exc.message)]
+            return [
+                Reply(
+                    text=(
+                        f"Вы вышли из бюджета «{workspace.name}». Созданные вами "
+                        "записи остались в общей истории."
+                    ),
+                    buttons=((Button("Мои бюджеты", callback("menu", "budgets")),),),
+                )
+            ]
+        case "transfer":
+            from fintracker.application.identity.membership import list_members
+
+            async with session_scope(
+                settings, RuntimeRole.API, user_id=user_id, workspace_id=workspace_id
+            ) as session:
+                members = await list_members(session, workspace_id=workspace_id)
+            candidates = [item for item in members if item.user_id != actor.user_id]
+            if not candidates:
+                return [
+                    Reply(
+                        text=(
+                            "В бюджете нет других участников: передать роль некому. "
+                            "Можно удалить бюджет."
+                        )
+                    )
+                ]
+            rows = tuple(
+                (
+                    Button(
+                        item.display_name,
+                        callback("ws", "transferto", item.user_id.hex[:16]),
+                    ),
+                )
+                for item in candidates[:6]
+            )
+            return [
+                Reply(
+                    text="Кому передать администрирование? Получатель должен принять роль.",
+                    buttons=rows,
+                )
+            ]
+        case "transferto":
+            if not rest:
+                return [Reply(text="Кнопка устарела.")]
+            target = await _resolve_user(
+                settings, workspace_id=workspace_id, user_id=user_id, prefix=rest[0]
+            )
+            async with session_scope(
+                settings, RuntimeRole.API, user_id=user_id, workspace_id=workspace_id
+            ) as session:
+                uow = UnitOfWork(session=session, correlation_id=correlation)
+                proposal = await propose_admin_transfer(
+                    session,
+                    uow,
+                    workspace_id=workspace_id,
+                    from_user_id=actor.user_id,
+                    to_user_id=target,
+                )
+                proposal_id = proposal.id
+            return [
+                Reply(
+                    text=(
+                        "Предложение отправлено. До принятия вы остаётесь "
+                        "администратором.\n"
+                        f"Код предложения: {proposal_id.hex[:16]}"
+                    )
+                )
+            ]
+        case "acceptadmin":
+            if not rest:
+                return [Reply(text="Кнопка устарела.")]
+            async with session_scope(
+                settings, RuntimeRole.API, user_id=user_id, workspace_id=workspace_id
+            ) as session:
+                from fintracker.db.models.access import AdminTransferProposal
+
+                pending_id = (
+                    await session.execute(
+                        select(AdminTransferProposal.id).where(
+                            AdminTransferProposal.workspace_id == workspace_id,
+                            AdminTransferProposal.to_user_id == user_id,
+                            AdminTransferProposal.state == "pending",
+                        )
+                    )
+                ).scalar_one_or_none()
+            if pending_id is None:
+                return [Reply(text="Активного предложения передачи нет.")]
+            try:
+                await accept_admin_transfer(
+                    settings,
+                    proposal_id=pending_id,
+                    acting_user_id=user_id,
+                    correlation_id=correlation,
+                    workspace_id=workspace_id,
+                )
+            except ConflictError as exc:
+                return [Reply(text=exc.message)]
+            return [Reply(text=f"Вы стали администратором бюджета «{workspace.name}».")]
+        case "delete":
+            if not actor.is_admin:
+                raise PermissionDenied("Удалить бюджет может только администратор")
+            async with session_scope(
+                settings, RuntimeRole.API, user_id=user_id, workspace_id=workspace_id
+            ) as session:
+                preview = await deletion_preview(
+                    session, workspace_id=workspace_id, admin_user_id=actor.user_id
+                )
+            return [
+                Reply(
+                    text=(
+                        f"Удалить бюджет «{preview.name}»?\n"
+                        f"Будут удалены: операций {preview.transaction_count}, "
+                        f"категорий {preview.category_count}, целей {preview.goal_count}, "
+                        f"вложений {preview.attachment_count}.\n"
+                        f"Участников: {preview.member_count}.\n"
+                        "Для подтверждения отправьте сообщением точное название бюджета "
+                        "в формате: удалить <название>"
+                    ),
+                    buttons=((Button("Отмена", callback("noop", "x")),),),
+                )
+            ]
+        case "deleteok":
+            name = " ".join(rest) if rest else ""
+            await delete_workspace(
+                settings,
+                workspace_id=workspace_id,
+                admin_user_id=actor.user_id,
+                confirmation_name=name,
+                correlation_id=correlation,
+            )
+            return [Reply(text=f"Бюджет «{workspace.name}» удалён.")]
+        case _:
+            return [Reply(text="Действие недоступно.")]
+
+
+async def _resolve_user(
+    settings: Settings, *, workspace_id: uuid.UUID, user_id: uuid.UUID, prefix: str
+) -> uuid.UUID:
+    """Найти участника этого бюджета по короткому префиксу (LIM-10)."""
+    from sqlalchemy import text as sql_text
+
+    async with session_scope(
+        settings, RuntimeRole.API, user_id=user_id, workspace_id=workspace_id
+    ) as session:
+        rows = list(
+            (
+                await session.execute(
+                    sql_text(
+                        "SELECT user_id FROM memberships WHERE workspace_id = :workspace_id "
+                        "AND status = 'active' "
+                        "AND replace(user_id::text, '-', '') LIKE :prefix LIMIT 2"
+                    ),
+                    {"workspace_id": workspace_id, "prefix": f"{prefix}%"},
+                )
+            )
+            .scalars()
+            .all()
+        )
+    if len(rows) != 1:
+        raise NotFound("Участник не найден в этом бюджете")
+    resolved = rows[0]
+    assert isinstance(resolved, uuid.UUID)
+    return resolved

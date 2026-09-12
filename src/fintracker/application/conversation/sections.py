@@ -200,7 +200,7 @@ async def members_view(
         members = await list_members(session, workspace_id=workspace_id)
     lines = [f"Участники бюджета «{workspace.name}»:"]
     for member in members:
-        label = member.person_name or f"Участник {member.telegram_user_id}"
+        label = member.display_name
         role = "администратор" if member.role is Role.ADMIN else "участник"
         lines.append(f"• {label} — {role}")
     rows: list[tuple[Button, ...]] = []

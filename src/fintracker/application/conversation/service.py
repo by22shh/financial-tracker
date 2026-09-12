@@ -260,6 +260,19 @@ async def _handle_free_text(
         workspace_id=workspace_id,
         correlation_id=message.correlation_id,
     )
+    if message.text.strip().lower().startswith("удалить "):
+        from fintracker.application.identity.membership import delete_workspace
+
+        confirmation = message.text.strip()[len("удалить ") :].strip()
+        await delete_workspace(
+            settings,
+            workspace_id=workspace_id,
+            admin_user_id=actor.user_id,
+            confirmation_name=confirmation,
+            correlation_id=message.correlation_id or uuid.uuid4().hex,
+        )
+        return [Reply(text=f"Бюджет «{workspace.name}» удалён.")]
+
     from fintracker.application.conversation.corrections import try_handle_correction
 
     corrected = await try_handle_correction(

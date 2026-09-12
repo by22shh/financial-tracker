@@ -46,21 +46,36 @@ ADMIN_TRANSFER_TTL = dt.timedelta(days=7)
 
 @dataclass(frozen=True, slots=True)
 class MemberView:
+    """Участник бюджета для общего списка (FR-04).
+
+    Telegram ID другого участника не раскрывается: для показа используется
+    связанный профиль человека либо короткий непрозрачный идентификатор.
+    """
+
     user_id: uuid.UUID
-    telegram_user_id: int
+    short_id: str
     role: Role
     status: MembershipStatus
     person_name: str | None
     joined_at: dt.datetime
 
+    @property
+    def display_name(self) -> str:
+        return self.person_name or f"Участник {self.short_id}"
+
 
 async def list_members(session: AsyncSession, *, workspace_id: uuid.UUID) -> list[MemberView]:
-    from fintracker.db.models.access import Person, User
+    """Список участников без обращения к таблице пользователей.
+
+    Таблица `users` изолирована политикой «свой пользователь» (ADR-06),
+    поэтому имена берутся из справочника людей этого бюджета.
+    """
+    from fintracker.core.ids import short_id
+    from fintracker.db.models.access import Person
 
     rows = (
         await session.execute(
-            select(Membership, User.telegram_user_id, Person.name)
-            .join(User, User.id == Membership.user_id)
+            select(Membership, Person.name)
             .outerjoin(
                 Person,
                 (Person.workspace_id == Membership.workspace_id)
@@ -76,10 +91,10 @@ async def list_members(session: AsyncSession, *, workspace_id: uuid.UUID) -> lis
     return [
         MemberView(
             user_id=row[0].user_id,
-            telegram_user_id=row[1],
+            short_id=short_id(row[0].user_id),
             role=Role(row[0].role),
             status=MembershipStatus(row[0].status),
-            person_name=row[2],
+            person_name=row[1],
             joined_at=row[0].joined_at,
         )
         for row in rows
@@ -186,9 +201,16 @@ async def leave_workspace(
         correlation_id=correlation_id,
     )
     # Личный выбор активного бюджета сбрасывается после выхода.
-    async with session_scope(settings, RuntimeRole.API, user_id=user_id) as session:
-        from fintracker.db.models.access import UserBudgetContext
+    await _clear_active_context(settings, user_id=user_id, workspace_id=workspace_id)
 
+
+async def _clear_active_context(
+    settings: Settings, *, user_id: uuid.UUID, workspace_id: uuid.UUID
+) -> None:
+    """Убрать прекращённый бюджет из личного выбора (FR-79, FR-80, FR-81)."""
+    from fintracker.db.models.access import UserBudgetContext
+
+    async with session_scope(settings, RuntimeRole.API, user_id=user_id) as session:
         await session.execute(
             update(UserBudgetContext)
             .where(
@@ -254,6 +276,7 @@ async def remove_member(
         apply=apply,
         correlation_id=correlation_id,
     )
+    await _clear_active_context(settings, user_id=target_user_id, workspace_id=workspace_id)
 
 
 async def allow_rejoin(
@@ -359,20 +382,27 @@ async def accept_admin_transfer(
     proposal_id: uuid.UUID,
     acting_user_id: uuid.UUID,
     correlation_id: str,
+    workspace_id: uuid.UUID,
 ) -> uuid.UUID:
     """Принять администрирование: роли меняются атомарно (FR-82, A173).
 
     Бюджет не остаётся без администратора и не получает двух из-за гонки.
     """
-    async with session_scope(settings, RuntimeRole.API, user_id=acting_user_id) as session:
+    # Предложение живёт в пространстве бюджета, поэтому чтение идёт под его
+    # контекстом RLS; принадлежность адресату проверяется отдельно (ADR-06).
+    async with session_scope(
+        settings, RuntimeRole.API, user_id=acting_user_id, workspace_id=workspace_id
+    ) as session:
         proposal = (
             await session.execute(
-                select(AdminTransferProposal).where(AdminTransferProposal.id == proposal_id)
+                select(AdminTransferProposal).where(
+                    AdminTransferProposal.workspace_id == workspace_id,
+                    AdminTransferProposal.id == proposal_id,
+                )
             )
         ).scalar_one_or_none()
         if proposal is None or proposal.to_user_id != acting_user_id:
             raise NotFound("Предложение недоступно")
-        workspace_id = proposal.workspace_id
 
     async def apply(session: AsyncSession, uow: UnitOfWork, workspace: Workspace) -> dict[str, str]:
         row = (
