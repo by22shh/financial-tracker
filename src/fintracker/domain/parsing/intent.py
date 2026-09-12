@@ -122,9 +122,7 @@ _INCOME_WORDS = re.compile(
     r"кэшбэк|кешбэк)",
     re.IGNORECASE,
 )
-_REFUND_WORDS = re.compile(
-    r"(?<![а-яё])(вернул[аи]?|возврат|возвращен)", re.IGNORECASE
-)
+_REFUND_WORDS = re.compile(r"(?<![а-яё])(вернул[аи]?|возврат|возвращен)", re.IGNORECASE)
 _TRANSFER_WORDS = re.compile(
     r"(?<![а-яё])(перевёл|перевел|перевод|снял[аи]? наличн|снятие наличн|положил[аи]? на)",
     re.IGNORECASE,

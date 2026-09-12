@@ -1,0 +1,35 @@
+{
+ "started_at": "2026-09-12T22:22:10.693651+00:00",
+ "git_revision": "249259b",
+ "working_tree_fingerprint": "a811abd2b3a4d886",
+ "schema_revision": "0005_invite (head)",
+ "python": "3.13.15",
+ "checks": {
+  "format": {
+   "command": ".venv/bin/ruff format --check src tests",
+   "exit_code": 0,
+   "result": "PASS",
+   "output_tail": "128 files already formatted"
+  },
+  "lint": {
+   "command": ".venv/bin/ruff check src tests",
+   "exit_code": 0,
+   "result": "PASS",
+   "output_tail": "All checks passed!"
+  },
+  "types": {
+   "command": ".venv/bin/mypy src/fintracker",
+   "exit_code": 0,
+   "result": "PASS",
+   "output_tail": "Success: no issues found in 116 source files"
+  },
+  "tests": {
+   "command": ".venv/bin/pytest -q --tb=short",
+   "exit_code": 0,
+   "result": "PASS",
+   "output_tail": "........................................................................ [ 82%]\n...............                                                          [100%]\n87 passed in 9.83s"
+  }
+ },
+ "finished_at": "2026-09-12T22:22:22.110017+00:00",
+ "overall": "PASS"
+}

@@ -80,7 +80,7 @@ def test_allocate_negative_total_preserves_sum() -> None:
 
 
 @given(
-    total=st.integers(min_value=-10**9, max_value=10**9),
+    total=st.integers(min_value=-(10**9), max_value=10**9),
     weights=st.lists(st.integers(min_value=0, max_value=10**6), min_size=1, max_size=12),
 )
 @settings(max_examples=300)
@@ -91,9 +91,7 @@ def test_allocation_preserves_total(total: int, weights: list[int]) -> None:
     assert len(parts) == len(weights)
 
 
-@given(
-    values=st.lists(st.integers(min_value=-10**9, max_value=10**9), min_size=0, max_size=40)
-)
+@given(values=st.lists(st.integers(min_value=-(10**9), max_value=10**9), min_size=0, max_size=40))
 def test_sum_is_exact(values: list[int]) -> None:
     total = money_sum([Money(value, "RUB") for value in values], "RUB")
     assert total.minor == sum(values)

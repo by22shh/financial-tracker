@@ -20,6 +20,7 @@ def main(argv: list[str] | None = None) -> int:
     subparsers.add_parser("scheduler", help="Календарь и сроки")
     subparsers.add_parser("check", help="Проверить конфигурацию и готовность")
     subparsers.add_parser("poll", help="Long-polling режим бота для локальной проверки")
+    subparsers.add_parser("set-webhook", help="Установить webhook и команды бота")
 
     args = parser.parse_args(argv)
     settings = get_settings()
@@ -48,6 +49,12 @@ def main(argv: list[str] | None = None) -> int:
             from fintracker.runtime.polling import run_polling
 
             asyncio.run(run_polling(settings))
+            return 0
+        case "set-webhook":
+            from fintracker.bot.dispatcher import configure_webhook
+
+            info = asyncio.run(configure_webhook(settings))
+            logger.info("webhook_configured", **info)
             return 0
         case "check":
             from fintracker.runtime.health import check_readiness

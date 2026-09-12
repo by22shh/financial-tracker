@@ -6,10 +6,8 @@ SQLite не заменяет эти проверки (раздел 8 инстр�
 
 from __future__ import annotations
 
-import asyncio
 import datetime as dt
 import os
-import uuid
 from collections.abc import AsyncIterator, Iterator
 
 import pytest
@@ -19,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from fintracker.config import Settings, reset_settings_cache
 from fintracker.core.clock import FixedClock
-from fintracker.db.session import RuntimeRole, dispose_engines, get_sessionmaker, set_rls_context
+from fintracker.db.session import RuntimeRole, dispose_engines, get_sessionmaker
 
 TEST_DB_NAME = os.environ.get("FINTRACKER_TEST_DB", "fintracker_test")
 PG_HOST = os.environ.get("FINTRACKER_TEST_PG_HOST", "localhost")
@@ -108,7 +106,7 @@ def pg_database(test_settings: Settings) -> Iterator[None]:
 
     env = dict(os.environ)
     env["FINTRACKER_DB__OWNER_DSN"] = _dsn(PG_OWNER, TEST_DB_NAME)
-    result = subprocess.run(  # noqa: S603
+    result = subprocess.run(
         [".venv/bin/alembic", "upgrade", "head"],
         capture_output=True,
         text=True,
@@ -158,9 +156,7 @@ def clock() -> FixedClock:
 
 
 @pytest_asyncio.fixture
-async def owner_session(
-    clean_db: None, test_settings: Settings
-) -> AsyncIterator[AsyncSession]:
+async def owner_session(clean_db: None, test_settings: Settings) -> AsyncIterator[AsyncSession]:
     """Сессия владельца схемы — для подготовки данных проверок."""
     factory = get_sessionmaker(test_settings, RuntimeRole.OWNER)
     async with factory() as session, session.begin():

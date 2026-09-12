@@ -4,6 +4,8 @@
 скобки над десятичными числами, с ограничением длины и числа операторов.
 """
 
+# ruff: noqa: S105 — «token» в этом модуле означает лексему выражения, не секрет.
+
 from __future__ import annotations
 
 import re
@@ -16,7 +18,7 @@ MAX_OPERATORS = 8
 _TOKEN_RE = re.compile(r"\d+(?:[.,]\d+)?|[()+\-*/]|\s+")
 
 
-class ArithmeticError_(ValidationFailed):
+class ExpressionError(ValidationFailed):
     """Некорректное арифметическое выражение."""
 
 
@@ -26,7 +28,7 @@ def _tokenize(expression: str) -> list[str]:
     while position < len(expression):
         match = _TOKEN_RE.match(expression, position)
         if match is None:
-            raise ArithmeticError_("В выражении есть недопустимый символ")
+            raise ExpressionError("В выражении есть недопустимый символ")
         token = match.group()
         position = match.end()
         if token.strip():
@@ -37,13 +39,13 @@ def _tokenize(expression: str) -> list[str]:
 def evaluate(expression: str) -> Decimal:
     """Вычислить выражение точными десятичными числами."""
     if len(expression) > MAX_EXPRESSION_CHARS:
-        raise ArithmeticError_("Выражение слишком длинное")
+        raise ExpressionError("Выражение слишком длинное")
     tokens = _tokenize(expression)
     operators = sum(1 for token in tokens if token in "+-*/")
     if operators > MAX_OPERATORS:
-        raise ArithmeticError_("Слишком много операций в выражении")
+        raise ExpressionError("Слишком много операций в выражении")
     if not tokens:
-        raise ArithmeticError_("Пустое выражение")
+        raise ExpressionError("Пустое выражение")
 
     position = 0
 
@@ -73,14 +75,14 @@ def evaluate(expression: str) -> Decimal:
                 value = value * right
             else:
                 if right == 0:
-                    raise ArithmeticError_("Деление на ноль")
+                    raise ExpressionError("Деление на ноль")
                 value = value / right
         return value
 
     def parse_factor() -> Decimal:
         token = peek()
         if token is None:
-            raise ArithmeticError_("Выражение оборвано")
+            raise ExpressionError("Выражение оборвано")
         if token == "-":
             take()
             return -parse_factor()
@@ -91,18 +93,18 @@ def evaluate(expression: str) -> Decimal:
             take()
             value = parse_expression()
             if peek() != ")":
-                raise ArithmeticError_("Не закрыта скобка")
+                raise ExpressionError("Не закрыта скобка")
             take()
             return value
         take()
         try:
             return Decimal(token)
         except (InvalidOperation, DivisionByZero) as exc:
-            raise ArithmeticError_(f"Не удалось разобрать число {token!r}") from exc
+            raise ExpressionError(f"Не удалось разобрать число {token!r}") from exc
 
     result = parse_expression()
     if position != len(tokens):
-        raise ArithmeticError_("Лишние символы в выражении")
+        raise ExpressionError("Лишние символы в выражении")
     return result
 
 

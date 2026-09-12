@@ -5,8 +5,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 
-from sqlalchemy import select
-from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fintracker.core.context import (
@@ -17,6 +16,7 @@ from fintracker.core.context import (
 )
 from fintracker.core.errors import NotFound, PermissionDenied
 from fintracker.db.models.access import Membership, User, UserBudgetContext, Workspace
+from fintracker.db.session import set_rls_context
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,21 +33,20 @@ class BudgetListItem:
 async def ensure_user(session: AsyncSession, *, telegram_user_id: int, locale: str = "ru") -> User:
     """Создать или найти пользователя по проверенному Telegram ID (FR-01).
 
-    Username, имя и телефон не являются основанием доступа.
+    Username, имя и телефон не являются основанием доступа. До разрешения
+    личности контекст RLS ещё неизвестен, поэтому используется узкая
+    SECURITY DEFINER функция ``resolve_self_user`` (ADR-06): она возвращает
+    только собственный идентификатор вызывающего и не раскрывает чужие строки.
     """
-    statement = (
-        pg_insert(User)
-        .values(id=uuid.uuid4(), telegram_user_id=telegram_user_id, locale=locale)
-        .on_conflict_do_nothing(index_elements=[User.telegram_user_id])
-        .returning(User.id)
-    )
-    inserted = (await session.execute(statement)).scalar_one_or_none()
-    if inserted is not None:
-        user = (await session.execute(select(User).where(User.id == inserted))).scalar_one()
-        return user
-    return (
-        await session.execute(select(User).where(User.telegram_user_id == telegram_user_id))
+    user_id = (
+        await session.execute(
+            text("SELECT resolve_self_user(:telegram_user_id, :locale)"),
+            {"telegram_user_id": telegram_user_id, "locale": locale},
+        )
     ).scalar_one()
+    # Дальнейшее чтение идёт уже под собственным контекстом.
+    await set_rls_context(session, user_id=user_id)
+    return (await session.execute(select(User).where(User.id == user_id))).scalar_one()
 
 
 async def get_active_workspace_id(session: AsyncSession, user_id: uuid.UUID) -> uuid.UUID | None:

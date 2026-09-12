@@ -23,7 +23,9 @@ pytestmark = [pytest.mark.pg, requires_pg]
 TZ = "Asia/Novosibirsk"
 
 
-async def _seed_workspace(session: AsyncSession, *, name: str = "Наш бюджет") -> tuple[User, Workspace]:
+async def _seed_workspace(
+    session: AsyncSession, *, name: str = "Наш бюджет"
+) -> tuple[User, Workspace]:
     user = User(id=uuid.uuid4(), telegram_user_id=int(uuid.uuid4().int % 10**9))
     session.add(user)
     await session.flush()
@@ -101,8 +103,8 @@ async def test_periods_cannot_overlap(owner_session: AsyncSession) -> None:
 async def test_periods_of_different_workspaces_may_overlap(owner_session: AsyncSession) -> None:
     """Ограничение действует только внутри одного бюджета (TZ §20)."""
     _, first = await _seed_workspace(owner_session, name="Первый")
-    _, second = await _seed_workspace(owner_session, name="Второй")
-    for workspace in (first, second):
+    _, second_ws = await _seed_workspace(owner_session, name="Второй")
+    for workspace in (first, second_ws):
         policy = PeriodPolicyRow(
             id=uuid.uuid4(),
             workspace_id=workspace.id,
@@ -132,7 +134,7 @@ async def test_periods_of_different_workspaces_may_overlap(owner_session: AsyncS
 
 async def test_only_one_active_admin(owner_session: AsyncSession) -> None:
     """DATA_CONTRACT §2.1: не более одного администратора."""
-    user, workspace = await _seed_workspace(owner_session)
+    _user, workspace = await _seed_workspace(owner_session)
     other = User(id=uuid.uuid4(), telegram_user_id=int(uuid.uuid4().int % 10**9))
     owner_session.add(other)
     await owner_session.flush()
@@ -151,7 +153,7 @@ async def test_only_one_active_admin(owner_session: AsyncSession) -> None:
 
 async def test_active_workspace_requires_exactly_one_admin(owner_session: AsyncSession) -> None:
     """Deferred trigger: действующий бюджет не остаётся без администратора."""
-    user, workspace = await _seed_workspace(owner_session)
+    _user, workspace = await _seed_workspace(owner_session)
     await owner_session.execute(
         text("UPDATE memberships SET role = 'member' WHERE workspace_id = :ws"),
         {"ws": workspace.id},
@@ -246,15 +248,13 @@ async def test_rls_bootstrap_reveals_only_own_memberships(
 ) -> None:
     """AR-12: bootstrap раскрывает только собственные метаданные."""
     first_user, first = await _seed_workspace(owner_session, name="Первый")
-    second_user, second = await _seed_workspace(owner_session, name="Второй")
+    await _seed_workspace(owner_session, name="Второй")
     await owner_session.commit()
 
     factory = get_sessionmaker(test_settings, RuntimeRole.API)
     async with factory() as session, session.begin():
         await set_rls_context(session, user_id=first_user.id)
-        rows = (
-            await session.execute(text("SELECT workspace_id FROM memberships"))
-        ).scalars().all()
+        rows = (await session.execute(text("SELECT workspace_id FROM memberships"))).scalars().all()
         assert rows == [first.id]
         names = (await session.execute(text("SELECT name FROM workspaces"))).scalars().all()
         assert names == ["Первый"]
@@ -269,7 +269,7 @@ async def test_runtime_role_cannot_update_account_entries(
     """DATA_CONTRACT §2.4: прямая UPDATE движения счёта runtime ролью запрещена."""
     factory = get_sessionmaker(test_settings, RuntimeRole.API)
     async with factory() as session, session.begin():
-        with pytest.raises(DBAPIError, match="permission denied|нет прав"):
+        with pytest.raises(DBAPIError, match=r"permission denied|нет прав"):
             await session.execute(text("UPDATE account_entries SET signed_minor = 1"))
 
 
@@ -281,9 +281,7 @@ async def test_runtime_role_is_not_superuser_and_not_bypassrls(
     async with factory() as session, session.begin():
         row = (
             await session.execute(
-                text(
-                    "SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user"
-                )
+                text("SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user")
             )
         ).one()
         assert row.rolsuper is False
