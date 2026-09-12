@@ -1,0 +1,4504 @@
+# Реестр обязательных требований. Единственный источник статуса.
+# status: planned | implemented | verified | failed | not_run | blocked |
+#         not_applicable | out_of_scope
+# Генерируется .planning/tools/sync_registry.py; статусы сохраняются.
+
+- id: A01
+  title: "«Кофе 250», валюта и личный профиль настроены"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A02
+  title: "«Софе такси 430»"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A03
+  title: "«Нам ресторан 2400»"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A04
+  title: "«Вчера бензин 3000, сегодня продукты 1800»"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A05
+  title: "В пакете одной операции не хватает суммы"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A06
+  title: "«Купил продукты», сумма не указана"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A07
+  title: "«Два кофе по 250»"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A08
+  title: "«1,5к бензин»"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A09
+  title: "«Если завтра потрачу 3000 на ресторан, что останется?»"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A10
+  title: "«Хотел купить за 5000, но передумал»"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A11
+  title: "«Сколько я потратил за месяц?»"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A12
+  title: "«Поставь лимит на рестораны 8000»"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A13
+  title: "«Зарплата 100000»"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A14
+  title: "Не настроена валюта, введено «такси 500»"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A15
+  title: "Пользователь отключил автозапись"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A16
+  title: "AI предлагает ID несуществующей категории"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A17
+  title: "«я» до привязки личного профиля"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A18
+  title: "Ясное голосовое «вчера 1500 за такси Софе»"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A19
+  title: "Голосовая сумма допускает 1500 или 15000"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A20
+  title: "Аудио без речи либо обрыв"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A21
+  title: "Аудио длиннее продуктового лимита"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A22
+  title: "Чек: продукты 1000, товары для дома 400"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A23
+  title: "Чек: итог 900, наличными 1000, сдача 100"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A24
+  title: "Итог чека 1200, позиции в сумме 1100"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A25
+  title: "Часть позиций не читается, итог читается"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A26
+  title: "В чеке отдельно напечатан НДС, включённый в цену"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A27
+  title: "Общая скидка 0,01 ₽ на три равные позиции"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A28
+  title: "Несколько фото одного длинного чека в альбоме"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A29
+  title: "Скриншот содержит баланс 50 000 и платёж 600"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A30
+  title: "Фото корзины или счёта на оплату"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A31
+  title: "QR содержит внешнюю ссылку"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A32
+  title: "В чеке инструкция удалить историю или отправить данные"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A33
+  title: "Файл превышает 15 MB или изображение опасного размера"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A34
+  title: "Перевод 10 000 между двумя своими счетами"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A35
+  title: "Снятие наличных 5000, затем наличная покупка 700"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A36
+  title: "Покупка 1000, частичный возврат 300"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A37
+  title: "Возврат в следующем периоде"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A38
+  title: "Второй возврат приводит к превышению исходной покупки"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A39
+  title: "Выделение 5000 на цель внутри того же счёта"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A40
+  title: "Перевод 5000 на накопительный счёт с указанием цели"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A41
+  title: "Оплатил 3000 за двоих, собственная доля 1500, остальное вернёт друг вне пространства"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A42
+  title: "Друг вернул 1500 за покупку из A41"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A43
+  title: "В P1 покупка по кредитке 2000, затем погашение 2000"
+  source: docs/ACCEPTANCE.md
+  stage: P1
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A44
+  title: "В P1 платёж по долгу 5500: основная сумма 5000, проценты 500"
+  source: docs/ACCEPTANCE.md
+  stage: P1
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A45
+  title: "Исправить расход с 1000 на 800"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A46
+  title: "Отменить запись, затем повторить отмену"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A47
+  title: "Изменить дату через границу 9/10 числа"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A48
+  title: "9 сентября, 23:59 местного времени"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A49
+  title: "10 сентября, 00:00 местного времени"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A50
+  title: "«Вчера» отправлено 10 сентября, обработано 11 сентября"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A51
+  title: "Изменение часового пояса после записи"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A52
+  title: "День начала 31, переход к февралю и марту"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A53
+  title: "Запрос «за календарный сентябрь»"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A54
+  title: "Недатированный импортный доход периода"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A55
+  title: "Будущая дата в сообщении о намерении купить"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A56
+  title: "Рост статьи с 70% до 105%"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A57
+  title: "Ровно 100% лимита"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A58
+  title: "Повторная обработка того же события"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A59
+  title: "Возврат уменьшил использование ниже 80%, затем рост снова выше"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A60
+  title: "Изменён лимит, тот же порог снова пересчитан"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A61
+  title: "Событие ночью, к утру платёж уже оплачен"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A62
+  title: "Пользователь сам внёс расход ночью"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A63
+  title: "Исторический импорт содержит много превышений"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A64
+  title: "Третье обычное проактивное сообщение за день"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A65
+  title: "Отключены уведомления конкретной категории"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A66
+  title: "Пользователь заблокировал бота"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A67
+  title: "Расчётный период начинается 10-го"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A68
+  title: "Разбор двух листов"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A69
+  title: "Чтение C14:E53 последнего листа"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A70
+  title: "Повторяется номер 11 в столбце B"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A71
+  title: "Строка сдвинулась между листами"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A72
+  title: "Непустая дневная ячейка содержит сумму нескольких покупок"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A73
+  title: "Формула доли `(438+741)/2`"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A74
+  title: "Итоговые F/H/J и строки итогов"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A75
+  title: "Старые продукты имели три подраздела, новый лист один"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A76
+  title: "Старое «Заведения» без получателя"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A77
+  title: "Исторические «Долги»"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A78
+  title: "«Накопления» в расходной матрице"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A79
+  title: "Импорт полного неизменного снимка повторён"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A80
+  title: "Изменена ранее импортированная ячейка"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A81
+  title: "После предварительного просмотра импорт отменён"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A82
+  title: "Итоги после импорта"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A83
+  title: "Подробная выписка перекрывает день с агрегатом"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A84
+  title: "Сумма подробной выписки отличается от агрегата"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A85
+  title: "Отчёт по группе и детализация"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A86
+  title: "AI называет сумму расхода"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A87
+  title: "В прошлом периоде значение 0"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A88
+  title: "Сравнение неполного и полного периода"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A89
+  title: "Средний чек по истории дневных агрегатов"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A90
+  title: "Достаточно данных для сравнения категорий"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A91
+  title: "История и счета неполные, вопрос «сколько могу потратить»"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A92
+  title: "Изменение цели в мастере плана"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A93
+  title: "AI генерация обзора недоступна"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A94
+  title: "Категория защищена как необходимая"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A95
+  title: "Один update доставлен 20 раз одновременно"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A96
+  title: "Сбой исполнителя после commit до ответа"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A97
+  title: "Сбой базы до commit"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A98
+  title: "Одновременная правка одной операции двумя сессиями"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A99
+  title: "Один ключ идемпотентности с другим payload"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A100
+  title: "Telegram отправка закончилась неоднозначным таймаутом"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A101
+  title: "Ошибка 429"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A102
+  title: "AI вернул невалидную схему"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A103
+  title: "AI бюджет запросов исчерпан"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A104
+  title: "Истёк доступ Google Sheets"
+  source: docs/ACCEPTANCE.md
+  stage: P1
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A105
+  title: "Повтор выгрузки после таймаута"
+  source: docs/ACCEPTANCE.md
+  stage: P1
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A106
+  title: "Пользователь подставил ID чужого workspace"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A107
+  title: "Неверная подпись или устаревший initData"
+  source: docs/ACCEPTANCE.md
+  stage: P1
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A108
+  title: "Внешнее текстовое поле начинается с формулы"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A109
+  title: "Истёк срок хранения аудио или фото"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A110
+  title: "Удаление пространства, затем восстановление старого backup"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A111
+  title: "Восстановление базы из backup"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A112
+  title: "Проверка логов на тестовом запуске"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A113
+  title: "Через меню создать категорию «Путешествия» без лимита"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A114
+  title: "Повторить запрос создания тем же ключом"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A115
+  title: "При исправлении выбрать «Создать категорию и перенести сюда эту запись»"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A116
+  title: "Переименовать категорию с расходами и бюджетом"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A117
+  title: "Удалить категорию без любых связей"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A118
+  title: "Нажать «Удалить» у категории с тратами и выбрать архив"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A119
+  title: "Восстановить архивную категорию"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A120
+  title: "Архивировать категорию с будущим платежом и правилом AI"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A121
+  title: "Удалить группу с подкатегориями"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A122
+  title: "Объединить категории с расходами и текущими лимитами"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A123
+  title: "Категория стала архивной после распознавания черновика"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A124
+  title: "Ответить на карточку «Здесь было 800, а не 1800»"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A125
+  title: "Исправление подходит к нескольким операциям"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A126
+  title: "Отменить исправление после конфликтующей последующей правки"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A127
+  title: "«Удали эту трату, это дубль», затем восстановить"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A128
+  title: "Наступило время анализа, пользователь не открывал чат; задача доставлена дважды"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A129
+  title: "Новый запуск при неизменных данных и рекомендациях"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A130
+  title: "Для анализа доступна только неполная агрегированная история"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A131
+  title: "Сценарий: заменить две доставки по 900 ₽ альтернативой по 350 ₽"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A132
+  title: "Нажать «Выбрать действие» в рекомендации"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A133
+  title: "Исправлена трата, на которой основан ещё не принятый совет"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A134
+  title: "Отложить совет или отключить это направление для статьи"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A135
+  title: "Два варианта сокращают одни и те же будущие покупки"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A136
+  title: "Неизвестны цена альтернативы или использование подписки"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A137
+  title: "Владелец отметил действие выполненным, но история неполна"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A138
+  title: "AI анализ не ответил, числовой снимок готов"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A139
+  title: "Недельный обзор совпал с подготовкой бюджета"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A140
+  title: "P0 анализирует регулярные списания"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A141
+  title: "Новый пользователь нажал `/start`"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A142
+  title: "Создать бюджет с нуля без таблицы"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A143
+  title: "Прервать мастер, вернуться, повторно подтвердить завершение"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A144
+  title: "Ввести точный месячный план 100 000 ₽"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A145
+  title: "Ввести примерный доход или диапазон"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A146
+  title: "Общий план 100 000 ₽ детализировать на источники 60 000 и 40 000 ₽"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A147
+  title: "В мастере лимит продуктов 20 000 ₽ и будущая аренда 40 000 ₽"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A148
+  title: "Завершить настройку с лимитами выше ресурса или без заданного дохода"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A149
+  title: "Наступила настроенная граница при включённом повторении шаблона"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A150
+  title: "Администратор создал код, участник попытался создать другой"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A151
+  title: "Ввести постоянный ID бюджета вместо кода"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A152
+  title: "U2 ввёл действующий код и подтвердил присоединение"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A153
+  title: "Код просрочен, отозван, исчерпан либо неверен"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A154
+  title: "Два человека одновременно используют последнее разрешённое применение"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A155
+  title: "Участник повторно нажал присоединение или ввёл тот же код"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A156
+  title: "Открыть ссылку приглашения либо вручную ввести код"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A157
+  title: "U2 присоединился к бюджету U1"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A158
+  title: "U1 добавил расход 650 ₽, в бюджете три человека"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A159
+  title: "Одна персональная доставка завершилась ошибкой"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A160
+  title: "U2 отключил уведомления о чужих тратах"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A161
+  title: "Новая трата ночью для U2, но не для U3"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A162
+  title: "U2 создал категорию и изменил лимит"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A163
+  title: "U2 исправил общую запись U1"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A164
+  title: "Два участника одновременно меняют одну запись или принимают один проект плана"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A165
+  title: "U1 переключил активный бюджет во время распознавания чека"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A166
+  title: "Пришло уведомление из другого бюджета, затем пользователь ввёл свободную трату"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A167
+  title: "Ответить на карточку другого доступного бюджета"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A168
+  title: "U2 подтвердил выход"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A169
+  title: "Выход завершился до проведения находившегося в AI черновика"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A170
+  title: "Исключённый U2 попробовал вновь использовать действующий общий код"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A171
+  title: "Самостоятельно вышедший участник заново приглашён"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A172
+  title: "Администратор выбрал «Выйти»"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A173
+  title: "U2 принял передачу от U1, два запроса пришли одновременно"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A174
+  title: "Предложение передачи устарело либо адресат вышел до принятия"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A175
+  title: "Участник вызвал удаление бюджета напрямую через API или старую кнопку"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A176
+  title: "Администратор подтвердил удаление одного из двух бюджетов"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A177
+  title: "После удаления остались финансовые задания и персональные доставки"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A178
+  title: "После выхода/удаления восстановлен старый backup"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A179
+  title: "Один бюджет с тремя участниками анализируется по расписанию"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A180
+  title: "Проверить AI payload и логи после входа по коду"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A181
+  title: "U1: «Продукты 1200, купила Софа для нас. Комментарий: на ужин в выходные»"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A182
+  title: "Голос содержит расход и пояснение для будущего"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A183
+  title: "Прислать чек с подписью «Купила Софа перед поездкой»"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A184
+  title: "Ответить на записанную трату «Добавь комментарий: перед поездкой», повторить тот же update"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A185
+  title: "Изменить и затем удалить комментарий"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A186
+  title: "U2 открыл и изменил общий комментарий к записи U1"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A187
+  title: "Два участника одновременно редактируют заметку"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A188
+  title: "«Кофе 250. Комментарий: в следующий раз выбрать вариант за 150»"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A189
+  title: "Указать совершившим покупку человека, у которого нет аккаунта бота"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A190
+  title: "U1: «Софе такси 430»"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A191
+  title: "«Потратила моя девушка», алиас ещё не сопоставлен"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A192
+  title: "Позднее добавить заметку «Купила Софа», поле «Кто потратил» сейчас Ниджат"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A193
+  title: "Фильтры: Софа совершила, U1 записал, Продукты, комментарий про поездку, две совпадающие метки"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A194
+  title: "U1: «Покажи траты, где потратил не я»"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A195
+  title: "«Купил Ниджат. Комментарий: подарок Софе»"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A196
+  title: "Импорт дневного агрегата, в исходной строке стоит имя Софы"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A197
+  title: "Автор общего комментария вышел из бюджета"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A198
+  title: "В комментарии сохранена инструкция отправить журнал или удалить бюджет"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A199
+  title: "В одном сообщении две траты, пояснение относится только ко второй"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A200
+  title: "Экспорт выбранной выборки с многострочной заметкой, кавычками и метками"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A201
+  title: "В мастере выбрать 10 сентября — 9 октября 2026 и календарный месяц"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A202
+  title: "Повторять календарный цикл 10–9"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A203
+  title: "Выбрать 10–23 сентября и каждые 14 дней"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A204
+  title: "Сравнить месяц и 30 дней от 10 сентября"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A205
+  title: "Указать 10–20 сентября и одновременно ежемесячное начало 10-го"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A206
+  title: "Ввести несуществующую дату, конец раньше начала или нулевой интервал"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A207
+  title: "Выбрать 10 сентября — 10 сентября, повтор ежедневно"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A208
+  title: "Месячное начало 31 января 2027"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A209
+  title: "Месячное начало 31 января 2028"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A210
+  title: "Каждые три календарных месяца, начало 10 октября 2026"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A211
+  title: "Фиксированная неделя пересекает смену смещения UTC в настроенном поясе"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A212
+  title: "Наступила граница, никто не открыл чат, AI недоступен"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A213
+  title: "Дважды запущено открытие одновременно с первой записью периода"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A214
+  title: "Сервис восстановился после нескольких пропущенных границ"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A215
+  title: "10-го обрабатывается покупка с подтверждённой датой 9-го"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A216
+  title: "Период 10–23 сентября; зарплата по расписанию 60 000 ₽ 10-го и 40 000 ₽ 25-го"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A217
+  title: "Для 14 дней известен только месячный доход 100 000 ₽ без дат и правила распределения"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A218
+  title: "Наступил новый период после расходов и взноса на цель"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A219
+  title: "Изменить лимит 15 000 на 17 000 только в текущем периоде, затем выбрать отдельную правку «Этот и следующие»"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A220
+  title: "Шаблонный лимит 15 000 ₽, утверждённый перенос 500 ₽"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A221
+  title: "Отключить повторение плана и дождаться границы"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A222
+  title: "При автоматическом повторении обнаружен новый дефицит или AI предлагает другие суммы"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A223
+  title: "Создать бюджет с первым началом в будущем и попытаться записать сегодняшнюю покупку"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A224
+  title: "После текущего 10 сентября — 9 октября перейти на начало 1-го"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A225
+  title: "Обычный участник меняет календарь либо финансовый шаблон"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A226
+  title: "Две правки календаря и открытие периода конкурируют"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A227
+  title: "Недельный бюджет, ежемесячные аренда, зарплата и взнос на цель"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A228
+  title: "Однодневный период и стандартный обзор перед началом"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A229
+  title: "При недельном цикле спросить «за месяц», затем явно выбрать календарный месяц"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: A230
+  title: "Экспортировать многомесячный период и изменить правило после закрытия исторического"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: ADR-01
+  title: "Модульный монолит; API, worker и scheduler из одного артефакта"
+  source: docs/ARCHITECTURE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: ADR-02
+  title: "Python 3.13, aiogram 3, FastAPI, Pydantic 2, SQLAlchemy 2.0, psycopg 3, Alembic; PostgreSQL 17"
+  source: docs/ARCHITECTURE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: ADR-03
+  title: "Версии финансовой операции и неизменяемые движения счетов"
+  source: docs/ARCHITECTURE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: ADR-04
+  title: "READ COMMITTED и блокировка строки бюджета для финансовых и административных изменений"
+  source: docs/ARCHITECTURE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: ADR-05
+  title: "Durable inbox, PostgreSQL jobs, outbox; доставка минимум один раз"
+  source: docs/ARCHITECTURE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: ADR-06
+  title: "Серверная авторизация на каждом действии плюс RLS для изоляции строк"
+  source: docs/ARCHITECTURE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: ADR-07
+  title: "Календарные даты, исключённая правая граница, версии политики и шаблона"
+  source: docs/ARCHITECTURE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: ADR-08
+  title: "AI создаёт типизированное предложение; деньги проводит доменный сервис"
+  source: docs/ARCHITECTURE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: ADR-09
+  title: "Точные SQL агрегаты и версионированные снимки для AI"
+  source: docs/ARCHITECTURE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: ADR-10
+  title: "Единые команды для Telegram, API, ручного ввода и импорта"
+  source: docs/ARCHITECTURE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: ADR-11
+  title: "Приватное хранилище; скачивание через сервер с проверкой доступа"
+  source: docs/ARCHITECTURE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: ADR-12
+  title: "Ограниченная конкуренция, явные квоты, отдельные классы задач"
+  source: docs/ARCHITECTURE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: ADR-13
+  title: "Один регион, управляемая PostgreSQL с PITR, контейнерные процессы"
+  source: docs/ARCHITECTURE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: ADR-14
+  title: "Восстановление в закрытом режиме с независимым журналом доступа"
+  source: docs/ARCHITECTURE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: ADR-15
+  title: "Миграции с совместимостью соседних выпусков, проверки на настоящей PostgreSQL"
+  source: docs/ARCHITECTURE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: ADR-16
+  title: "Изменять архитектуру по измеренному ограничению"
+  source: docs/ARCHITECTURE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: ADR-17
+  title: "GPT-5.6 Luna, reasoning.effort=medium, напрямую через OpenAI Responses API"
+  source: docs/ARCHITECTURE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: AI-01
+  title: "Извлечение"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: AI-02
+  title: "Контекст"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: AI-03
+  title: "Структурированный результат"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: AI-04
+  title: "Измеренная точность"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: AI-05
+  title: "Отказ от догадки"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: AI-06
+  title: "Ограниченный план запроса"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: AI-07
+  title: "Изменение данных"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: AI-08
+  title: "Основания рекомендаций"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: AI-09
+  title: "Недоверенные данные"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: AR-01
+  title: "Одинаковый update 100 раз, включая конкурентную доставку"
+  source: docs/ARCHITECTURE_REVIEW.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: AR-02
+  title: "Убить API до commit inbox и после commit до HTTP ответа"
+  source: docs/ARCHITECTURE_REVIEW.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: AR-03
+  title: "Убить worker после ledger commit до отправки ответа"
+  source: docs/ARCHITECTURE_REVIEW.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: AR-04
+  title: "Аренда истекла, второй worker завершил, первый вернулся с AI результатом"
+  source: docs/ARCHITECTURE_REVIEW.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: AR-05
+  title: "Ручная правка с 700 на 650, затем поздний AI ответ 700"
+  source: docs/ARCHITECTURE_REVIEW.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: AR-06
+  title: "Два ожидающих вопроса, свободное «500», ответ на закрытую карточку"
+  source: docs/ARCHITECTURE_REVIEW.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: AR-07
+  title: "Две правки одного расхода с одной expected_version"
+  source: docs/ARCHITECTURE_REVIEW.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: AR-08
+  title: "Исключение участника соревнуется с проведением его расхода"
+  source: docs/ARCHITECTURE_REVIEW.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: AR-09
+  title: "Два входа по последнему использованию кода; повтор входа уже участника"
+  source: docs/ARCHITECTURE_REVIEW.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: AR-10
+  title: "Два одновременных предложения передачи роли"
+  source: docs/ARCHITECTURE_REVIEW.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: AR-11
+  title: "Смешать бюджет, категорию, счёт, person и operation ID разных семей"
+  source: docs/ARCHITECTURE_REVIEW.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: AR-12
+  title: "Bootstrap моих бюджетов, затем пул переиспользует соединение A для B без/с новым контекстом"
+  source: docs/ARCHITECTURE_REVIEW.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: AR-13
+  title: "Member запрашивает чужой черновик/голос и общий чек; worker системного обзора читает черновики"
+  source: docs/ARCHITECTURE_REVIEW.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: AR-14
+  title: "Выход/rejoin, старая кнопка, cached idempotency result и старая ссылка экспорта"
+  source: docs/ARCHITECTURE_REVIEW.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: AR-15
+  title: "Исходный остаток 10000, расход1000→800, заметка, void, restore"
+  source: docs/ARCHITECTURE_REVIEW.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: AR-16
+  title: "Случайные последовательности переводов, исправлений, отмен и восстановлений"
+  source: docs/ARCHITECTURE_REVIEW.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: AR-17
+  title: "Два возврата одновременно исчерпывают одну часть чека"
+  source: docs/ARCHITECTURE_REVIEW.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: AR-18
+  title: "Возврат покупки из цели и отмена/изменение связанной исходной покупки"
+  source: docs/ARCHITECTURE_REVIEW.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: AR-19
+  title: "Смешанный чек 1000 Продукты/Софа +400 Дом/Ниджат, несколько tags"
+  source: docs/ARCHITECTURE_REVIEW.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: AR-20
+  title: "Opening cutoff, импорт до него, поздняя правка до сверки, только заметка"
+  source: docs/ARCHITECTURE_REVIEW.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: AR-21
+  title: "Личная карта reference, неизвестная валюта чека, заполненный бюджет и смена валюты"
+  source: docs/ARCHITECTURE_REVIEW.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: AR-22
+  title: "Платёж1000 оплачен600, переход периода, доплата/переплата, правка серии"
+  source: docs/ARCHITECTURE_REVIEW.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: AR-23
+  title: "Управляемое время: 10–9, 31 января, високосность, fixed_days и DST"
+  source: docs/ARCHITECTURE_REVIEW.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: AR-24
+  title: "Несколько scheduler, простой на несколько периодов и конкурентная смена политики"
+  source: docs/ARCHITECTURE_REVIEW.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: AR-25
+  title: "План отсутствует, AI недоступен, доход известен только за месяц, период14 дней"
+  source: docs/ARCHITECTURE_REVIEW.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: AR-26
+  title: "Выгрузка/AI читают отчёт во время исправления; затем поздний ответ анализа"
+  source: docs/ARCHITECTURE_REVIEW.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: AR-27
+  title: "Upload удался, DB registration упал; удаление объекта упало; опасный/огромный файл"
+  source: docs/ARCHITECTURE_REVIEW.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: AR-28
+  title: "Один import повторён после сбоя, rollback с зависимым возвратом, слишком большой пакет"
+  source: docs/ARCHITECTURE_REVIEW.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: AR-29
+  title: "Два AI запроса расходуют остаток общей квоты; provider timeout и retry"
+  source: docs/ARCHITECTURE_REVIEW.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: AR-30
+  title: "Один получатель заблокировал бота, другой получил; timeout sendMessage; 429"
+  source: docs/ARCHITECTURE_REVIEW.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: AR-31
+  title: "Остановить SecurityChange на каждом из пяти шагов, включая недоступный/неполный журнал"
+  source: docs/ARCHITECTURE_REVIEW.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: AR-32
+  title: "Restore backup до выхода, исключения, передачи admin и удаления бюджета"
+  source: docs/ARCHITECTURE_REVIEW.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: AR-33
+  title: "Полный restore из реально доступного backup/WAL и проверка ссылок на вложения"
+  source: docs/ARCHITECTURE_REVIEW.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: AR-34
+  title: "Нагрузка ТЗ, один горячий бюджет, 50 000 операций, расширенные фильтры"
+  source: docs/ARCHITECTURE_REVIEW.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: AR-35
+  title: "Выпуск с jobs предыдущего формата, миграция со старого снимка и откат приложения"
+  source: docs/ARCHITECTURE_REVIEW.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: AR-36
+  title: "Корпус AI на выбранном профиле: сырая ошибка, уточнение, ошибочная автозапись, инструкция в заметке, недоступность провайдера"
+  source: docs/ARCHITECTURE_REVIEW.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: B1
+  title: "Остаток и будущий платёж"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: B2
+  title: "Нулевой и неустановленный лимит"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: B3
+  title: "Группа и получатели"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: B4
+  title: "Изменение плана"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: B5
+  title: "Перенос остатка"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: B6
+  title: "Фонд будущего платежа"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: B7
+  title: "Консервативные доступные деньги"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: B8
+  title: "Прогноз фиксированных расходов"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: B9
+  title: "Неполная история"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: B10
+  title: "Отрицательный чистый расход"
+  source: docs/ACCEPTANCE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: CMD-01
+  title: "global POST /v1/telegram/webhook"
+  source: docs/DATA_CONTRACT.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: CMD-02
+  title: "global GET /v1/budgets; POST/PATCH /v1/budget-setups; POST /v1/budget-setups/{id}/publish"
+  source: docs/DATA_CONTRACT.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: CMD-03
+  title: "POST /activate"
+  source: docs/DATA_CONTRACT.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: CMD-04
+  title: "GET /members; POST /invites; POST /invites/{id}/revoke"
+  source: docs/DATA_CONTRACT.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: CMD-05
+  title: "global POST /v1/invites/preview и /accept"
+  source: docs/DATA_CONTRACT.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: CMD-06
+  title: "POST /leave; POST /members/{user}/remove и /allow-rejoin"
+  source: docs/DATA_CONTRACT.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: CMD-07
+  title: "POST /admin-transfers; global POST /v1/admin-transfers/{id}/accept"
+  source: docs/DATA_CONTRACT.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: CMD-08
+  title: "POST /deletion-preview и /delete"
+  source: docs/DATA_CONTRACT.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: CMD-09
+  title: "GET/POST /categories; PATCH /categories/{id}; POST /categories/{id}/removal-preview,/remove,/restore,/merge"
+  source: docs/DATA_CONTRACT.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: CMD-10
+  title: "GET /drafts; GET/PATCH /drafts/{id}; POST /drafts/{id}/confirm,/cancel,/retry-parse"
+  source: docs/DATA_CONTRACT.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: CMD-11
+  title: "POST /transactions; PATCH /transactions/{id}; POST /transactions/{id}/void,/restore"
+  source: docs/DATA_CONTRACT.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: CMD-12
+  title: "GET /transactions; GET /transactions/{id}; GET /transactions/{id}/revisions"
+  source: docs/DATA_CONTRACT.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: CMD-13
+  title: "GET/POST /people,/beneficiaries,/tags; PATCH /people/{id},/beneficiaries/{id},/tags/{id}"
+  source: docs/DATA_CONTRACT.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: CMD-14
+  title: "GET/POST /accounts; PATCH /accounts/{id}; POST /accounts/{id}/archive"
+  source: docs/DATA_CONTRACT.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: CMD-15
+  title: "GET/POST /reconciliations; POST /reconciliations/{id}/accept; GET/POST /coverage; PATCH /coverage/{id}"
+  source: docs/DATA_CONTRACT.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: CMD-16
+  title: "GET /periods; GET /periods/{id}/status"
+  source: docs/DATA_CONTRACT.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: CMD-17
+  title: "POST /period-policy/preview,/accept"
+  source: docs/DATA_CONTRACT.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: CMD-18
+  title: "GET/PATCH /plan-template; GET/PATCH /income-plan"
+  source: docs/DATA_CONTRACT.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: CMD-19
+  title: "POST /budget-proposals; POST /budget-proposals/{id}/accept"
+  source: docs/DATA_CONTRACT.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: CMD-20
+  title: "GET/POST /schedules; PATCH /schedules/{id}; GET /occurrences; PATCH /occurrences/{id}; POST /occurrences/{id}/skip,/cancel,/link-payment"
+  source: docs/DATA_CONTRACT.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: CMD-21
+  title: "GET/POST /goals; PATCH /goals/{id}; POST /goals/{id}/movements"
+  source: docs/DATA_CONTRACT.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: CMD-22
+  title: "GET /receivables; POST /receivables/{id}/settlements"
+  source: docs/DATA_CONTRACT.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: CMD-23
+  title: "GET /reports,/recommendations; POST /analysis-runs"
+  source: docs/DATA_CONTRACT.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: CMD-24
+  title: "POST /recommendations/{id}/feedback"
+  source: docs/DATA_CONTRACT.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: CMD-25
+  title: "GET/PATCH /analysis-preferences"
+  source: docs/DATA_CONTRACT.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: CMD-26
+  title: "GET/PATCH /my/notification-preferences,/my/input-preferences"
+  source: docs/DATA_CONTRACT.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: CMD-27
+  title: "GET/POST /classification-rules; PATCH /classification-rules/{id}; POST /classification-rules/{id}/archive"
+  source: docs/DATA_CONTRACT.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: CMD-28
+  title: "POST /imports/preview; GET /imports/{id}; POST /imports/{id}/commit,/revert"
+  source: docs/DATA_CONTRACT.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: CMD-29
+  title: "POST /exports; GET /exports/{id}; GET /files/{id}/content"
+  source: docs/DATA_CONTRACT.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: CMD-30
+  title: "PATCH /settings"
+  source: docs/DATA_CONTRACT.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: CMD-31
+  title: "global GET/PATCH /v1/me; POST /v1/me/deletion-preview,/delete"
+  source: docs/DATA_CONTRACT.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-01
+  title: "Идентификация"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-02
+  title: "Пространство учёта"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-03
+  title: "Люди и назначение расхода"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-04
+  title: "Роли"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-05
+  title: "Стартовое меню"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-06
+  title: "Категории"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-07
+  title: "История"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-08
+  title: "Состояния"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-09
+  title: "Доступность"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-10
+  title: "Свободный ввод"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-11
+  title: "Несколько операций"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-12
+  title: "Намерение"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-13
+  title: "Голосовой ввод"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-14
+  title: "Фото и документы"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-15
+  title: "Проверка суммы"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-16
+  title: "Смешанный чек"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-17
+  title: "Платёж или намерение"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-18
+  title: "QR"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-19
+  title: "Однозначный ввод"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-20
+  title: "Черновики"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-21
+  title: "Справочник"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-22
+  title: "Изменения справочника"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-23
+  title: "Правила"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-24
+  title: "Обучение на исправлениях"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-25
+  title: "Без категории"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-26
+  title: "Деньги"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-27
+  title: "Периоды"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-28
+  title: "Переводы"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-29
+  title: "Возвраты"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-30
+  title: "Совместная покупка и доля"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-31
+  title: "Кредитные карты P1"
+  source: docs/TZ.md
+  stage: P1
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-32
+  title: "Исторические долги"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-33
+  title: "Изменение"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-34
+  title: "Отмена"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-35
+  title: "Бюджетные статьи"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-36
+  title: "Версии"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-37
+  title: "Перераспределение"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-38
+  title: "Влияние неопределённых данных"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-39
+  title: "Перенос"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-40
+  title: "Фонды будущих расходов"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-41
+  title: "Базовый прогноз P0"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-42
+  title: "Ранний риск"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-43
+  title: "Условия расчёта"
+  source: docs/TZ.md
+  stage: P1
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-44
+  title: "Сценарий"
+  source: docs/TZ.md
+  stage: P1
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-45
+  title: "Расписание"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-46
+  title: "План не равен факту"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-47
+  title: "Повторяющиеся доходы"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-48
+  title: "Детектор подписок P1"
+  source: docs/TZ.md
+  stage: P1
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-49
+  title: "Цель"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-50
+  title: "Прогресс"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-51
+  title: "Использование цели"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-52
+  title: "Пороговые события"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-53
+  title: "Частота и тихие часы"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-54
+  title: "Управление"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-55
+  title: "Недельный обзор"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-56
+  title: "Итог периода"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-57
+  title: "Набор отчётов P0"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-58
+  title: "Естественный язык"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-59
+  title: "Объяснение изменений"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-60
+  title: "Проценты и сравнение"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-61
+  title: "Мастер плана"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-62
+  title: "Ограничения"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-63
+  title: "Предварительный просмотр"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-64
+  title: "Дневные агрегаты"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-65
+  title: "Сверка"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-66
+  title: "Повторный импорт изменённого источника"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-67
+  title: "Выгрузка"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-68
+  title: "Sheets P1"
+  source: docs/TZ.md
+  stage: P1
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-69
+  title: "Режим качества учёта"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-70
+  title: "Восстановление пропусков"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-71
+  title: "Сверка счёта"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-72
+  title: "Замещение агрегата"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-73
+  title: "Запуск анализа"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-74
+  title: "Направления оптимизации"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-75
+  title: "Карточка рекомендации"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-76
+  title: "Действия и обратная связь"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-77
+  title: "Код приглашения"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-78
+  title: "Вход по коду"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-79
+  title: "Активный бюджет"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-80
+  title: "Выход участника"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-81
+  title: "Исключение"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-82
+  title: "Передача администрирования"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-83
+  title: "Удаление бюджета"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-84
+  title: "Мастер создания"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-85
+  title: "План дохода"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-86
+  title: "Общая видимость и уведомления"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-87
+  title: "Комментарий"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-88
+  title: "Кто потратил"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-89
+  title: "Поиск и фильтрация контекста"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-90
+  title: "Выбор дат и длительности"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-91
+  title: "Правила повторения"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-92
+  title: "Автоматическое открытие"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-93
+  title: "Повторение плана"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FR-94
+  title: "Изменение повторения"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: QA-01
+  title: "Доменная логика"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: QA-02
+  title: "Интеграции"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: QA-03
+  title: "Интерфейс"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: QA-04
+  title: "Пилот"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: TECH-01
+  title: "Приём"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: TECH-02
+  title: "Идемпотентность"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: TECH-03
+  title: "Проведение"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: TECH-04
+  title: "Конкуренция"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: TECH-05
+  title: "Outbox"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: TECH-06
+  title: "Повторы"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: TECH-07
+  title: "Уровни совпадения"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: NFR-01
+  title: "Приём события p95 <= 1 с до долговечного сохранения"
+  source: docs/TZ.md §23
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: NFR-02
+  title: "Обратная связь <= 2 с после приёма"
+  source: docs/TZ.md §23
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: NFR-03
+  title: "Текст p95 <= 5 с до карточки"
+  source: docs/TZ.md §23
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: NFR-04
+  title: "Голос p95 <= 20 с для записи до 30 с"
+  source: docs/TZ.md §23
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: NFR-05
+  title: "Чек p95 <= 30 с для читаемого изображения"
+  source: docs/TZ.md §23
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: NFR-06
+  title: "Числовой отчёт p95 <= 2 с на 50 000 операций"
+  source: docs/TZ.md §23
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: NFR-07
+  title: "Нагрузка 5/с 10 мин и всплеск 20/с без потерь и дублей"
+  source: docs/TZ.md §23
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: NFR-08
+  title: "Совместность 10 бюджетов по 5 участников"
+  source: docs/TZ.md §23
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: NFR-09
+  title: "Доступность собственного API 99,5% в месяц"
+  source: docs/TZ.md §23
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: NFR-10
+  title: "Восстановление RPO <= 1 ч, RTO <= 4 ч"
+  source: docs/TZ.md §23
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: NFR-11
+  title: "Вложения <= 15 MB с проверкой типов и размеров"
+  source: docs/TZ.md §23
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: NFR-12
+  title: "Экспорт участникам, удаление бюджета администратором"
+  source: docs/TZ.md §23
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: NFR-13
+  title: "Мониторинг перечисленных метрик"
+  source: docs/TZ.md §23
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: NFR-14
+  title: "Деградация при недоступности AI"
+  source: docs/TZ.md §23
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: RET-01
+  title: "Журнал и ревизии хранятся пока существует пространство"
+  source: docs/TZ.md §24
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: RET-02
+  title: "Исходное аудио до 24 ч после успешной обработки"
+  source: docs/TZ.md §24
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: RET-03
+  title: "Нераспознанное нужное вложение до 7 дней"
+  source: docs/TZ.md §24
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: RET-04
+  title: "Фото чеков 30 дней"
+  source: docs/TZ.md §24
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: RET-05
+  title: "Технические логи 30 дней без финансового текста"
+  source: docs/TZ.md §24
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: RET-06
+  title: "Резервные копии — окно 30 дней"
+  source: docs/TZ.md §24
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: RET-07
+  title: "Файлы экспорта 24 ч"
+  source: docs/TZ.md §24
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: RET-08
+  title: "Сырой текст, transcript и детальный разбор до 7 дней"
+  source: docs/TZ.md §24
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: RET-09
+  title: "Очистка удалённого бюджета в течение 24 ч"
+  source: docs/TZ.md §24
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: RET-10
+  title: "Непривязанные staging объекты очищаются через 24 ч"
+  source: docs/TZ.md §24
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: SEC-01
+  title: "Личность только из доверенного источника"
+  source: docs/TZ.md §24, docs/ARCHITECTURE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: SEC-02
+  title: "RLS ENABLE+FORCE, runtime роль без BYPASSRLS и не владелец"
+  source: docs/TZ.md §24, docs/ARCHITECTURE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: SEC-03
+  title: "Контекст RLS через set_config is_local=true"
+  source: docs/TZ.md §24, docs/ARCHITECTURE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: SEC-04
+  title: "Секрет приглашения хранится как HMAC-SHA-256"
+  source: docs/TZ.md §24, docs/ARCHITECTURE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: SEC-05
+  title: "Выдача файлов через авторизованный серверный endpoint"
+  source: docs/TZ.md §24, docs/ARCHITECTURE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: SEC-06
+  title: "Логи без токенов, ключей и финансового payload"
+  source: docs/TZ.md §24, docs/ARCHITECTURE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: SEC-07
+  title: "Проверка типа/размера/декодирования файла до дорогой обработки"
+  source: docs/TZ.md §24, docs/ARCHITECTURE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: SEC-08
+  title: "Экспорт защищён от formula injection"
+  source: docs/TZ.md §24, docs/ARCHITECTURE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: SEC-09
+  title: "Составные FK не позволяют связать объекты разных бюджетов"
+  source: docs/TZ.md §24, docs/ARCHITECTURE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: SEC-10
+  title: "Протокол SecurityChange для всех изменений доступа"
+  source: docs/TZ.md §24, docs/ARCHITECTURE.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FORM-01
+  title: "Формулы L, S, R, C, A по строке бюджета"
+  source: docs/TZ.md §10–11, §9.1.1
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FORM-02
+  title: "Процент использования и состояния нулевого/незаданного лимита"
+  source: docs/TZ.md §10–11, §9.1.1
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FORM-03
+  title: "Прогноз = факт + обязательства + гибкие, темп после 7 дней"
+  source: docs/TZ.md §10–11, §9.1.1
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FORM-04
+  title: "Свободные деньги по формуле раздела 11.2 (P1)"
+  source: docs/TZ.md §10–11, §9.1.1
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FORM-05
+  title: "Взнос в фонд = округление вверх недостающей суммы"
+  source: docs/TZ.md §10–11, §9.1.1
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FORM-06
+  title: "Календарный повтор от исходного anchor с ограничением месяца"
+  source: docs/TZ.md §10–11, §9.1.1
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FORM-07
+  title: "Фиксированный повтор в календарных днях"
+  source: docs/TZ.md §10–11, §9.1.1
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FORM-08
+  title: "Полуинтервал периода и включённые даты в интерфейсе"
+  source: docs/TZ.md §10–11, §9.1.1
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FORM-09
+  title: "Распределение скидки методом наибольших остатков"
+  source: docs/TZ.md §10–11, §9.1.1
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FORM-10
+  title: "Опережение обзора плана min(3, длительность-1)"
+  source: docs/TZ.md §10–11, §9.1.1
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: FORM-11
+  title: "Порог раннего риска max(500 ₽, 10% лимита)"
+  source: docs/TZ.md §10–11, §9.1.1
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: OPS-01
+  title: "Миграция отдельным заданием до нового кода"
+  source: docs/ARCHITECTURE.md §13, §15
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: OPS-02
+  title: "Liveness отделён от readiness, AI не блокирует readiness"
+  source: docs/ARCHITECTURE.md §13, §15
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: OPS-03
+  title: "Раздельные среды и секреты вне репозитория"
+  source: docs/ARCHITECTURE.md §13, §15
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: OPS-04
+  title: "Совместимость соседних выпусков и schema_version"
+  source: docs/ARCHITECTURE.md §13, §15
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: OPS-05
+  title: "Документированный откат приложения"
+  source: docs/ARCHITECTURE.md §13, §15
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: OPS-06
+  title: "Полный передаваемый комплект результатов"
+  source: docs/ARCHITECTURE.md §13, §15
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: LIM-01
+  title: "Код приглашения 12 символов, 7 дней, 10 применений"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: LIM-02
+  title: "5 неуспешных вводов кода за 15 минут"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: LIM-03
+  title: "Голос до 3 минут с отказом до платной обработки"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: LIM-04
+  title: "Комментарий до 2000 символов без молчаливой обрезки"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: LIM-05
+  title: "Черновик активен 7 дней"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: LIM-06
+  title: "Не более 2 проактивных сообщений в день на получателя"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: LIM-07
+  title: "Тихие часы 22:00–09:00 в личном поясе"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: LIM-08
+  title: "Атомарный пакет импорта/слияния <= 5000 операций"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: LIM-09
+  title: "Изображение <= 40 Мп и <= 16384 px; альбом <= 10 файлов"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: LIM-10
+  title: "Telegram: сообщение <= 4096 символов, короткие callback"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
+
+- id: LIM-11
+  title: "Месячный лимит расходов AI с деградацией"
+  source: docs/TZ.md
+  stage: P0
+  status: planned
+  implementation:
+  verification:
+  evidence:
