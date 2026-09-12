@@ -91,6 +91,15 @@ _PATTERNS: tuple[tuple[Intent, re.Pattern[str]], ...] = (
 )
 
 
+# Глаголы покупки без суммы: сообщение относится к трате, но сумму нужно
+# запросить, а не выдумать (A06, AI-05).
+_PURCHASE_VERBS = re.compile(
+    r"(?<![а-яё])(купил|купила|куплен|потратил|потратила|оплатил|оплатила|"
+    r"заказал|заказала|заправил|заправился|заправилась|взял|взяла|сходил|сходила)",
+    re.IGNORECASE,
+)
+
+
 @dataclass(frozen=True, slots=True)
 class IntentGuess:
     intent: Intent
@@ -112,6 +121,10 @@ def classify_intent(text: str) -> IntentGuess:
             return IntentGuess(intent, match.group())
     if re.search(r"\d", stripped):
         return IntentGuess(Intent.RECORD_TRANSACTION, None)
+    verb = _PURCHASE_VERBS.search(stripped)
+    if verb:
+        # Сообщение о покупке без суммы: сумма запрашивается отдельно.
+        return IntentGuess(Intent.RECORD_TRANSACTION, verb.group())
     return IntentGuess(Intent.UNKNOWN, None)
 
 

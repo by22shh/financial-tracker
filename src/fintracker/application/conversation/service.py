@@ -6,8 +6,10 @@
 
 from __future__ import annotations
 
+import datetime as dt
 import uuid
 from collections.abc import Sequence
+from typing import Any
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
@@ -21,6 +23,7 @@ from fintracker.application.conversation.context import (
 )
 from fintracker.application.conversation.entry import (
     CandidateFields,
+    ExtractionResult,
     create_draft_with_candidates,
     extract_from_text,
 )
@@ -35,7 +38,12 @@ from fintracker.application.conversation.types import IncomingMessage, MessageKi
 from fintracker.application.identity.actor import ensure_user, list_budgets
 from fintracker.config import Settings
 from fintracker.core.context import ActorContext
-from fintracker.core.errors import DomainError, ValidationFailed
+from fintracker.core.errors import (
+    DomainError,
+    ProviderUnavailable,
+    QuotaExceeded,
+    ValidationFailed,
+)
 from fintracker.core.logging import get_logger
 from fintracker.db.models.access import Membership, Workspace
 from fintracker.db.models.platform import Candidate, Draft
@@ -293,6 +301,9 @@ async def record_free_text(
         assume_self = membership.assume_self_spender
         large_threshold = membership.large_amount_threshold_minor
 
+        # Защитные намерения распознаются детерминированно и до вызова модели:
+        # вопрос, гипотеза и отрицание не проводятся как покупка независимо от
+        # доступности AI (FR-12, AI-05, NFR-14).
         extraction = await extract_from_text(
             session,
             settings=settings,
@@ -320,6 +331,20 @@ async def record_free_text(
             return await create_category_from_text(
                 settings, actor=actor, workspace=workspace, text=message.text
             )
+        if extraction.intent is Intent.RECORD_TRANSACTION and settings.ai.enabled:
+            # Модель уточняет свободную формулировку; сервер проверяет результат.
+            extraction = await _extract_with_model_or_fallback(
+                settings,
+                session=session,
+                actor=actor,
+                workspace=workspace,
+                text=message.text,
+                reference_date=local_date,
+                deterministic=extraction,
+            )
+            guard_reply = _guard_reply(extraction.intent)
+            if guard_reply is not None:
+                return guard_reply
         if not extraction.candidates:
             return [Reply(text="Не понял сообщение. Отправьте /help, чтобы увидеть примеры.")]
         if not workspace.currency:  # pragma: no cover - защита контракта
@@ -357,6 +382,57 @@ async def record_free_text(
     return await sections.confirm_draft(
         settings, actor=actor, workspace=workspace, draft_id=draft_id, origin="telegram_text"
     )
+
+
+async def _extract_with_model_or_fallback(
+    settings: Settings,
+    *,
+    session: Any,
+    actor: ActorContext,
+    workspace: Workspace,
+    text: str,
+    reference_date: dt.date,
+    deterministic: ExtractionResult,
+) -> ExtractionResult:
+    """Разбор моделью с деградацией на детерминированный путь (NFR-14, A103).
+
+    При недоступности модели или исчерпанной квоте сохраняется входящий
+    материал и используется результат детерминированного разбора.
+    """
+    from fintracker.application.conversation.entry import create_draft_with_candidates
+    from fintracker.application.intelligence.extraction import (
+        extract_with_model,
+        load_catalog,
+    )
+
+    workspace_id = actor.require_workspace()
+    catalog = await load_catalog(
+        session,
+        workspace_id=workspace_id,
+        currency=workspace.currency,
+        timezone=workspace.timezone,
+    )
+    draft, _ = await create_draft_with_candidates(
+        session,
+        settings=settings,
+        actor=actor,
+        source_kind="text",
+        raw_text=text,
+        extraction=ExtractionResult(intent=Intent.UNKNOWN, candidates=[]),
+    )
+    try:
+        return await extract_with_model(
+            settings,
+            actor=actor,
+            draft_id=draft.id,
+            draft_version=draft.version,
+            text=text,
+            catalog=catalog,
+            reference_date=reference_date,
+        )
+    except (ProviderUnavailable, QuotaExceeded, ValidationFailed) as exc:
+        logger.info("ai_fallback_to_deterministic", reason=type(exc).__name__)
+        return deterministic
 
 
 def _guard_reply(intent: Intent) -> list[Reply] | None:

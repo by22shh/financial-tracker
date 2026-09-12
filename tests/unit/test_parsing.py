@@ -146,6 +146,14 @@ def test_intent_without_digits_is_unknown() -> None:
     assert classify_intent("привет").intent is Intent.UNKNOWN
 
 
+def test_purchase_verb_without_amount_is_a_transaction() -> None:
+    """A06: «Купил продукты» относится к трате, сумма запрашивается отдельно."""
+    assert classify_intent("Купил продукты").intent is Intent.RECORD_TRANSACTION
+    assert classify_intent("Заправился на заправке").intent is Intent.RECORD_TRANSACTION
+    # Отрицание остаётся приоритетнее глагола покупки.
+    assert classify_intent("Хотел купить, но передумал").intent is Intent.NEGATED
+
+
 @pytest.mark.parametrize(
     ("text", "kind"),
     [

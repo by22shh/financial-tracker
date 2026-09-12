@@ -59,7 +59,9 @@ def _pool_for(settings: Settings, role: RuntimeRole) -> tuple[int, int]:
         case RuntimeRole.SCHEDULER:
             return settings.db.scheduler_pool_size, settings.db.scheduler_max_overflow
         case RuntimeRole.OWNER:
-            return 1, 0
+            # Роль владельца используется миграциями и подготовкой данных
+            # проверок; небольшой запас нужен для вложенных транзакций.
+            return 3, 2
 
 
 def get_engine(settings: Settings, role: RuntimeRole = RuntimeRole.API) -> AsyncEngine:
