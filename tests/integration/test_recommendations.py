@@ -642,6 +642,7 @@ async def test_a179_one_run_gives_independent_deliveries(
     _, metrics = await build_snapshot_row(
         owner_session, workspace=fixture.workspace, period_id=fixture.period.id, today=TODAY
     )
+    await owner_session.commit()
     provider = ScriptedAIProvider(
         responses=[recommendation_json(card={"metric_refs": [str(metrics["metric_id"])]})]
     )

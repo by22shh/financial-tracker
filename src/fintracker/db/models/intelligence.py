@@ -83,6 +83,14 @@ class AnalysisRun(Base):
         Boolean, nullable=False, server_default=text("false")
     )
     content_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Logical run survives workers; each provider attempt has its own identity.
+    attempt_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
+    attempt_expires_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
+    attempt_job_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True))
+    attempt_lease_token: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True))
+    summary: Mapped[str] = mapped_column(String, nullable=False, server_default=text("''"))
+    abstained_reason: Mapped[str | None] = mapped_column(String, nullable=True)
+    published_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
     started_at: Mapped[dt.datetime] = now_server()
     finished_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 

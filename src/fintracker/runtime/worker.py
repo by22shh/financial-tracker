@@ -88,7 +88,9 @@ async def _run_with_lease(
     try:
         # Право на результат действует на всё выполнение обработчика: команда
         # с потерянной арендой не фиксирует запись (ADR-05, R-02).
-        async with execution_fence(queue.lease_fence(job)):
+        async with execution_fence(
+            queue.lease_fence(job), job_id=job.id, lease_token=job.lease_token
+        ):
             await handler(settings, job)
     except DomainError as exc:
         state = await queue.fail(

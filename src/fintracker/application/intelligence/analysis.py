@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import datetime as dt
 import hashlib
 import json
@@ -29,7 +30,14 @@ from fintracker.application.intelligence.prompts import (
 )
 from fintracker.application.planning.periods import period_for_date
 from fintracker.config import Settings
-from fintracker.core.errors import ProviderUnavailable, QuotaExceeded, ValidationFailed
+from fintracker.core.errors import (
+    DomainError,
+    ProviderUnavailable,
+    QuotaExceeded,
+    TemporarilyUnavailable,
+    ValidationFailed,
+)
+from fintracker.core.fencing import get_execution_identity
 from fintracker.core.logging import get_logger
 from fintracker.core.money import Money
 from fintracker.db.models.access import Workspace
@@ -41,6 +49,7 @@ from fintracker.db.models.intelligence import (
     RecommendationFeedback,
 )
 from fintracker.db.models.planning import BudgetLine, BudgetVersion
+from fintracker.db.models.platform import AICostReservation, Job
 from fintracker.db.session import RuntimeRole, session_scope
 from fintracker.db.uow import UnitOfWork
 from fintracker.infra.ai.openai_client import build_provider, upper_bound_cost
@@ -305,6 +314,8 @@ class _Preparation:
     """Сохранённое задание анализа: всё нужное модели уже зафиксировано."""
 
     run_id: uuid.UUID
+    attempt_id: uuid.UUID
+    previous_attempt_id: uuid.UUID | None
     workspace_id: uuid.UUID
     currency: str
     period_id: uuid.UUID
@@ -316,6 +327,76 @@ class _Preparation:
     muted: set[tuple[str, str | None]]
 
 
+async def _outcome(session: AsyncSession, run: AnalysisRun) -> AnalysisOutcome:
+    cards = tuple(
+        (
+            await session.scalars(
+                select(Recommendation.id).where(
+                    Recommendation.workspace_id == run.workspace_id, Recommendation.run_id == run.id
+                )
+            )
+        ).all()
+    )
+    return AnalysisOutcome(
+        run.id, run.status, run.summary, cards, run.abstained_reason, run.fallback_used
+    )
+
+
+async def _publish(session: AsyncSession, uow: UnitOfWork, run: AnalysisRun) -> None:
+    """One publication, persisted result and expansion job in the same commit."""
+    if run.status not in {"succeeded", "fallback"} or run.published_at is not None:
+        return
+    from fintracker.application.platform import queue
+
+    cards = (await _outcome(session, run)).recommendations
+    await uow.emit(
+        workspace_id=run.workspace_id,
+        event_type="AnalysisCompleted",
+        aggregate_type="analysis_run",
+        aggregate_id=run.id,
+        payload={"text": run.summary, "run_id": str(run.id), "cards": len(cards)},
+    )
+    await queue.enqueue(
+        session,
+        job_type="expand_outbox",
+        logical_key=f"expand:analysis:{run.id}",
+        queue_class="interactive",
+        workspace_id=run.workspace_id,
+        payload={"batch": 50, "schema_version": 1},
+        correlation_id=uow.correlation_id,
+    )
+    run.published_at = await uow.now()
+
+
+async def _attempt_is_live(session: AsyncSession, run: AnalysisRun, now: dt.datetime) -> bool:
+    if run.attempt_id is None:
+        return False
+    if run.attempt_job_id is not None:
+        job = await session.get(Job, run.attempt_job_id)
+        return bool(
+            job is not None
+            and job.state == "running"
+            and job.lease_token == run.attempt_lease_token
+            and job.lease_until is not None
+            and job.lease_until > now
+        )
+    return run.attempt_expires_at is not None and run.attempt_expires_at > now
+
+
+async def _checked_run(
+    session: AsyncSession, preparation: _Preparation, correlation_id: str = ""
+) -> tuple[UnitOfWork, AnalysisRun]:
+    uow = UnitOfWork(session=session, correlation_id=correlation_id)
+    await uow.lock_workspace(preparation.workspace_id)
+    run = await session.get(AnalysisRun, preparation.run_id)
+    if run is None or run.status != "running" or run.attempt_id != preparation.attempt_id:
+        raise TemporarilyUnavailable("Попытка анализа заменена другим исполнителем")
+    # Direct (non-job) calls have their own persisted execution deadline.
+    if not await _attempt_is_live(session, run, await uow.now()):
+        raise TemporarilyUnavailable("Право на сохранение анализа истекло")
+    return uow, run
+
+
 async def _prepare_analysis(
     settings: Settings,
     *,
@@ -323,6 +404,7 @@ async def _prepare_analysis(
     run_kind: str,
     logical_key: str,
     today: dt.date,
+    correlation_id: str = "",
 ) -> tuple[_Preparation | None, AnalysisOutcome | None]:
     """Короткая транзакция подготовки: снимок и задание сохраняются (R-07).
 
@@ -330,6 +412,9 @@ async def _prepare_analysis(
     не нужна: повтор, отсутствие новых данных, неполнота учёта, выключенный AI.
     """
     async with session_scope(settings, RuntimeRole.WORKER, workspace_id=workspace_id) as session:
+        uow = UnitOfWork(session=session, correlation_id=correlation_id)
+        await uow.lock_workspace(workspace_id)
+        now = await uow.now()
         workspace = (
             await session.execute(select(Workspace).where(Workspace.id == workspace_id))
         ).scalar_one()
@@ -341,16 +426,30 @@ async def _prepare_analysis(
                 )
             )
         ).scalar_one_or_none()
-        if existing is not None:
-            # Повтор фоновой задачи не создаёт второй обзор и второй запрос.
-            return None, AnalysisOutcome(
-                run_id=existing.id,
-                status=existing.status,
-                summary="",
-                recommendations=(),
-                abstained_reason=None,
-                fallback_used=existing.fallback_used,
-            )
+        previous_attempt_id = existing.attempt_id if existing is not None else None
+        if existing is not None and existing.status not in {"running", "pending"}:
+            if (
+                existing.status in {"succeeded", "fallback"}
+                and existing.published_at is None
+                and not existing.summary
+            ):
+                # Older versions did not persist coverage/fallback summaries.
+                # Recover a numerical report from that run's original snapshot.
+                snapshot = await session.get(AnalyticsSnapshot, existing.snapshot_id)
+                if snapshot is None:
+                    raise TemporarilyUnavailable("Исходный снимок анализа недоступен")
+                existing.summary = fallback_summary(snapshot.metrics, workspace.currency)
+                existing.abstained_reason = "Исходный текст старой сводки не был сохранён"
+                existing.status = "fallback"
+                existing.fallback_used = True
+            await _publish(session, uow, existing)
+            return None, await _outcome(session, existing)
+        if (
+            existing is not None
+            and existing.status == "running"
+            and await _attempt_is_live(session, existing, now)
+        ):
+            raise TemporarilyUnavailable("Анализ уже выполняется")
 
         period = await period_for_date(session, workspace_id=workspace_id, day=today)
         snapshot_row, metrics = await build_snapshot_row(
@@ -369,7 +468,7 @@ async def _prepare_analysis(
             )
         ).scalar_one_or_none()
 
-        run = AnalysisRun(
+        run = existing or AnalysisRun(
             workspace_id=workspace_id,
             run_kind=run_kind,
             logical_key=logical_key,
@@ -378,6 +477,9 @@ async def _prepare_analysis(
             content_fingerprint=fingerprint,
         )
         session.add(run)
+        run.snapshot_id = snapshot_row.id
+        run.content_fingerprint = fingerprint
+        run.status = "running"
         await session.flush()
         currency = workspace.currency
 
@@ -385,6 +487,7 @@ async def _prepare_analysis(
             # Без новых подходящих данных те же советы не отправляются (A129).
             run.status = "no_new_data"
             run.finished_at = dt.datetime.now(dt.UTC)
+            run.summary = "С прошлого анализа новых подходящих данных не появилось."
             return None, AnalysisOutcome(
                 run_id=run.id,
                 status="no_new_data",
@@ -399,30 +502,31 @@ async def _prepare_analysis(
             run.status = "succeeded"
             run.finished_at = dt.datetime.now(dt.UTC)
             summary = fallback_summary(metrics, currency)
-            return None, AnalysisOutcome(
-                run_id=run.id,
-                status="succeeded",
-                summary=f"{summary}\n{coverage_reason}",
-                recommendations=(),
-                abstained_reason=coverage_reason,
-                fallback_used=False,
-            )
+            run.summary = f"{summary}\n{coverage_reason}"
+            run.abstained_reason = coverage_reason
+            await _publish(session, uow, run)
+            return None, await _outcome(session, run)
 
         if not settings.ai.enabled:
             run.status = "fallback"
             run.fallback_used = True
             run.finished_at = dt.datetime.now(dt.UTC)
-            return None, AnalysisOutcome(
-                run_id=run.id,
-                status="fallback",
-                summary=fallback_summary(metrics, currency),
-                recommendations=(),
-                abstained_reason="AI недоступен",
-                fallback_used=True,
-            )
+            run.summary = fallback_summary(metrics, currency)
+            run.abstained_reason = "AI недоступен"
+            await _publish(session, uow, run)
+            return None, await _outcome(session, run)
 
+        run.attempt_id = uuid.uuid4()
+        run.attempt_expires_at = now + dt.timedelta(
+            seconds=settings.ai.request_timeout_seconds + 30
+        )
+        identity = get_execution_identity()
+        run.attempt_job_id = identity[0] if identity else None
+        run.attempt_lease_token = identity[1] if identity else None
         preparation = _Preparation(
             run_id=run.id,
+            attempt_id=run.attempt_id,
+            previous_attempt_id=previous_attempt_id,
             workspace_id=workspace_id,
             currency=currency,
             period_id=period.id,
@@ -445,11 +549,13 @@ async def _mark_fallback(
     async with session_scope(
         settings, RuntimeRole.WORKER, workspace_id=preparation.workspace_id
     ) as session:
-        run = await session.get(AnalysisRun, preparation.run_id)
-        if run is not None:
-            run.status = "fallback"
-            run.fallback_used = True
-            run.finished_at = dt.datetime.now(dt.UTC)
+        uow, run = await _checked_run(session, preparation)
+        run.status = "fallback"
+        run.fallback_used = True
+        run.finished_at = await uow.now()
+        run.summary = fallback_summary(preparation.metrics, preparation.currency)
+        run.abstained_reason = reason
+        await _publish(session, uow, run)
     return AnalysisOutcome(
         run_id=preparation.run_id,
         status="fallback",
@@ -494,9 +600,7 @@ async def _store_analysis(
     async with session_scope(
         settings, RuntimeRole.WORKER, workspace_id=preparation.workspace_id
     ) as session:
-        uow = UnitOfWork(session=session, correlation_id=correlation_id)
-        run = await session.get(AnalysisRun, preparation.run_id)
-        assert run is not None
+        uow, run = await _checked_run(session, preparation, correlation_id)
         assert isinstance(result.parsed, RecommendationResponse)
         accepted, rejected = validate_cards(
             result.parsed,
@@ -522,6 +626,8 @@ async def _store_analysis(
         run.cost_currency = result.cost_currency
         run.provider_request_id = result.provider_request_id
         run.finished_at = dt.datetime.now(dt.UTC)
+        run.summary = result.parsed.summary
+        run.abstained_reason = result.parsed.abstained_reason
 
         created: list[uuid.UUID] = []
         for card in accepted:
@@ -549,17 +655,7 @@ async def _store_analysis(
             await session.flush()
             created.append(row.id)
 
-        await uow.emit(
-            workspace_id=preparation.workspace_id,
-            event_type="AnalysisCompleted",
-            aggregate_type="analysis_run",
-            aggregate_id=run.id,
-            payload={
-                "text": result.parsed.summary,
-                "run_id": str(run.id),
-                "cards": len(created),
-            },
-        )
+        await _publish(session, uow, run)
     return AnalysisOutcome(
         run_id=preparation.run_id,
         status="succeeded",
@@ -591,13 +687,29 @@ async def run_analysis(
         run_kind=run_kind,
         logical_key=logical_key,
         today=today,
+        correlation_id=correlation_id,
     )
     if preparation is None:
         assert outcome is not None
+        # Recovery may finish without a model (AI disabled, changed coverage or
+        # no new data). Its crashed provider request must still release a slot.
+        async with session_scope(
+            settings, RuntimeRole.WORKER, workspace_id=workspace_id
+        ) as session:
+            attempt_id = await session.scalar(
+                select(AnalysisRun.attempt_id).where(AnalysisRun.id == outcome.run_id)
+            )
+        if attempt_id is not None:
+            await _settle_abandoned(settings, outcome.run_id, attempt_id)
         return outcome
 
-    request_key = f"analysis:{preparation.run_id}"
+    # A crashed request may have incurred cost. Preserve its budget reservation,
+    # but release its concurrency slot before acquiring a fresh attempt's slot.
+    request_key = f"analysis:{preparation.run_id}:{preparation.attempt_id}"
+    reservation: quota.Reservation | None = None
     try:
+        if preparation.previous_attempt_id is not None:
+            await _settle_abandoned(settings, preparation.run_id, preparation.previous_attempt_id)
         reservation = await quota.reserve(
             settings,
             request_key=request_key,
@@ -607,19 +719,70 @@ async def run_analysis(
             workspace_id=workspace_id,
             purpose="recommendation",
         )
+        try:
+            # Deadline bounds direct calls too; no transaction spans this await.
+            result = await asyncio.wait_for(
+                _generate_cards(settings, preparation), timeout=settings.ai.request_timeout_seconds
+            )
+        except (ProviderUnavailable, ValidationFailed, TimeoutError) as exc:
+            await quota.settle(settings, reservation, actual=None)
+            logger.info("analysis_fallback", reason=type(exc).__name__)
+            return await _mark_fallback(settings, preparation, reason="Генерация недоступна")
+        await quota.settle(settings, reservation, actual=result.cost)
+        return await _store_analysis(settings, preparation, result, correlation_id=correlation_id)
     except QuotaExceeded:
         return await _mark_fallback(settings, preparation, reason="Лимит расходов на AI исчерпан")
+    except BaseException:
+        # Shield only cleanup: cancellation still propagates to the worker.
+        # A hard process crash is recovered via persisted attempt owner/deadline.
+        await asyncio.shield(_abandon_attempt(settings, preparation, reservation))
+        raise
 
-    try:
-        result = await _generate_cards(settings, preparation)
-    except (ProviderUnavailable, ValidationFailed) as exc:
+
+async def _settle_abandoned(settings: Settings, run_id: uuid.UUID, attempt_id: uuid.UUID) -> None:
+    async with session_scope(settings, RuntimeRole.WORKER) as session:
+        row = (
+            await session.scalars(
+                select(AICostReservation).where(
+                    AICostReservation.request_key == f"analysis:{run_id}:{attempt_id}"
+                )
+            )
+        ).one_or_none()
+        reservation = (
+            quota.Reservation(
+                row.request_key,
+                row.reserved_amount,
+                row.currency,
+                row.quota_month,
+                row.workspace_id,
+            )
+            if row is not None
+            else None
+        )
+    if reservation is not None:
         await quota.settle(settings, reservation, actual=None)
-        logger.info("analysis_fallback", reason=type(exc).__name__)
-        # Выдуманные рекомендации не подставляются (A138).
-        return await _mark_fallback(settings, preparation, reason="Генерация недоступна")
 
-    await quota.settle(settings, reservation, actual=result.cost)
-    return await _store_analysis(settings, preparation, result, correlation_id=correlation_id)
+
+async def _abandon_attempt(
+    settings: Settings, preparation: _Preparation, reservation: quota.Reservation | None
+) -> None:
+    if reservation is not None:
+        await quota.settle(settings, reservation, actual=None)
+    else:
+        # Cancellation may arrive after reserve committed but before its return
+        # value was assigned to the caller.
+        await _settle_abandoned(settings, preparation.run_id, preparation.attempt_id)
+    try:
+        async with session_scope(
+            settings, RuntimeRole.WORKER, workspace_id=preparation.workspace_id
+        ) as session:
+            _, run = await _checked_run(session, preparation)
+            run.status = "pending"
+            run.attempt_expires_at = None
+    except DomainError:
+        # Do not alter another owner's state or write into a quarantined budget.
+        # The next valid owner detects the stale job/deadline and resumes.
+        logger.info("analysis_abandon_fenced", run_id=str(preparation.run_id))
 
 
 async def mark_stale_recommendations(session: AsyncSession, *, workspace: Workspace) -> int:

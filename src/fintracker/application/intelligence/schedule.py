@@ -20,6 +20,7 @@ from fintracker.application.platform.queue import LeasedJob
 from fintracker.config import Settings
 from fintracker.core.context import WorkspaceState
 from fintracker.core.errors import NotFound
+from fintracker.core.fencing import execution_fence
 from fintracker.core.logging import get_logger
 from fintracker.db.models.access import Workspace
 from fintracker.db.models.intelligence import AnalysisPreference, AnalysisRun
@@ -205,6 +206,7 @@ async def enqueue_scheduled_analysis(settings: Settings, *, workspace_id: uuid.U
                 await session.scalars(
                     select(AnalysisRun.logical_key).where(
                         AnalysisRun.workspace_id == workspace_id,
+                        AnalysisRun.status.not_in(("running", "pending")),
                         AnalysisRun.logical_key.in_([item.logical_key for item in pending]),
                     )
                 )
@@ -244,7 +246,6 @@ async def handle_run_analysis(settings: Settings, job: LeasedJob) -> None:
     """
     from fintracker.application.intelligence.analysis import run_analysis
     from fintracker.application.platform import queue
-    from fintracker.db.uow import UnitOfWork
 
     workspace_id = job.workspace_id
     if workspace_id is None:
@@ -263,40 +264,22 @@ async def handle_run_analysis(settings: Settings, job: LeasedJob) -> None:
             # Незавершённое изменение доступа не рассылает финансовые обзоры.
             return
 
-    outcome = await run_analysis(
-        settings,
-        workspace_id=workspace_id,
-        run_kind=run_kind,
-        logical_key=logical_key,
-        today=analysis_date,
-        correlation_id=job.correlation_id,
-    )
+    async with execution_fence(queue.lease_fence(job), job_id=job.id, lease_token=job.lease_token):
+        outcome = await run_analysis(
+            settings,
+            workspace_id=workspace_id,
+            run_kind=run_kind,
+            logical_key=logical_key,
+            today=analysis_date,
+            correlation_id=job.correlation_id,
+        )
     if outcome.status not in {"succeeded", "fallback"}:
         # Без новых подходящих данных повторный обзор не рассылается (A129).
         logger.info("analysis_not_delivered", workspace_id=str(workspace_id), status=outcome.status)
         return
 
-    async with session_scope(settings, RuntimeRole.WORKER, workspace_id=workspace_id) as session:
-        if not outcome.recommendations and outcome.summary:
-            # Числовая сводка без карточек тоже доходит до участников: сбой
-            # генерации не отменяет отчёт за период (AI-08, A138).
-            uow = UnitOfWork(session=session, correlation_id=job.correlation_id)
-            await uow.emit(
-                workspace_id=workspace_id,
-                event_type="AnalysisCompleted",
-                aggregate_type="analysis_run",
-                aggregate_id=outcome.run_id,
-                payload={"text": outcome.summary, "run_id": str(outcome.run_id), "cards": 0},
-            )
-        await queue.enqueue(
-            session,
-            job_type="expand_outbox",
-            logical_key=f"expand:analysis:{outcome.run_id}",
-            queue_class="interactive",
-            workspace_id=workspace_id,
-            payload={"batch": 50, "schema_version": 1},
-            correlation_id=job.correlation_id,
-        )
+    # Analysis service commits summary, one outbox event and its expansion task
+    # atomically. A retried handler reads that persisted result without emitting.
     logger.info(
         "analysis_completed",
         workspace_id=str(workspace_id),
