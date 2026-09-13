@@ -715,3 +715,129 @@ async def test_ar22_partial_settlement_keeps_single_remainder(
             action="postpone",
             new_due_date=dt.date(2026, 10, 20),
         )
+
+
+async def test_ar18_goal_reserve_changes_only_by_chosen_action(
+    clean_db: None, test_settings: Settings, owner_session: AsyncSession
+) -> None:
+    """AR-18: возврат покупки из цели не меняет резерв сам по себе."""
+    from fintracker.application.commitments.goals import (
+        allocate_to_goal,
+        create_goal,
+        release_goal,
+        use_goal,
+    )
+    from fintracker.application.ledger.operations import post_refund, refundable_parts
+    from fintracker.db.models.commitments import Goal
+    from tests.integration.factories import TZ
+
+    fixture = await build_fixture(owner_session, telegram_user_id=6050)
+    goal = await create_goal(
+        owner_session,
+        fixture.uow,
+        actor=fixture.actor,
+        name="Ремонт",
+        currency="RUB",
+        target=rub(50_000),
+    )
+    await allocate_to_goal(
+        owner_session, fixture.uow, actor=fixture.actor, goal_id=goal.id, amount=rub(10_000)
+    )
+
+    purchase = await post_transaction(
+        owner_session,
+        fixture.uow,
+        actor=fixture.actor,
+        spec=expense_spec(fixture, amount=rub(4_000), category="Продукты"),
+        origin="form",
+    )
+    await use_goal(
+        owner_session,
+        fixture.uow,
+        actor=fixture.actor,
+        goal_id=goal.id,
+        amount=rub(4_000),
+        effect_id=purchase.effect_id,
+        transaction_id=purchase.transaction_id,
+        reason="Оплата из фонда",
+    )
+    row = (await owner_session.execute(select(Goal).where(Goal.id == goal.id))).scalar_one()
+    assert row.allocated_minor == 600_000
+
+    parts = await refundable_parts(
+        owner_session,
+        workspace_id=fixture.workspace.id,
+        transaction_id=purchase.transaction_id,
+    )
+    await post_refund(
+        owner_session,
+        fixture.uow,
+        actor=fixture.actor,
+        source_transaction_id=purchase.transaction_id,
+        parts={parts[0].stable_line_id: rub(1_500)},
+        occurred_date=DAY,
+        timezone=TZ,
+    )
+    await owner_session.refresh(row)
+    assert row.allocated_minor == 600_000, "возврат сам по себе не пополняет резерв"
+
+    # Резерв меняется только по выбранному действию участника.
+    await allocate_to_goal(
+        owner_session,
+        fixture.uow,
+        actor=fixture.actor,
+        goal_id=goal.id,
+        amount=rub(1_500),
+    )
+    await owner_session.refresh(row)
+    assert row.allocated_minor == 750_000
+
+    from fintracker.core.errors import ConflictError
+
+    with pytest.raises(ConflictError):
+        await release_goal(
+            owner_session,
+            fixture.uow,
+            actor=fixture.actor,
+            goal_id=goal.id,
+            amount=rub(99_000),
+            reason="Проверка границы",
+        )
+
+
+async def test_ar35_unknown_job_payload_is_rejected_explicitly(
+    clean_db: None, test_settings: Settings
+) -> None:
+    """AR-35: задача неизвестного формата отклоняется явно, а не выполняется."""
+    from fintracker.application.platform import queue
+    from fintracker.runtime.worker import build_registry
+
+    async with session_scope(test_settings, RuntimeRole.WORKER) as session:
+        await queue.enqueue(
+            session,
+            job_type="unknown_future_job",
+            logical_key="ar35:unknown",
+            queue_class="maintenance",
+            payload={"schema_version": 99},
+            correlation_id="ar35",
+        )
+
+    registry = build_registry()
+    assert registry.get("unknown_future_job") is None, "неизвестный тип не выполняется молча"
+
+    leased = await queue.claim_jobs(test_settings, queue_classes=("maintenance",), limit=5)
+    target = next(job for job in leased if job.job_type == "unknown_future_job")
+    await queue.fail(
+        test_settings,
+        target,
+        error=f"Неизвестный тип задачи {target.job_type}",
+        permanent=True,
+    )
+
+    owner = get_sessionmaker(test_settings, RuntimeRole.OWNER)
+    async with owner() as session, session.begin():
+        row = (
+            await session.execute(select(Job).where(Job.logical_key == "ar35:unknown"))
+        ).scalar_one()
+    assert row.state == "failed"
+    assert "Неизвестный тип задачи" in (row.last_error or "")

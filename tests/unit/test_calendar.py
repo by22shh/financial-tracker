@@ -121,7 +121,7 @@ def test_a210_quarterly_cycle() -> None:
     assert _inclusive(policy, 1) == (dt.date(2027, 1, 10), dt.date(2027, 4, 9))
 
 
-def test_a211_fixed_week_across_dst_shift() -> None:
+def test_a211_fixed_week_across_dst_shift() -> None:  # AR-23
     """A211: ровно семь локальных календарных дней, не 168 часов."""
     tz = "Europe/Berlin"  # переход на летнее время 29 марта 2026
     policy = PeriodPolicy.every_days(dt.date(2026, 3, 26), tz, 7)
@@ -137,7 +137,7 @@ def test_a211_fixed_week_across_dst_shift() -> None:
 
 
 def test_a48_a49_period_boundary_at_local_midnight() -> None:
-    """A48/A49: 9 сентября 23:59 — прежний период; 10 сентября 00:00 — новый."""
+    """A48/A49, AR-23: граница периода по локальной полуночи 10-го числа."""
     policy = PeriodPolicy.monthly(dt.date(2026, 8, 10), TZ)
     assert policy.sequence_for_date(dt.date(2026, 9, 9)) == 0
     assert policy.sequence_for_date(dt.date(2026, 9, 10)) == 1
@@ -167,9 +167,12 @@ def test_date_before_anchor_has_no_sequence() -> None:
     assert policy.sequence_for_date(dt.date(2026, 9, 30)) is None
 
 
-def test_a52_month_clamp_does_not_drift(  # A52
-) -> None:
-    """A52: день 31 в феврале сокращается, а в марте снова 31-е."""
+def test_a52_month_clamp_does_not_drift() -> None:
+    """A52, AR-23: день 31 в феврале сокращается, а в марте снова 31-е.
+
+    Управляемое время без дрейфа: високосность и короткие месяцы не сдвигают
+    якорь навсегда.
+    """
     assert add_calendar_months(dt.date(2027, 1, 31), 1) == dt.date(2027, 2, 28)
     assert add_calendar_months(dt.date(2027, 1, 31), 2) == dt.date(2027, 3, 31)
     # Сокращение не становится постоянным сдвигом на 28-е.

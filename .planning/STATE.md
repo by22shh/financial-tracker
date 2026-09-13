@@ -1,6 +1,6 @@
 # STATE — текущее состояние работы
 
-Обновлено: после bootstrap и начала S01/S02.
+Обновлено: после срезов S00–S18 (журнал, обзоры, напоминания, устойчивость).
 
 ## Среда
 
@@ -11,38 +11,32 @@
 | Роли БД | `fintracker_owner` (миграции), `fintracker_api`, `fintracker_worker` (NOBYPASSRLS) |
 | Зависимости | aiogram 3.31, FastAPI 0.115.14, Pydantic 2.13.5, SQLAlchemy 2.0.52, psycopg 3.3.5, Alembic 1.20, httpx 0.28.1, openpyxl 3.1.5, structlog 25.5 |
 | Проверки | ruff 0.15.22, mypy 1.20.2 (strict), pytest 8.4.2, hypothesis 6.168 |
+| Миграции | 0001 initial → 0002 RLS → 0003 bootstrap → 0004 admin trigger → 0005 invite lookup → 0006 порядок добавления операций |
 
 ## Сделано и проверено
 
-| Срез | Состояние | Доказательство |
+| Область | Состояние | Доказательство |
 |---|---|---|
-| S00 Bootstrap | реализовано | миграции применены на PostgreSQL 17.2, 80 таблиц, 251 политика RLS, 7 constraint-триггеров |
-| Денежное ядро `core/money.py` | проверено | `tests/unit/test_money.py` — 13 PASS, включая property-инвариант распределения |
-| Календарь `core/calendar.py` | проверено | `tests/unit/test_calendar.py` — 18 PASS, A201–A211, A48/A49, A224 |
-| Схема и RLS | проверено | `tests/integration/test_schema_constraints.py` — 11 PASS на настоящей PostgreSQL 17 |
+| Денежное ядро и календарь | проверено | `tests/unit/` — 65 PASS, property-инварианты |
+| Схема, RLS, ограничения | проверено | `tests/integration/test_schema_constraints.py` |
+| Журнал денег: ревизии, возвраты, отмена, восстановление | проверено | `test_money_scenarios.py`, `test_ar_money_sequences.py` |
+| Бюджет, периоды, переносы | проверено | `test_budget_math.py`, `test_period_automation.py` |
+| Диалог: ввод, исправления, уточнения | проверено | `tests/acceptance/` |
+| История с фильтрами и сортировкой | проверено | `test_journal_filters.py`, `test_history_filters.py` |
+| Обзоры, итог периода, план следующего | проверено | `test_reviews.py`, `test_reviews_flow.py` |
+| Правила классификации, личные настройки | проверено | `test_rules_and_preferences.py`, `test_settings_and_rules.py` |
+| Напоминания о платежах и доставка | проверено | `test_reminders.py`, `test_delivery.py` |
+| Устойчивость AR-01…AR-27 | проверено | `test_architecture_review.py` |
+| Импорт и экспорт | проверено | `test_import_export.py` |
+| AI-контракт и квоты | проверено | `test_ai_contract.py`, `test_recommendations.py` |
 
-## Реализовано, ещё не покрыто проверками
+## В работе
 
-- `core/errors.py`, `core/ids.py`, `core/context.py`, `core/clock.py`, `core/logging.py`
-- `config.py` с защитой профиля ADR-17 (проверено вручную, нужен тест)
-- `db/session.py`, `db/uow.py`, `db/rls.py`
-- `infra/security_log.py` — независимый журнал доступа
-- `application/common.py`, `application/identity/actor.py`, `application/identity/security_change.py`
-- `application/planning/periods.py` — ensure_periods
-- `application/platform/queue.py` — очередь с арендой и fencing
-- `application/ingestion/accept_update.py` — долговечный приём
-- `api/app.py`, `api/routes/telegram.py`, `runtime/{cli,health,worker,scheduler}.py`
-
-## Следующий шаг
-
-1. Написать доменный сервис журнала `application/ledger/` (проведение, ревизии,
-   распределения, движения счетов, возвраты, отмена, восстановление).
-2. Написать `application/catalog/` (категории, люди, получатели, счета, метки).
-3. Написать `application/onboarding/` (мастер и публикация бюджета).
-4. Написать недостающие обработчики задач: `ingestion/process_event.py`,
-   `delivery/dispatch.py`, `planning/rollover.py`, `maintenance/retention.py`.
-5. Написать Telegram-адаптер `bot/` на aiogram 3.
-6. Прогнать полный набор проверок, провести ревью среза S01/S02, обновить реестр.
+- Измерение производительности (NFR-01, NFR-03, NFR-06, NFR-07, NFR-08, AR-34):
+  `tests/performance/test_performance.py`, запуск `FINTRACKER_PERF=1`.
+- Учение по восстановлению (AR-33, NFR-10): `.planning/tools/restore_drill.py`.
+- Остаток P0: AI-04, AI-07, ADR-16, QA-02, QA-04, часть сценариев A.
+- P1: FR-43, FR-44, FR-48, FR-68, FORM-04.
 
 ## Блокеры
 
@@ -57,4 +51,6 @@ make up        # PostgreSQL 17 + роли
 make migrate   # миграции
 make check     # формат, линтер, типы, проверки
 make evidence  # собрать доказательства в .planning/evidence/
+FINTRACKER_PERF=1 .venv/bin/pytest tests/performance -q   # измерение NFR
+.venv/bin/python .planning/tools/restore_drill.py         # учение восстановления
 ```

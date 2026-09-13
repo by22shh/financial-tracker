@@ -51,7 +51,10 @@ def build_registry() -> JobHandlerRegistry:
     )
     from fintracker.application.ingestion.process_event import handle_process_inbound_event
     from fintracker.application.maintenance.retention import handle_retention_sweep
-    from fintracker.application.planning.rollover import handle_open_next_period
+    from fintracker.application.planning.rollover import (
+        handle_open_next_period,
+        handle_plan_review,
+    )
 
     registry = JobHandlerRegistry()
     registry.register("process_inbound_event", handle_process_inbound_event)
@@ -60,6 +63,7 @@ def build_registry() -> JobHandlerRegistry:
     registry.register("open_next_period", handle_open_next_period)
     registry.register("retention_sweep", handle_retention_sweep)
     registry.register("payment_reminders", handle_payment_reminders)
+    registry.register("plan_review", handle_plan_review)
     return registry
 
 

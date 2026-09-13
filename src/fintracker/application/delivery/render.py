@@ -271,6 +271,19 @@ async def render_event(
         ]
         return "\n".join(lines), buttons
 
+    if event_type == "PlanReviewDue":
+        end = dt.date.fromisoformat(str(payload["end_inclusive"]))
+        return (
+            f"{header}\nПериод заканчивается {format_date(end, with_year=True)}.\n"
+            "Проверьте план следующего периода: суммы не меняются без вашего решения.",
+            [
+                [
+                    {"text": "План на следующий", "callback_data": "menu:nextplan"},
+                    {"text": "Итог периода", "callback_data": "menu:summary"},
+                ]
+            ],
+        )
+
     if event_type == "ImportCommitted":
         # Одна сводка вместо рассылки по каждой импортированной строке (A63).
         rows = int(payload.get("rows") or 0)

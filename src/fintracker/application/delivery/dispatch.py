@@ -64,6 +64,7 @@ EVENT_DELIVERY_CLASS: dict[str, str] = {
     "BudgetPeriodEnded": "review",
     "ImportCommitted": "review",
     "PaymentReminder": "reminder",
+    "PlanReviewDue": "review",
     "ThresholdCrossed": "threshold",
     "AnalysisCompleted": "review",
     "BudgetDeletionRequested": "terminal",

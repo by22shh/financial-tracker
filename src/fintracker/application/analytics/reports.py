@@ -12,7 +12,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import Uuid, case, func, literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fintracker.application.planning.plan import PeriodStatus, period_status
@@ -21,7 +21,11 @@ from fintracker.db.models.access import Beneficiary, Person, Workspace
 from fintracker.db.models.catalog import Category, TransactionTag
 from fintracker.db.models.ledger import Allocation, Transaction, TransactionRevision
 from fintracker.db.models.planning import BudgetPeriod
-from fintracker.domain.ledger.model import CONSUMPTION_REDUCING_ROLES, CONSUMPTION_ROLES
+from fintracker.domain.ledger.model import (
+    CONSUMPTION_REDUCING_ROLES,
+    CONSUMPTION_ROLES,
+    AllocationRole,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,6 +70,9 @@ class SpendingReport:
     matched_transaction_total_minor: int
     transaction_count: int
     uncategorized_minor: int
+    # Исторические строки без классификации (например «Долги»): показываются
+    # отдельно и не входят в потребление до подтверждённого разделения (FR-32).
+    unclassified_legacy_minor: int = 0
     metrics: dict[str, Any] = field(default_factory=dict)
 
 
@@ -209,15 +216,33 @@ async def spending_report(
     consumption = [role.value for role in CONSUMPTION_ROLES]
     reducing = [role.value for role in CONSUMPTION_REDUCING_ROLES]
 
+    # Агрегация выполняется в базе: на 50 000 операций перенос строк в
+    # приложение не укладывается в NFR-06 (AR-34).
+    signed = case(
+        (Allocation.economic_role.in_(consumption), Allocation.amount_minor),
+        else_=-Allocation.amount_minor,
+    )
+    individual = TransactionRevision.granularity == "individual"
+    if group_by == "beneficiary":
+        category_key: Any = literal(None, Uuid(as_uuid=True))
+        beneficiary_key: Any = Allocation.beneficiary_id
+    elif group_by == "none":
+        category_key = literal(None, Uuid(as_uuid=True))
+        beneficiary_key = literal(None, Uuid(as_uuid=True))
+    else:
+        category_key = Allocation.category_id
+        beneficiary_key = Allocation.beneficiary_id
+
     base = (
         select(
-            Allocation.category_id,
-            Allocation.beneficiary_id,
-            Allocation.economic_role,
-            Allocation.amount_minor,
-            Allocation.transaction_id,
-            TransactionRevision.amount_minor.label("transaction_total"),
-            TransactionRevision.granularity,
+            category_key.label("category_id"),
+            beneficiary_key.label("beneficiary_id"),
+            func.sum(signed).label("amount_minor"),
+            func.count(func.distinct(Allocation.transaction_id)).label("transaction_count"),
+            func.count(func.distinct(case((individual, Allocation.transaction_id)))).label(
+                "individual_count"
+            ),
+            func.bool_or(~individual).label("has_aggregate"),
         )
         .join(
             Transaction,
@@ -237,58 +262,111 @@ async def spending_report(
             TransactionRevision.occurred_date < date_to_exclusive,
             Allocation.economic_role.in_(consumption + reducing),
         )
+        .group_by(category_key, beneficiary_key)
     )
-    if not active_filters.include_voided:
-        base = base.where(Transaction.status == "posted")
-    # Категория и получатель должны совпасть в одной строке распределения (R05).
-    if active_filters.category_ids:
-        base = base.where(Allocation.category_id.in_(active_filters.category_ids))
-    if active_filters.beneficiary_ids:
-        base = base.where(Allocation.beneficiary_id.in_(active_filters.beneficiary_ids))
-    base = _apply_transaction_filters(base, filters=active_filters)
+    # Полная сумма затронутых покупок считается по различным операциям (R05).
+    matched = (
+        select(
+            Allocation.transaction_id.label("transaction_id"),
+            func.min(TransactionRevision.amount_minor).label("transaction_total"),
+        )
+        .join(
+            Transaction,
+            (Transaction.workspace_id == Allocation.workspace_id)
+            & (Transaction.id == Allocation.transaction_id)
+            & (Transaction.current_revision == Allocation.revision),
+        )
+        .join(
+            TransactionRevision,
+            (TransactionRevision.workspace_id == Allocation.workspace_id)
+            & (TransactionRevision.transaction_id == Allocation.transaction_id)
+            & (TransactionRevision.revision == Allocation.revision),
+        )
+        .where(
+            Allocation.workspace_id == workspace.id,
+            TransactionRevision.occurred_date >= date_from,
+            TransactionRevision.occurred_date < date_to_exclusive,
+            Allocation.economic_role.in_(consumption + reducing),
+        )
+        .group_by(Allocation.transaction_id)
+    )
 
-    rows = (await session.execute(base)).all()
+    def _restrict(statement: Any) -> Any:
+        if not active_filters.include_voided:
+            statement = statement.where(Transaction.status == "posted")
+        # Категория и получатель должны совпасть в одной строке распределения (R05).
+        if active_filters.category_ids:
+            statement = statement.where(Allocation.category_id.in_(active_filters.category_ids))
+        if active_filters.beneficiary_ids:
+            statement = statement.where(
+                Allocation.beneficiary_id.in_(active_filters.beneficiary_ids)
+            )
+        return _apply_transaction_filters(statement, filters=active_filters)
 
-    grouped: dict[tuple[uuid.UUID | None, uuid.UUID | None], int] = {}
-    transactions: dict[tuple[uuid.UUID | None, uuid.UUID | None], set[uuid.UUID]] = {}
-    individual: dict[tuple[uuid.UUID | None, uuid.UUID | None], set[uuid.UUID]] = {}
-    aggregated: set[tuple[uuid.UUID | None, uuid.UUID | None]] = set()
-    matched_transactions: dict[uuid.UUID, int] = {}
+    base = _restrict(base)
+    matched = _restrict(matched)
+
+    grouped_rows = (await session.execute(base)).all()
+    matched_subquery = matched.subquery()
+    matched_totals = (
+        await session.execute(
+            select(
+                func.coalesce(func.sum(matched_subquery.c.transaction_total), 0),
+                func.count(),
+            ).select_from(matched_subquery)
+        )
+    ).one()
+
+    # Историческая строка «Долги» видна отдельно: молча включать её в
+    # потребление нельзя, пока разделение не подтверждено (FR-32).
+    legacy_statement = (
+        select(func.coalesce(func.sum(Allocation.amount_minor), 0))
+        .join(
+            Transaction,
+            (Transaction.workspace_id == Allocation.workspace_id)
+            & (Transaction.id == Allocation.transaction_id)
+            & (Transaction.current_revision == Allocation.revision),
+        )
+        .join(
+            TransactionRevision,
+            (TransactionRevision.workspace_id == Allocation.workspace_id)
+            & (TransactionRevision.transaction_id == Allocation.transaction_id)
+            & (TransactionRevision.revision == Allocation.revision),
+        )
+        .where(
+            Allocation.workspace_id == workspace.id,
+            Allocation.economic_role == AllocationRole.UNCLASSIFIED.value,
+            Transaction.status == "posted",
+            TransactionRevision.occurred_date >= date_from,
+            TransactionRevision.occurred_date < date_to_exclusive,
+        )
+    )
+    legacy_minor = int((await session.execute(legacy_statement)).scalar_one() or 0)
+
     total = 0
     uncategorized = 0
-    for row in rows:
-        signed = row.amount_minor if row.economic_role in consumption else -row.amount_minor
-        key: tuple[uuid.UUID | None, uuid.UUID | None]
-        if group_by == "beneficiary":
-            key = (None, row.beneficiary_id)
-        elif group_by == "none":
-            key = (None, None)
-        else:
-            key = (row.category_id, row.beneficiary_id)
-        grouped[key] = grouped.get(key, 0) + signed
-        transactions.setdefault(key, set()).add(row.transaction_id)
-        if row.granularity == "individual":
-            individual.setdefault(key, set()).add(row.transaction_id)
-        else:
-            aggregated.add(key)
-        matched_transactions[row.transaction_id] = row.transaction_total
-        total += signed
-        if row.category_id is None:
-            uncategorized += signed
-
     labels = await _labels(session, workspace_id=workspace.id)
     report_rows = tuple(
-        SpendingRow(
-            label=_label_for(key, labels),
-            category_id=key[0],
-            beneficiary_id=key[1],
-            amount_minor=amount,
-            transaction_count=len(transactions.get(key, set())),
-            individual_count=len(individual.get(key, set())),
-            has_aggregate=key in aggregated,
+        sorted(
+            (
+                SpendingRow(
+                    label=_label_for((row.category_id, row.beneficiary_id), labels),
+                    category_id=row.category_id,
+                    beneficiary_id=row.beneficiary_id,
+                    amount_minor=int(row.amount_minor or 0),
+                    transaction_count=int(row.transaction_count or 0),
+                    individual_count=int(row.individual_count or 0),
+                    has_aggregate=bool(row.has_aggregate),
+                )
+                for row in grouped_rows
+            ),
+            key=lambda item: -item.amount_minor,
         )
-        for key, amount in sorted(grouped.items(), key=lambda item: -item[1])
     )
+    for row in report_rows:
+        total += row.amount_minor
+        if row.category_id is None:
+            uncategorized += row.amount_minor
     meta = ReportMeta(
         workspace_id=workspace.id,
         date_from=date_from,
@@ -304,9 +382,10 @@ async def spending_report(
         meta=meta,
         rows=report_rows,
         total_minor=total,
-        matched_transaction_total_minor=sum(matched_transactions.values()),
-        transaction_count=len(matched_transactions),
+        matched_transaction_total_minor=int(matched_totals[0] or 0),
+        transaction_count=int(matched_totals[1] or 0),
         uncategorized_minor=uncategorized,
+        unclassified_legacy_minor=legacy_minor,
     )
 
 
@@ -548,6 +627,12 @@ def format_report(report: SpendingReport, *, limit: int = 10) -> str:
         lines.append(f"• {row.label}: {Money(row.amount_minor, currency).format()}")
     if report.uncategorized_minor:
         lines.append(f"Без категории: {Money(report.uncategorized_minor, currency).format()}")
+    if report.unclassified_legacy_minor:
+        lines.append(
+            "Исторические неклассифицированные движения: "
+            f"{Money(report.unclassified_legacy_minor, currency).format()} — "
+            "в потребление не включены до подтверждённого разделения"
+        )
     coverage_label = {
         "incomplete": "не подтверждена",
         "reconciled_source": "сверена по доступному источнику",

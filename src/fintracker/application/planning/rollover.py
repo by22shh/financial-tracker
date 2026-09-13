@@ -21,6 +21,7 @@ from fintracker.application.planning.plan import (
     current_budget_version,
     line_key,
 )
+from fintracker.application.platform import queue
 from fintracker.application.platform.queue import LeasedJob
 from fintracker.config import Settings
 from fintracker.core.errors import NotFound
@@ -232,6 +233,25 @@ async def propose_rollovers(
     return created
 
 
+def plan_review_lead_days(period_days: int) -> int:
+    """Опережение обзора плана в днях (FORM-10, FR-52).
+
+    ``min(3, max(0, длительность − 1))``: для месяца и двух недель это три дня,
+    для однодневного периода опережение равно нулю и обзор объединяется с
+    сообщением об открытии следующего периода (A228).
+    """
+    return min(3, max(0, period_days - 1))
+
+
+def plan_review_date(*, start_date: dt.date, end_exclusive: dt.date) -> dt.date:
+    """Дата обзора плана внутри границ текущего периода (FR-52)."""
+    days = (end_exclusive - start_date).days
+    lead = plan_review_lead_days(days)
+    review = end_exclusive - dt.timedelta(days=lead + 1)
+    # Задание не ставится раньше начала текущего периода.
+    return max(start_date, review)
+
+
 async def handle_open_next_period(settings: Settings, job: LeasedJob) -> None:
     """Обработчик задачи открытия периода (FR-92, A149, A212–A214)."""
     workspace_id = job.workspace_id
@@ -290,6 +310,28 @@ async def handle_open_next_period(settings: Settings, job: LeasedJob) -> None:
                         "completeness": previous.completeness,
                     },
                 )
+            # Обзор плана: для однодневного периода он совмещается с открытием
+            # следующего и отдельным заданием не ставится (FORM-10, A228).
+            review_on = plan_review_date(
+                start_date=period.start_date, end_exclusive=period.end_exclusive
+            )
+            if plan_review_lead_days((period.end_exclusive - period.start_date).days) > 0:
+                await queue.enqueue(
+                    session,
+                    job_type="plan_review",
+                    logical_key=f"plan_review:{workspace_id}:{period.id}",
+                    queue_class="calendar",
+                    workspace_id=workspace_id,
+                    payload={
+                        "period_id": str(period.id),
+                        "review_date": review_on.isoformat(),
+                        "schema_version": 1,
+                    },
+                    available_at=dt.datetime.combine(
+                        review_on, dt.time(9, 0), tzinfo=ZoneInfo(workspace.timezone)
+                    ).astimezone(dt.UTC),
+                    correlation_id=job.correlation_id,
+                )
             await uow.emit(
                 workspace_id=workspace_id,
                 event_type="BudgetPeriodOpened",
@@ -338,3 +380,41 @@ async def ensure_current_period(
                 )
             ).scalar_one()
             await apply_plan_for_period(session, uow, workspace_id=workspace_id, period=period)
+
+
+async def handle_plan_review(settings: Settings, job: LeasedJob) -> None:
+    """Обзор плана перед границей периода (FR-52, FORM-10).
+
+    Обзор показывает состояние и предложения, но не меняет суммы сам.
+    """
+    workspace_id = job.workspace_id
+    if workspace_id is None:
+        raise NotFound("У задачи обзора плана нет бюджета")
+    period_id = uuid.UUID(str(job.payload["period_id"]))
+    async with session_scope(settings, RuntimeRole.WORKER, workspace_id=workspace_id) as session:
+        uow = UnitOfWork(session=session, correlation_id=job.correlation_id)
+        workspace = await uow.lock_workspace(workspace_id)
+        period = (
+            await session.execute(
+                select(BudgetPeriod).where(
+                    BudgetPeriod.workspace_id == workspace_id, BudgetPeriod.id == period_id
+                )
+            )
+        ).scalar_one_or_none()
+        if period is None or period.state == "ended":
+            # Устаревшее задание после смены календаря не выполняется (FR-52).
+            return
+        today = dt.datetime.now(ZoneInfo(workspace.timezone)).date()
+        if today >= period.end_exclusive:
+            return
+        await uow.emit(
+            workspace_id=workspace_id,
+            event_type="PlanReviewDue",
+            aggregate_type="budget_period",
+            aggregate_id=period_id,
+            payload={
+                "period_id": str(period_id),
+                "end_inclusive": (period.end_exclusive - dt.timedelta(days=1)).isoformat(),
+                "schema_version": 1,
+            },
+        )

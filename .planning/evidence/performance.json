@@ -1,0 +1,33 @@
+{
+  "nfr06_report": {
+    "p95_seconds": 0.3671,
+    "median_seconds": 0.3425,
+    "fill_seconds": 1.91,
+    "requirement": "p95 <= 2 s на 50 000 операций",
+    "measured_at": "2026-09-13T06:52:50.875938+00:00",
+    "volume": 5000
+  },
+  "nfr06_journal_filters": {
+    "p95_seconds": 0.0161,
+    "requirement": "p95 <= 2 s",
+    "measured_at": "2026-09-13T06:52:58.987091+00:00",
+    "volume": 5000
+  },
+  "nfr01_intake": {
+    "p95_seconds": 0.0101,
+    "steady_rate_per_second": 5,
+    "burst_rate_per_second": 20,
+    "events": 115,
+    "requirement": "p95 <= 1 s до долговечного сохранения",
+    "measured_at": "2026-09-13T06:53:20.202064+00:00",
+    "volume": 5000
+  },
+  "nfr08_concurrency": {
+    "workspaces": 10,
+    "members_per_workspace": 5,
+    "total_seconds": 6.63,
+    "requirement": "10 бюджетов по 5 участников",
+    "measured_at": "2026-09-13T06:53:26.992564+00:00",
+    "volume": 5000
+  }
+}
