@@ -534,15 +534,17 @@ async def create_draft_with_candidates(
         expires_at=now + dt.timedelta(days=settings.limits.draft_ttl_days),
         delete_raw_after=now + dt.timedelta(days=7),
     )
-    session.add(draft)
     try:
-        await session.flush()
+        # A savepoint rolls back only the competing insert, retaining the
+        # outer transaction and its SET LOCAL RLS context for the lookup.
+        async with session.begin_nested():
+            session.add(draft)
+            await session.flush()
     except IntegrityError as exc:
         if source_message_key is None:
             raise
         # Второй исполнитель дошёл до вставки одновременно: уникальный индекс
         # оставляет ровно один черновик на сообщение участника (R-01).
-        await session.rollback()
         existing = await find_message_draft(
             session,
             workspace_id=workspace_id,

@@ -9,29 +9,34 @@ from __future__ import annotations
 import base64
 import hashlib
 import uuid
+from dataclasses import dataclass
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
 from fintracker.application.conversation import sections
 from fintracker.application.conversation.entry import (
     CandidateFields,
+    DraftAlreadyExists,
     ExtractionResult,
     create_draft_with_candidates,
+    find_message_draft,
 )
 from fintracker.application.conversation.keyboards import Button, callback, confirm_candidate
 from fintracker.application.conversation.types import IncomingMessage, MessageKind, Reply
 from fintracker.application.intelligence.extraction import (
+    WorkspaceCatalog,
     extract_receipt,
     extract_with_model,
     load_catalog,
 )
 from fintracker.config import Settings
 from fintracker.core.context import ActorContext
-from fintracker.core.errors import ProviderUnavailable, ValidationFailed
+from fintracker.core.errors import ProviderUnavailable, ValidationFailed, VersionConflict
 from fintracker.core.logging import get_logger
 from fintracker.core.money import Money
 from fintracker.db.models.access import Workspace
 from fintracker.db.session import RuntimeRole, session_scope
+from fintracker.db.uow import UnitOfWork
 from fintracker.domain.ledger.receipt import (
     ReceiptLineInput,
     check_receipt,
@@ -44,6 +49,75 @@ from fintracker.infra.asr.provider import build_asr
 from fintracker.infra.telegram.files import download_attachment
 
 logger = get_logger("intelligence.media")
+
+
+@dataclass(frozen=True)
+class _MediaPreparation:
+    draft_id: uuid.UUID
+    version: int
+    catalog: WorkspaceCatalog
+
+
+async def _prepare_media(
+    settings: Settings,
+    *,
+    actor: ActorContext,
+    workspace: Workspace,
+    message: IncomingMessage,
+    fingerprint: str | None = None,
+) -> _MediaPreparation | list[Reply]:
+    workspace_id = actor.require_workspace()
+    existing_id: uuid.UUID | None = None
+    existing_state: str | None = None
+    async with session_scope(
+        settings, RuntimeRole.API, user_id=actor.user_id, workspace_id=workspace_id
+    ) as session:
+        await UnitOfWork(session, actor.correlation_id).lock_workspace(workspace_id, actor=actor)
+        draft = None
+        if message.source_key is not None:
+            draft = await find_message_draft(
+                session,
+                workspace_id=workspace_id,
+                owner_user_id=actor.user_id,
+                source_message_key=message.source_key,
+            )
+        if draft is None:
+            try:
+                draft, _ = await create_draft_with_candidates(
+                    session,
+                    settings=settings,
+                    actor=actor,
+                    source_kind="voice" if message.kind is MessageKind.VOICE else "photo",
+                    raw_text=message.text,
+                    extraction=ExtractionResult(intent=Intent.UNKNOWN, candidates=[]),
+                    source_fingerprint=fingerprint,
+                    source_message_key=message.source_key,
+                    logical_message_id=message.inbound_event_id,
+                )
+                draft.state = "processing"
+            except DraftAlreadyExists as exc:
+                existing_id, existing_state = exc.draft_id, exc.state
+        if draft is not None:
+            if draft.state not in {"processing", "failed_retryable", "received"}:
+                existing_id, existing_state = draft.id, draft.state
+            else:
+                draft.state = "processing"
+                draft.version += 1
+                catalog = await load_catalog(
+                    session,
+                    workspace_id=workspace_id,
+                    currency=workspace.currency,
+                    timezone=workspace.timezone,
+                )
+                return _MediaPreparation(draft.id, draft.version, catalog)
+    assert existing_id is not None
+    if existing_state == "posted":
+        return await sections.posted_draft_reply(
+            settings, actor=actor, workspace=workspace, draft_id=existing_id
+        )
+    return await sections.draft_reply(
+        settings, actor=actor, workspace=workspace, draft_id=existing_id
+    )
 
 
 async def process_media_draft(
@@ -65,26 +139,10 @@ async def _process_voice(
         return [Reply(text="Не удалось получить голосовое сообщение.")]
 
     local_date = message.received_at.astimezone(ZoneInfo(workspace.timezone)).date()
-    async with session_scope(
-        settings, RuntimeRole.API, user_id=actor.user_id, workspace_id=workspace_id
-    ) as session:
-        catalog = await load_catalog(
-            session,
-            workspace_id=workspace_id,
-            currency=workspace.currency,
-            timezone=workspace.timezone,
-        )
-        draft, _ = await create_draft_with_candidates(
-            session,
-            settings=settings,
-            actor=actor,
-            source_kind="voice",
-            raw_text=None,
-            extraction=ExtractionResult(intent=Intent.UNKNOWN, candidates=[]),
-        )
-        draft.state = "processing"
-        draft_id = draft.id
-        draft_version = draft.version
+    prepared = await _prepare_media(settings, actor=actor, workspace=workspace, message=message)
+    if isinstance(prepared, list):
+        return prepared
+    draft_id, draft_version, catalog = prepared.draft_id, prepared.version, prepared.catalog
 
     try:
         audio = await download_attachment(settings, file_id=attachment.file_id)
@@ -99,7 +157,9 @@ async def _process_voice(
             duration_seconds=float(attachment.duration_seconds or 0),
         )
     except (ProviderUnavailable, ValidationFailed) as exc:
-        await _mark_draft(settings, workspace_id, draft_id, "failed_retryable", str(exc.message))
+        await _mark_draft(
+            settings, actor, draft_id, draft_version, "failed_retryable", str(exc.message)
+        )
         return [
             Reply(
                 text=(
@@ -117,7 +177,9 @@ async def _process_voice(
 
     if not transcript.speech_detected or not transcript.text.strip():
         # Ни отсутствие речи, ни недоступность ASR не считаются нулевым расходом.
-        await _mark_draft(settings, workspace_id, draft_id, "needs_clarification", "no_speech")
+        await _mark_draft(
+            settings, actor, draft_id, draft_version, "needs_clarification", "no_speech"
+        )
         return [
             Reply(
                 text=(
@@ -135,11 +197,14 @@ async def _process_voice(
 
         from fintracker.db.models.platform import Draft
 
+        await UnitOfWork(session, actor.correlation_id).lock_workspace(workspace_id, actor=actor)
         row = (
             await session.execute(
                 select(Draft).where(Draft.workspace_id == workspace_id, Draft.id == draft_id)
             )
         ).scalar_one()
+        if row.version != draft_version or row.state != "processing":
+            raise VersionConflict("Разбор сообщения уже обновлён")
         # Расшифровка доступна из карточки для исправления (FR-13).
         row.transcript = transcript.text
         row.version += 1
@@ -159,6 +224,7 @@ async def _process_voice(
         actor=actor,
         workspace=workspace,
         draft_id=draft_id,
+        expected_version=draft_version,
         extraction=extraction,
         source_note=f"Распознано: «{transcript.text}»",
         voice_amount_check=True,
@@ -169,7 +235,6 @@ async def _process_image(
     settings: Settings, *, actor: ActorContext, workspace: Workspace, message: IncomingMessage
 ) -> list[Reply]:
     """Чек или платёжный документ (FR-14–FR-17)."""
-    workspace_id = actor.require_workspace()
     attachment = message.attachments[0] if message.attachments else None
     if attachment is None:
         return [Reply(text="Не удалось получить изображение.")]
@@ -199,27 +264,12 @@ async def _process_image(
             f"data:{item.mime_type or 'image/jpeg'};base64,{base64.b64encode(extra).decode()}"
         )
 
-    async with session_scope(
-        settings, RuntimeRole.API, user_id=actor.user_id, workspace_id=workspace_id
-    ) as session:
-        catalog = await load_catalog(
-            session,
-            workspace_id=workspace_id,
-            currency=workspace.currency,
-            timezone=workspace.timezone,
-        )
-        draft, _ = await create_draft_with_candidates(
-            session,
-            settings=settings,
-            actor=actor,
-            source_kind="photo",
-            raw_text=message.text,
-            extraction=ExtractionResult(intent=Intent.UNKNOWN, candidates=[]),
-            source_fingerprint=fingerprint,
-        )
-        draft.state = "processing"
-        draft_id = draft.id
-        draft_version = draft.version
+    prepared = await _prepare_media(
+        settings, actor=actor, workspace=workspace, message=message, fingerprint=fingerprint
+    )
+    if isinstance(prepared, list):
+        return prepared
+    draft_id, draft_version, catalog = prepared.draft_id, prepared.version, prepared.catalog
 
     try:
         receipt = await extract_receipt(
@@ -235,7 +285,7 @@ async def _process_image(
             extra_image_urls=tuple(extra_urls),
         )
     except (ProviderUnavailable, ValidationFailed) as exc:
-        await _mark_draft(settings, workspace_id, draft_id, "failed_retryable", exc.message)
+        await _mark_draft(settings, actor, draft_id, draft_version, "failed_retryable", exc.message)
         return [
             Reply(
                 text=(
@@ -255,7 +305,9 @@ async def _process_image(
         not receipt.payment_confirmed and receipt.document_kind != "receipt"
     ):
         # Счёт, корзина и подтверждение заказа не подтверждают расход (FR-17).
-        await _mark_draft(settings, workspace_id, draft_id, "needs_clarification", "not_paid")
+        await _mark_draft(
+            settings, actor, draft_id, draft_version, "needs_clarification", "not_paid"
+        )
         kind_label = {
             "invoice": "счёт на оплату",
             "cart": "корзина",
@@ -281,7 +333,9 @@ async def _process_image(
 
     total_decimal = parse_decimal(receipt.total_decimal)
     if total_decimal is None or total_decimal <= 0:
-        await _mark_draft(settings, workspace_id, draft_id, "needs_clarification", "no_total")
+        await _mark_draft(
+            settings, actor, draft_id, draft_version, "needs_clarification", "no_total"
+        )
         return [
             Reply(
                 text="Не удалось прочитать итог чека. Введите сумму текстом.",
@@ -292,7 +346,9 @@ async def _process_image(
     currency = receipt.currency or workspace.currency
     if currency != workspace.currency:
         # Неподдерживаемый валютный чек требует фактически списанной суммы (R10).
-        await _mark_draft(settings, workspace_id, draft_id, "needs_clarification", "currency")
+        await _mark_draft(
+            settings, actor, draft_id, draft_version, "needs_clarification", "currency"
+        )
         return [
             Reply(
                 text=(
@@ -381,6 +437,7 @@ async def _process_image(
         actor=actor,
         workspace=workspace,
         draft_id=draft_id,
+        expected_version=draft_version,
         extraction=extraction,
         source_note="\n".join(summary_lines),
     )
@@ -392,6 +449,7 @@ async def _finalize_extraction(
     actor: ActorContext,
     workspace: Workspace,
     draft_id: uuid.UUID,
+    expected_version: int,
     extraction: ExtractionResult,
     source_note: str,
     voice_amount_check: bool = False,
@@ -405,11 +463,14 @@ async def _finalize_extraction(
 
         from fintracker.db.models.platform import Candidate, Draft
 
+        await UnitOfWork(session, actor.correlation_id).lock_workspace(workspace_id, actor=actor)
         draft = (
             await session.execute(
                 select(Draft).where(Draft.workspace_id == workspace_id, Draft.id == draft_id)
             )
         ).scalar_one()
+        if draft.version != expected_version or draft.state != "processing":
+            raise VersionConflict("Разбор сообщения уже обновлён")
         # Перед сохранением новых кандидатов убираем непроведённые прежние,
         # чтобы поздний результат не создавал вторую запись (AR-05).
         existing = (
@@ -453,18 +514,31 @@ async def _finalize_extraction(
 
 async def _mark_draft(
     settings: Settings,
-    workspace_id: uuid.UUID,
+    actor: ActorContext,
     draft_id: uuid.UUID,
+    expected_version: int,
     state: str,
     reason: str | None,
 ) -> None:
-    async with session_scope(settings, RuntimeRole.API, workspace_id=workspace_id) as session:
+    workspace_id = actor.require_workspace()
+    async with session_scope(
+        settings, RuntimeRole.API, user_id=actor.user_id, workspace_id=workspace_id
+    ) as session:
         from sqlalchemy import update
 
         from fintracker.db.models.platform import Draft
 
-        await session.execute(
+        await UnitOfWork(session, actor.correlation_id).lock_workspace(workspace_id, actor=actor)
+        result = await session.execute(
             update(Draft)
-            .where(Draft.workspace_id == workspace_id, Draft.id == draft_id)
+            .where(
+                Draft.workspace_id == workspace_id,
+                Draft.id == draft_id,
+                Draft.version == expected_version,
+                Draft.state == "processing",
+            )
             .values(state=state, failure_reason=(reason or "")[:200], version=Draft.version + 1)
+            .returning(Draft.id)
         )
+        if result.scalar_one_or_none() is None:
+            raise VersionConflict("Разбор сообщения уже обновлён")

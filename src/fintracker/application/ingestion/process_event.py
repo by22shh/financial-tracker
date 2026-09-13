@@ -326,7 +326,42 @@ async def _enqueue_reply(
     )
 
 
-async def _send_now(settings: Settings, *, chat_id: int, replies: list[Reply]) -> bool:
+async def _has_delivery_lease(settings: Settings, job: LeasedJob) -> bool:
+    """Проверить аренду перед внешней отправкой без удержания транзакции."""
+    async with session_scope(settings, RuntimeRole.WORKER) as session:
+        return await queue.lease_is_valid(session, job)
+
+
+async def _cancel_revoked_reply(
+    settings: Settings, context: _EventContext, event_id: uuid.UUID
+) -> None:
+    from fintracker.db.models.platform import AuthorReply
+
+    async with session_scope(
+        settings,
+        RuntimeRole.WORKER,
+        user_id=context.actor_user_id,
+        workspace_id=context.workspace_id,
+    ) as session:
+        await session.execute(
+            update(AuthorReply)
+            .where(AuthorReply.inbound_event_id == event_id, AuthorReply.state == "pending")
+            .values(state="cancelled")
+        )
+        await session.execute(
+            update(InboundEvent).where(InboundEvent.id == event_id).values(state="ignored")
+        )
+
+
+async def _send_now(
+    settings: Settings,
+    *,
+    chat_id: int,
+    replies: list[Reply],
+    context: _EventContext,
+    event_id: uuid.UUID,
+    job: LeasedJob,
+) -> bool:
     """Немедленный ответ автору (FR-53).
 
     Возвращает True, когда доставка завершена: тогда событие признаётся
@@ -339,6 +374,11 @@ async def _send_now(settings: Settings, *, chat_id: int, replies: list[Reply]) -
     for reply in replies:
         if not reply.text:
             continue
+        if not await _has_delivery_lease(settings, job):
+            return False
+        if context.chat_id != chat_id or not await _delivery_allowed(settings, context):
+            await _cancel_revoked_reply(settings, context, event_id)
+            return True
         result = await sender.send_message(
             chat_id=chat_id, text=reply.text, buttons=reply.keyboard()
         )
@@ -364,7 +404,20 @@ async def _settle_delivery(
     """
     from fintracker.db.models.platform import Job
 
-    async with session_scope(settings, RuntimeRole.WORKER) as session:
+    context = await _read_context(settings, event_id)
+    from fintracker.db.models.platform import AuthorReply
+
+    async with session_scope(
+        settings,
+        RuntimeRole.WORKER,
+        user_id=context.actor_user_id,
+        workspace_id=context.workspace_id,
+    ) as session:
+        await session.execute(
+            update(AuthorReply)
+            .where(AuthorReply.inbound_event_id == event_id, AuthorReply.state == "pending")
+            .values(state="sent")
+        )
         await session.execute(
             update(InboundEvent)
             .where(InboundEvent.id == event_id, InboundEvent.state.notin_(("ignored", "failed")))
@@ -427,23 +480,20 @@ async def handle_deliver_reply(settings: Settings, job: LeasedJob) -> None:
     Перед отправкой заново проверяется право получателя на эти данные (R-04).
     """
     chat_id = int(job.payload["chat_id"])
+    if not await _has_delivery_lease(settings, job):
+        logger.info("reply_lease_lost", job_id=str(job.id))
+        return
     raw_event = job.payload.get("inbound_event_id")
     event_id = uuid.UUID(str(raw_event)) if raw_event is not None else None
 
     context: _EventContext | None = None
     if event_id is not None:
         context = await _read_context(settings, event_id)
-        if not await _delivery_allowed(settings, context):
+        if context.state in {"processed", "ignored"}:
+            return
+        if context.chat_id != chat_id or not await _delivery_allowed(settings, context):
             logger.info("reply_delivery_revoked", job_id=str(job.id), event_id=str(event_id))
-            reply_id = job.payload.get("author_reply_id")
-            if reply_id is not None:
-                await _close_reply(
-                    settings,
-                    context=context,
-                    reply_id=uuid.UUID(str(reply_id)),
-                    state="cancelled",
-                )
-            await _mark_state(settings, event_id, "ignored")
+            await _cancel_revoked_reply(settings, context, event_id)
             return
 
     raw_reply_id = job.payload.get("author_reply_id")
@@ -459,6 +509,15 @@ async def handle_deliver_reply(settings: Settings, job: LeasedJob) -> None:
 
     sender = build_sender(settings)
     for item in messages:
+        if not await _has_delivery_lease(settings, job):
+            return
+        if (
+            context is not None
+            and event_id is not None
+            and not await _delivery_allowed(settings, context)
+        ):
+            await _cancel_revoked_reply(settings, context, event_id)
+            return
         result = await sender.send_message(
             chat_id=chat_id, text=str(item["text"]), buttons=item.get("buttons")
         )
@@ -533,7 +592,14 @@ async def handle_process_inbound_event(settings: Settings, job: LeasedJob) -> No
                 chat_id=context.chat_id,
                 replies=hint,
             )
-        if await _send_now(settings, chat_id=context.chat_id, replies=hint):
+        if await _send_now(
+            settings,
+            chat_id=context.chat_id,
+            replies=hint,
+            context=context,
+            event_id=event_id,
+            job=job,
+        ):
             await _settle_delivery(settings, event_id=event_id, reply_job_id=hint_job)
         return
 
@@ -547,7 +613,9 @@ async def handle_process_inbound_event(settings: Settings, job: LeasedJob) -> No
     try:
         # Право на результат действует всё время выполнения команды: потеря
         # аренды отменяет запись в той же транзакции (ADR-05, R-02).
-        async with execution_fence(queue.lease_fence(job)):
+        async with execution_fence(
+            queue.lease_fence(job), job_id=job.id, lease_token=job.lease_token
+        ):
             replies = await handle(settings, message)
     except DomainError as exc:
         # Ошибка домена превращается в понятный текст без раскрытия деталей.
@@ -589,7 +657,14 @@ async def handle_process_inbound_event(settings: Settings, job: LeasedJob) -> No
 
     if context.chat_id is None or not replies:
         await _settle_delivery(settings, event_id=event_id, reply_job_id=None)
-    elif await _send_now(settings, chat_id=context.chat_id, replies=replies):
+    elif await _send_now(
+        settings,
+        chat_id=context.chat_id,
+        replies=replies,
+        context=context,
+        event_id=event_id,
+        job=job,
+    ):
         # Ответ показан сразу: долговечная задача больше не нужна.
         await _settle_delivery(settings, event_id=event_id, reply_job_id=reply_job)
     else:
