@@ -48,12 +48,17 @@ class LeasedJob:
 
 
 def next_delay(attempts: int, *, retry_after: float | None = None) -> float:
-    """Задержка следующей попытки с учётом retry_after провайдера."""
+    """Задержка следующей попытки с учётом retry_after провайдера (A101).
+
+    Указанная провайдером задержка является нижней границей: разброс только
+    добавляется к ней, иначе повтор пришёл бы раньше разрешённого времени.
+    """
     index = min(max(attempts - 1, 0), len(RETRY_DELAYS_SECONDS) - 1)
     base = float(RETRY_DELAYS_SECONDS[index])
-    if retry_after is not None:
-        base = max(base, float(retry_after))
     jitter = base * JITTER_RATIO
+    if retry_after is not None:
+        floor = max(base, float(retry_after))
+        return floor + random.uniform(0.0, floor * JITTER_RATIO)  # noqa: S311
     return max(1.0, base + random.uniform(-jitter, jitter))  # noqa: S311
 
 

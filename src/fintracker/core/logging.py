@@ -29,7 +29,8 @@ _SECRET_KEYS = frozenset(
     }
 )
 _TELEGRAM_FILE_URL = re.compile(r"https://api\.telegram\.org/file/bot[^\s\"']+")
-_BOT_TOKEN = re.compile(r"\b\d{6,12}:[A-Za-z0-9_-]{30,}\b")
+# Токен бота в свободном тексте: короткие тестовые значения тоже скрываются.
+_BOT_TOKEN = re.compile(r"\b\d{6,12}:[A-Za-z0-9_-]{8,}\b")
 
 
 def _redact(

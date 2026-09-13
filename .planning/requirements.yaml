@@ -1087,19 +1087,23 @@
   title: "Сбой исполнителя после commit до ответа"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
   verification:
+    - tests/integration/test_ops_scenarios.py::test_a96_transaction_survives_worker_crash_after_commit
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A97
   title: "Сбой базы до commit"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
   verification:
+    - tests/integration/test_ops_scenarios.py::test_a97_failure_before_commit_leaves_no_partial_state
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A98
   title: "Одновременная правка одной операции двумя сессиями"
@@ -1139,10 +1143,13 @@
   title: "Ошибка 429"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
+    - src/fintracker/application/platform/queue.py
   verification:
+    - tests/integration/test_ops_scenarios.py::test_a101_rate_limit_retry_respects_delay
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A102
   title: "AI вернул невалидную схему"
@@ -1236,28 +1243,34 @@
   title: "Удаление пространства, затем восстановление старого backup"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
   verification:
+    - tests/integration/test_ops_scenarios.py::test_a110_deleted_workspace_is_not_restored_into_access
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A111
   title: "Восстановление базы из backup"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
   verification:
+    - tests/integration/test_ops_scenarios.py::test_a111_restore_evidence_is_recorded
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A112
   title: "Проверка логов на тестовом запуске"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
   verification:
+    - tests/integration/test_ops_scenarios.py::test_a112_logs_do_not_contain_secrets
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A113
   title: "Через меню создать категорию «Путешествия» без лимита"
@@ -1984,10 +1997,12 @@
   title: "После выхода/удаления восстановлен старый backup"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
   verification:
+    - tests/integration/test_ops_scenarios.py::test_a110_deleted_workspace_is_not_restored_into_access
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A179
   title: "Один бюджет с тремя участниками анализируется по расписанию"
@@ -3325,6 +3340,7 @@
   status: verified
   implementation:
   verification:
+    - tests/integration/test_ops_scenarios.py::test_a111_restore_evidence_is_recorded
     - tests/performance/test_performance.py::test_ar33_nfr10_restore_drill
   evidence:
     - .planning/evidence/latest.json
@@ -5492,11 +5508,13 @@
   title: "Логи без токенов, ключей и финансового payload"
   source: docs/TZ.md §24, docs/ARCHITECTURE.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/core/logging.py
   verification:
+    - tests/integration/test_ops_scenarios.py::test_a112_logs_do_not_contain_secrets
   evidence:
+    - .planning/evidence/latest.json
 
 - id: SEC-07
   title: "Проверка типа/размера/декодирования файла до дорогой обработки"
