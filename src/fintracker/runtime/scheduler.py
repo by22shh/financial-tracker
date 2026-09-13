@@ -56,6 +56,18 @@ async def schedule_tick(settings: Settings) -> int:
             )
             if created is not None:
                 scheduled += 1
+            # Напоминания о платежах: один запуск на бюджет и локальную дату (FR-45).
+            reminder = await queue.enqueue(
+                session,
+                job_type="payment_reminders",
+                logical_key=f"reminders:{workspace_id}:{today.isoformat()}",
+                queue_class="calendar",
+                workspace_id=workspace_id,
+                payload={"local_date": today.isoformat(), "schema_version": 1},
+                correlation_id=f"reminder-{today.isoformat()}",
+            )
+            if reminder is not None:
+                scheduled += 1
 
     async with session_scope(settings, RuntimeRole.WORKER) as session:
         today_utc = dt.datetime.now(dt.UTC).date()

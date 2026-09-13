@@ -198,6 +198,12 @@ async def dispatch_callback(
                 rest=rest,
                 user_id=user_id,
             )
+        case "pay":
+            from fintracker.application.conversation.payments_flow import payment_action
+
+            return await payment_action(
+                settings, actor=actor, workspace=workspace, action=argument, rest=rest
+            )
         case "rep":
             from fintracker.application.conversation.analytics_flow import report_slice
 
@@ -271,6 +277,10 @@ async def _menu(
             return await sections.settings_view(settings, actor=actor, workspace=workspace)
         case "io":
             return await export_menu(settings, actor=actor, workspace=workspace)
+        case "payments":
+            from fintracker.application.conversation.payments_flow import payments_view
+
+            return await payments_view(settings, actor=actor, workspace=workspace)
         case "add":
             return await start_manual_form(settings, actor=actor, workspace=workspace)
         case "budgets":

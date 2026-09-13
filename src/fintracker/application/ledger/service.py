@@ -375,6 +375,9 @@ async def post_transaction(
         aggregate_id=transaction.id,
         aggregate_revision=1,
         payload={"transaction_id": str(transaction.id), "revision": 1},
+        # Исторический импорт не рассылает уведомление по каждой прошлой строке:
+        # об итоге сообщает одна сводка партии (FR-53, A63).
+        audience="none" if origin == "import" else "members",
         actor_user_id=actor.user_id,
     )
     return PostedTransaction(

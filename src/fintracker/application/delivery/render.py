@@ -223,6 +223,63 @@ async def render_event(
         }[event_type]
         return f"{header}\n{verb.capitalize()}: {name}", None
 
+    if event_type == "PaymentReminder":
+        # Актуальность проверяется в момент отправки: оплаченный или отменённый
+        # платёж не напоминается (FR-53, A61).
+        from fintracker.db.models.commitments import Occurrence, ScheduledItem
+
+        raw_id = payload.get("occurrence_id")
+        if not raw_id:
+            return None, None
+        row = (
+            await session.execute(
+                select(Occurrence, ScheduledItem.name)
+                .join(
+                    ScheduledItem,
+                    (ScheduledItem.workspace_id == Occurrence.workspace_id)
+                    & (ScheduledItem.id == Occurrence.schedule_id),
+                )
+                .where(
+                    Occurrence.workspace_id == workspace.id,
+                    Occurrence.id == uuid.UUID(str(raw_id)),
+                )
+            )
+        ).one_or_none()
+        if row is None:
+            return None, None
+        occurrence, name = row
+        if occurrence.state not in {"planned", "partially_settled"}:
+            return None, None
+        remaining = (occurrence.expected_minor or 0) - occurrence.settled_minor
+        amount = (
+            Money(remaining, workspace.currency).format()
+            if occurrence.expected_minor is not None
+            else "сумма не задана"
+        )
+        lines = [
+            workspace.name,
+            f"Плановый платёж: {name}",
+            f"Срок: {format_date(occurrence.due_date, with_year=True)} · {amount}",
+            "Это ожидаемый платёж, а не проведённый расход.",
+        ]
+        buttons = [
+            [
+                {"text": "Оплачено", "callback_data": f"pay:done:{occurrence.id.hex[:16]}"},
+                {"text": "Перенести", "callback_data": f"pay:move:{occurrence.id.hex[:16]}"},
+            ],
+            [{"text": "Пропустить", "callback_data": f"pay:skip:{occurrence.id.hex[:16]}"}],
+        ]
+        return "\n".join(lines), buttons
+
+    if event_type == "ImportCommitted":
+        # Одна сводка вместо рассылки по каждой импортированной строке (A63).
+        rows = int(payload.get("rows") or 0)
+        return (
+            f"{header}\nИмпорт завершён: перенесено записей — {rows}.\n"
+            "Предупреждения по прошлым периодам не рассылаются.",
+            [[{"text": "Открыть бюджет", "callback_data": "menu:budget"}]],
+        )
+
     if event_type == "ThresholdCrossed":
         return str(payload.get("text") or ""), None
 

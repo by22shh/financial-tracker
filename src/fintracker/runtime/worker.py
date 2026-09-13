@@ -44,6 +44,7 @@ class JobHandlerRegistry:
 
 
 def build_registry() -> JobHandlerRegistry:
+    from fintracker.application.commitments.reminders import handle_payment_reminders
     from fintracker.application.delivery.dispatch import (
         handle_deliver_notification,
         handle_expand_outbox,
@@ -58,6 +59,7 @@ def build_registry() -> JobHandlerRegistry:
     registry.register("deliver_notification", handle_deliver_notification)
     registry.register("open_next_period", handle_open_next_period)
     registry.register("retention_sweep", handle_retention_sweep)
+    registry.register("payment_reminders", handle_payment_reminders)
     return registry
 
 

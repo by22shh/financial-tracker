@@ -688,28 +688,38 @@
   title: "Событие ночью, к утру платёж уже оплачен"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
+    - src/fintracker/application/commitments/reminders.py
+    - src/fintracker/application/delivery/render.py
   verification:
+    - tests/integration/test_reminders.py::test_a61_settled_payment_is_not_reminded
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A62
   title: "Пользователь сам внёс расход ночью"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
   verification:
+    - tests/integration/test_reminders.py::test_a62_author_card_is_immediate_summary_waits
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A63
   title: "Исторический импорт содержит много превышений"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
+    - src/fintracker/application/delivery/render.py
+    - src/fintracker/application/ledger/service.py
   verification:
+    - tests/integration/test_reminders.py::test_a63_import_sends_one_summary
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A64
   title: "Третье обычное проактивное сообщение за день"
@@ -4245,11 +4255,15 @@
   stage: P0
   status: verified
   implementation:
+    - src/fintracker/application/commitments/reminders.py
     - src/fintracker/application/commitments/schedules.py
+    - src/fintracker/application/conversation/payments_flow.py
     - src/fintracker/db/models/commitments.py
     - src/fintracker/domain/schedule.py
+    - src/fintracker/runtime/scheduler.py
   verification:
     - tests/integration/test_commitments.py::test_monthly_rule_uses_last_existing_day
+    - tests/integration/test_reminders.py::test_reminder_appears_only_within_lead_time
   evidence:
     - .planning/evidence/latest.json
 
@@ -4257,12 +4271,15 @@
   title: "План не равен факту"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/commitments/schedules.py
+    - src/fintracker/application/conversation/payments_flow.py
     - src/fintracker/db/models/commitments.py
   verification:
+    - tests/integration/test_reminders.py::test_reminder_text_marks_expectation_not_expense
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-47
   title: "Повторяющиеся доходы"
@@ -4340,12 +4357,16 @@
   stage: P0
   status: verified
   implementation:
+    - src/fintracker/application/commitments/reminders.py
     - src/fintracker/application/conversation/types.py
     - src/fintracker/application/delivery/dispatch.py
+    - src/fintracker/application/delivery/render.py
     - src/fintracker/application/identity/preferences.py
+    - src/fintracker/application/ledger/service.py
     - src/fintracker/db/models/platform.py
   verification:
     - tests/acceptance/test_settings_and_rules.py::test_quiet_hours_preset
+    - tests/integration/test_reminders.py::test_reminders_are_not_duplicated_within_a_day
     - tests/integration/test_rules_and_preferences.py::test_quiet_hours_saved_in_personal_timezone
   evidence:
     - .planning/evidence/latest.json
