@@ -880,11 +880,13 @@
   title: "Старое «Заведения» без получателя"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/integrations/importer.py
   verification:
+    - tests/integration/test_category_lifecycle.py::test_a76_unknown_beneficiary_is_not_invented
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A77
   title: "Исторические «Долги»"
@@ -1295,22 +1297,26 @@
   title: "Через меню создать категорию «Путешествия» без лимита"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/catalog/categories.py
     - src/fintracker/application/conversation/category_flow.py
   verification:
+    - tests/integration/test_category_lifecycle.py::test_a113_new_category_without_limit_is_available
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A114
   title: "Повторить запрос создания тем же ключом"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/catalog/categories.py
   verification:
+    - tests/integration/test_category_lifecycle.py::test_a114_repeated_create_gives_one_category
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A115
   title: "При исправлении выбрать «Создать категорию и перенести сюда эту запись»"
@@ -1328,21 +1334,25 @@
   title: "Переименовать категорию с расходами и бюджетом"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/catalog/categories.py
   verification:
+    - tests/integration/test_category_lifecycle.py::test_a116_rename_keeps_identity_and_sums
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A117
   title: "Удалить категорию без любых связей"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/catalog/categories.py
   verification:
+    - tests/integration/test_category_lifecycle.py::test_a117_a119_delete_and_restore
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A118
   title: "Нажать «Удалить» у категории с тратами и выбрать архив"
@@ -1359,11 +1369,13 @@
   title: "Восстановить архивную категорию"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/catalog/categories.py
   verification:
+    - tests/integration/test_category_lifecycle.py::test_a117_a119_delete_and_restore
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A120
   title: "Архивировать категорию с будущим платежом и правилом AI"
@@ -1381,52 +1393,62 @@
   title: "Удалить группу с подкатегориями"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/catalog/categories.py
   verification:
+    - tests/integration/test_category_lifecycle.py::test_a121_group_removal_shows_branch
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A122
   title: "Объединить категории с расходами и текущими лимитами"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/catalog/categories.py
     - src/fintracker/application/conversation/category_flow.py
   verification:
+    - tests/integration/test_category_lifecycle.py::test_a122_merge_keeps_total_spending
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A123
   title: "Категория стала архивной после распознавания черновика"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/ledger/service.py
   verification:
+    - tests/integration/test_category_lifecycle.py::test_a123_archived_category_blocks_posting
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A124
   title: "Ответить на карточку «Здесь было 800, а не 1800»"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/conversation/corrections.py
   verification:
+    - tests/integration/test_category_lifecycle.py::test_a124_correction_changes_linked_record
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A125
   title: "Исправление подходит к нескольким операциям"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/conversation/corrections.py
   verification:
+    - tests/integration/test_category_lifecycle.py::test_a125_ambiguous_correction_offers_choice
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A126
   title: "Отменить исправление после конфликтующей последующей правки"
@@ -1443,11 +1465,13 @@
   title: "«Удали эту трату, это дубль», затем восстановить"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/ledger/service.py
   verification:
+    - tests/integration/test_category_lifecycle.py::test_a127_void_and_restore_without_fake_refund
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A128
   title: "Наступило время анализа, пользователь не открывал чат; задача доставлена дважды"

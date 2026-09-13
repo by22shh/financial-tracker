@@ -101,16 +101,18 @@ async def _check_depth(
         depth += 1
         if depth >= MAX_DEPTH:
             raise ValidationFailed(f"Слишком глубокая вложенность категорий (предел {MAX_DEPTH})")
+        # Отсутствие строки и пустой parent_id различаются: у категории верхнего
+        # уровня родителя нет, и это не ошибка (FR-21, A121).
         row = (
             await session.execute(
-                select(Category.parent_id).where(
+                select(Category.id, Category.parent_id).where(
                     Category.workspace_id == workspace_id, Category.id == cursor
                 )
             )
-        ).scalar_one_or_none()
+        ).one_or_none()
         if row is None:
             raise NotFound("Родительская категория недоступна")
-        cursor = row
+        cursor = row[1]
 
 
 async def create_category(
