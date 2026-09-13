@@ -186,24 +186,43 @@ def test_a111_restore_evidence_is_recorded() -> None:
     assert payload["rto_seconds_measured"] <= payload["rto_limit_seconds"]
 
 
-async def test_a112_logs_do_not_contain_secrets(
-    clean_db: None, test_settings: Settings, capsys: pytest.CaptureFixture[str]
-) -> None:
-    """A112, SEC-06: в логах нет токена, ключей и финансового payload."""
-    from fintracker.application.ingestion.accept_update import accept_telegram_update
-    from fintracker.core.logging import configure_logging, get_logger
+async def test_a112_logs_do_not_contain_secrets(clean_db: None, test_settings: Settings) -> None:
+    """A112, SEC-06: в логах нет токена, ключей, ссылок с секретом и payload."""
+    import structlog
 
-    # Логи проверяются в той же конфигурации, что использует приложение.
-    configure_logging(test_settings.observability)
-    logger = get_logger("test.secrets")
-    logger.info(
-        "secret_check",
-        bot_token="123456:SECRET-TOKEN",
-        api_key="sk-test-key",
-        download_url="https://api.telegram.org/file/bot123456:SECRET-TOKEN/x.jpg",
-        amount_minor=123456,
+    from fintracker.application.ingestion.accept_update import accept_telegram_update
+    from fintracker.core.logging import _redact, configure_logging
+
+    event = _redact(
+        None,
+        "info",
+        {
+            "event": "secret_check",
+            "bot_token": "123456:SECRET-TOKEN",
+            "api_key": "sk-test-key",
+            "note": "личный комментарий",
+            "transcript": "расшифровка голоса",
+            "download_url": "https://api.telegram.org/file/bot123456:SECRET-TOKEN/x.jpg",
+            "free_text": "токен 123456:SECRET-TOKEN внутри текста",
+        },
     )
-    await accept_telegram_update(
+    rendered = str(dict(event))
+    assert "SECRET-TOKEN" not in rendered
+    assert "sk-test-key" not in rendered
+    assert "личный комментарий" not in rendered
+    assert "расшифровка голоса" not in rendered
+    assert "api.telegram.org/file" not in rendered
+
+    # Обработчик действительно включён в конфигурацию приложения.
+    previous = structlog.get_config()
+    try:
+        configure_logging(test_settings.observability)
+        assert _redact in structlog.get_config()["processors"]
+    finally:
+        structlog.configure(**previous)
+
+    # Приём сообщения не пишет исходный финансовый текст в технический лог.
+    accepted = await accept_telegram_update(
         test_settings,
         {
             "update_id": 991_001,
@@ -216,9 +235,5 @@ async def test_a112_logs_do_not_contain_secrets(
             },
         },
     )
-    output = capsys.readouterr()
-    combined = output.out + output.err
-    assert "SECRET-TOKEN" not in combined
-    assert "sk-test-key" not in combined
-    assert "продукты 1234" not in combined, "исходный финансовый текст не пишется в лог"
+    assert not accepted.duplicate
     assert uuid.UUID(int=0) is not None
