@@ -261,6 +261,11 @@ async def handle_open_next_period(settings: Settings, job: LeasedJob) -> None:
         uow = UnitOfWork(session=session, correlation_id=job.correlation_id)
         workspace = await uow.lock_workspace(workspace_id)
         today = dt.datetime.now(ZoneInfo(workspace.timezone)).date()
+        # Задание описывает границу, на которую было поставлено; задержка
+        # обработки не должна терять пропущенные границы (FR-92, A149, A214).
+        raw_local_date = job.payload.get("local_date")
+        if isinstance(raw_local_date, str):
+            today = max(today, dt.date.fromisoformat(raw_local_date))
 
         before = (
             await session.execute(

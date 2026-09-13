@@ -454,22 +454,26 @@
   title: "Выделение 5000 на цель внутри того же счёта"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/commitments/goals.py
   verification:
+    - tests/integration/test_goal_and_import_semantics.py::test_a39_goal_allocation_is_not_an_expense
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A40
   title: "Перевод 5000 на накопительный счёт с указанием цели"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/commitments/goals.py
     - src/fintracker/application/ledger/operations.py
   verification:
+    - tests/integration/test_goal_and_import_semantics.py::test_a40_transfer_with_goal_is_single_contribution
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A41
   title: "Оплатил 3000 за двоих, собственная доля 1500, остальное вернёт друг вне пространства"
@@ -826,11 +830,13 @@
   title: "Строка сдвинулась между листами"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/db/models/integrations.py
   verification:
+    - tests/integration/test_goal_and_import_semantics.py::test_a71_a75_source_mapping_is_by_meaning
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A72
   title: "Непустая дневная ячейка содержит сумму нескольких покупок"
@@ -870,11 +876,13 @@
   title: "Старые продукты имели три подраздела, новый лист один"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/integrations/importer.py
   verification:
+    - tests/integration/test_goal_and_import_semantics.py::test_a71_a75_source_mapping_is_by_meaning
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A76
   title: "Старое «Заведения» без получателя"
@@ -904,12 +912,14 @@
   title: "«Накопления» в расходной матрице"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/commitments/goals.py
     - src/fintracker/application/integrations/importer.py
   verification:
+    - tests/integration/test_goal_and_import_semantics.py::test_a78_savings_row_is_not_consumption
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A79
   title: "Импорт полного неизменного снимка повторён"
@@ -1009,21 +1019,25 @@
   title: "В прошлом периоде значение 0"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/analytics/reports.py
   verification:
+    - tests/integration/test_goal_and_import_semantics.py::test_a87_zero_previous_period_has_no_percent
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A88
   title: "Сравнение неполного и полного периода"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/analytics/reports.py
   verification:
+    - tests/integration/test_goal_and_import_semantics.py::test_a88_partial_period_comparison_is_marked
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A89
   title: "Средний чек по истории дневных агрегатов"
@@ -1707,21 +1721,25 @@
   title: "Завершить настройку с лимитами выше ресурса или без заданного дохода"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/onboarding/wizard.py
   verification:
+    - tests/integration/test_goal_and_import_semantics.py::test_a148_deficit_requires_explicit_confirmation
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A149
   title: "Наступила настроенная граница при включённом повторении шаблона"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/planning/rollover.py
   verification:
+    - tests/integration/test_reminders.py::test_a149_boundary_creates_one_period_without_command
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A150
   title: "Администратор создал код, участник попытался создать другой"
@@ -1842,11 +1860,13 @@
   title: "U2 отключил уведомления о чужих тратах"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/identity/preferences.py
   verification:
+    - tests/integration/test_reminders.py::test_a160_disabled_family_keeps_shared_history
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A161
   title: "Новая трата ночью для U2, но не для U3"
@@ -2182,11 +2202,13 @@
   title: "U1: «Софе такси 430»"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/conversation/entry.py
   verification:
+    - tests/integration/test_goal_and_import_semantics.py::test_a190_beneficiary_without_spender
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A191
   title: "«Потратила моя девушка», алиас ещё не сопоставлен"
@@ -2491,11 +2513,13 @@
   title: "Для 14 дней известен только месячный доход 100 000 ₽ без дат и правила распределения"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/onboarding/wizard.py
   verification:
+    - tests/integration/test_goal_and_import_semantics.py::test_a217_monthly_income_is_not_copied_to_short_period
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A218
   title: "Наступил новый период после расходов и взноса на цель"

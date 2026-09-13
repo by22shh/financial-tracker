@@ -486,3 +486,125 @@ async def test_a161_quiet_hours_are_personal_for_each_recipient(
     thresholds = {row.recipient_user_id: row for row in rows if row.delivery_class == "threshold"}
     assert thresholds[quiet_user.id].available_at > now, "тихие часы участника соблюдены"
     assert thresholds[open_user.id].available_at <= now, "у другого участника свой режим"
+
+
+async def test_a160_disabled_family_keeps_shared_history(
+    clean_db: None, test_settings: Settings, owner_session: AsyncSession
+) -> None:
+    """A160: отключение уведомлений о чужих тратах не закрывает общую историю."""
+    import uuid as _uuid
+
+    from fintracker.application.analytics.journal import list_journal
+    from fintracker.application.delivery.dispatch import expand_event
+    from fintracker.application.ledger.service import post_transaction
+    from fintracker.core.context import MembershipStatus, Role
+    from fintracker.core.ids import new_generation
+    from fintracker.db.models.access import Membership, NotificationPreference, User
+    from fintracker.db.models.platform import NotificationDelivery
+    from tests.integration.test_money_scenarios import expense_spec, rub
+
+    fixture = await build_fixture(owner_session, telegram_user_id=5701)
+    muted = User(id=_uuid.uuid4(), telegram_user_id=5702)
+    listening = User(id=_uuid.uuid4(), telegram_user_id=5703)
+    owner_session.add_all([muted, listening])
+    await owner_session.flush()
+    for user in (muted, listening):
+        owner_session.add(
+            Membership(
+                workspace_id=fixture.workspace.id,
+                user_id=user.id,
+                role=Role.MEMBER.value,
+                status=MembershipStatus.ACTIVE.value,
+                generation=new_generation(),
+            )
+        )
+    owner_session.add(
+        NotificationPreference(
+            user_id=muted.id,
+            workspace_id=fixture.workspace.id,
+            settings={"shared_change": "off"},
+            quiet_hours_start=22,
+            quiet_hours_end=9,
+        )
+    )
+    await owner_session.flush()
+
+    await post_transaction(
+        owner_session,
+        fixture.uow,
+        actor=fixture.actor,
+        spec=expense_spec(fixture, amount=rub(750), category="Продукты"),
+        origin="telegram_text",
+    )
+    await owner_session.commit()
+
+    async with session_scope(
+        test_settings, RuntimeRole.OWNER, workspace_id=fixture.workspace.id
+    ) as session:
+        event = (
+            await session.execute(
+                select(OutboxEvent).where(OutboxEvent.event_type == "TransactionPosted")
+            )
+        ).scalar_one()
+        plan = await expand_event(session, test_settings, event)
+        deliveries = (
+            (
+                await session.execute(
+                    select(NotificationDelivery).where(NotificationDelivery.event_id == event.id)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        page = await list_journal(session, workspace_id=fixture.workspace.id)
+
+    assert plan.skipped == 1, "у отключившего доставка не создаётся"
+    recipients = {row.recipient_user_id for row in deliveries}
+    assert muted.id not in recipients
+    assert listening.id in recipients
+    assert page.total == 1, "общая история доступна всем участникам"
+
+
+async def test_a149_boundary_creates_one_period_without_command(
+    clean_db: None, test_settings: Settings, owner_session: AsyncSession
+) -> None:
+    """A149: наступившая граница создаёт один новый период без команды участника."""
+    from fintracker.application.planning.rollover import handle_open_next_period
+    from fintracker.application.platform import queue
+    from fintracker.db.models.planning import BudgetPeriod
+
+    fixture = await build_fixture(owner_session, start=dt.date(2026, 9, 10))
+    await owner_session.commit()
+
+    async with session_scope(
+        test_settings, RuntimeRole.WORKER, workspace_id=fixture.workspace.id
+    ) as session:
+        await queue.enqueue(
+            session,
+            job_type="open_next_period",
+            logical_key=f"open_period:{fixture.workspace.id}:2026-10-11",
+            queue_class="calendar",
+            workspace_id=fixture.workspace.id,
+            payload={"local_date": "2026-10-11", "schema_version": 1},
+            correlation_id="a149",
+        )
+    jobs = await queue.claim_jobs(test_settings, queue_classes=("calendar",), limit=5)
+    job = next(item for item in jobs if item.job_type == "open_next_period")
+    await handle_open_next_period(test_settings, job)
+
+    async with session_scope(
+        test_settings, RuntimeRole.OWNER, workspace_id=fixture.workspace.id
+    ) as session:
+        periods = (
+            (
+                await session.execute(
+                    select(BudgetPeriod)
+                    .where(BudgetPeriod.workspace_id == fixture.workspace.id)
+                    .order_by(BudgetPeriod.start_date)
+                )
+            )
+            .scalars()
+            .all()
+        )
+    assert len(periods) == 2, "создан ровно один новый период"
+    assert periods[1].start_date == dt.date(2026, 10, 10)
