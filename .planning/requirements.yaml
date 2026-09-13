@@ -427,10 +427,12 @@
   title: "Возврат в следующем периоде"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
   verification:
+    - tests/integration/test_import_scenarios.py::test_a37_refund_in_next_period_reduces_current_line
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A38
   title: "Второй возврат приводит к превышению исходной покупки"
@@ -808,10 +810,13 @@
   title: "Повторяется номер 11 в столбце B"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
+    - src/fintracker/application/integrations/importer.py
   verification:
+    - tests/integration/test_import_scenarios.py::test_a70_same_row_number_does_not_merge_categories
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A71
   title: "Строка сдвинулась между листами"
@@ -917,10 +922,12 @@
   title: "Изменена ранее импортированная ячейка"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
   verification:
+    - tests/integration/test_import_scenarios.py::test_a80_changed_cell_creates_revision_not_sum
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A81
   title: "После предварительного просмотра импорт отменён"
@@ -974,10 +981,12 @@
   title: "Отчёт по группе и детализация"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
   verification:
+    - tests/integration/test_import_scenarios.py::test_a85_group_total_equals_sum_of_operations
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A86
   title: "AI называет сумму расхода"
@@ -1014,19 +1023,23 @@
   title: "Средний чек по истории дневных агрегатов"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
   verification:
+    - tests/integration/test_import_scenarios.py::test_a89_average_check_is_refused_on_aggregates
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A90
   title: "Достаточно данных для сравнения категорий"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
   verification:
+    - tests/integration/test_import_scenarios.py::test_a90_category_contribution_without_causality
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A91
   title: "История и счета неполные, вопрос «сколько могу потратить»"
@@ -2191,10 +2204,12 @@
   title: "Импорт дневного агрегата, в исходной строке стоит имя Софы"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
   verification:
+    - tests/integration/test_import_scenarios.py::test_a196_import_does_not_invent_spender
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A197
   title: "Автор общего комментария вышел из бюджета"

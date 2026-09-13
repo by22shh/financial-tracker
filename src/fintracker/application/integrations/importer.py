@@ -313,8 +313,15 @@ def _special_kind(label: str) -> str | None:
 
 
 def _category_name_for(label: str) -> str:
-    """Категория из исходной подписи; имена владельца сохраняются (A69, A75)."""
+    """Категория из исходной подписи; имена владельца сохраняются (A69, A75).
+
+    Ведущий номер строки источника категорией не является: одинаковый номер
+    в столбце B встречается у разных статей (A70, SOURCE_ANALYSIS §2).
+    """
     parts = [part.strip() for part in label.split("/") if part.strip()]
+    meaningful = [part for part in parts if not part.replace(".", "").isdigit()]
+    if meaningful:
+        return meaningful[0]
     return parts[0] if parts else label
 
 
