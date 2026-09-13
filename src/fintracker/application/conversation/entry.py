@@ -22,10 +22,10 @@ from fintracker.application.catalog.directory import resolve_person_alias
 from fintracker.application.catalog.normalize import normalize_name
 from fintracker.config import Settings
 from fintracker.core.context import ActorContext
-from fintracker.core.errors import NotFound, ValidationFailed
+from fintracker.core.errors import ConflictError, NotFound, ValidationFailed
 from fintracker.core.money import Money
 from fintracker.db.models.access import Beneficiary
-from fintracker.db.models.catalog import Category, ClassificationRule
+from fintracker.db.models.catalog import Category
 from fintracker.db.models.platform import Candidate, Draft
 from fintracker.db.uow import UnitOfWork
 from fintracker.domain.ledger.model import (
@@ -157,52 +157,27 @@ async def _match_category(
 ) -> tuple[uuid.UUID | None, str | None]:
     """Классификация по приоритету FR-23 без обращения к модели.
 
-    Порядок: подтверждённое персональное правило → общее правило бюджета →
-    точный алиас → совпадение названия категории.
+    Порядок: подтверждённое персональное правило в этом бюджете → общее
+    правило бюджета → точный алиас → совпадение названия категории.
     """
+    from fintracker.application.catalog.rules import classify
+
     normalized = normalize_name(text)
     if not normalized:
         return None, None
 
-    rules = (
-        (
-            await session.execute(
-                select(ClassificationRule)
-                .where(
-                    ClassificationRule.workspace_id == workspace_id,
-                    ClassificationRule.archived_at.is_(None),
-                )
-                .order_by(
-                    ClassificationRule.scope.desc(),
-                    ClassificationRule.specificity.desc(),
-                    ClassificationRule.priority,
-                )
-            )
+    try:
+        match = await classify(
+            session,
+            workspace_id=workspace_id,
+            membership_id=actor.membership_id,
+            text=text,
         )
-        .scalars()
-        .all()
-    )
-    for rule in rules:
-        if rule.scope == "member" and rule.owner_membership_id != actor.membership_id:
-            continue
-        keyword = str(rule.condition.get("contains", "")).strip()
-        if keyword and normalize_name(keyword) in normalized:
-            raw_category = rule.action.get("category_id")
-            if raw_category:
-                return uuid.UUID(str(raw_category)), "rule"
-
-    from fintracker.db.models.catalog import CategoryAlias
-
-    aliases = (
-        await session.execute(
-            select(CategoryAlias.normalized_alias, CategoryAlias.category_id).where(
-                CategoryAlias.workspace_id == workspace_id
-            )
-        )
-    ).all()
-    for alias, category_id in aliases:
-        if re.search(rf"(?<![а-яёa-z]){re.escape(alias)}", normalized):
-            return category_id, "alias"
+    except ConflictError:
+        # Конфликт одинаково приоритетных правил не разрешается случайно.
+        return None, "rule_conflict"
+    if match is not None:
+        return match.category_id, match.basis
 
     categories = (
         await session.execute(

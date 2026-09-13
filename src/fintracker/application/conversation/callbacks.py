@@ -198,6 +198,12 @@ async def dispatch_callback(
                 rest=rest,
                 user_id=user_id,
             )
+        case "set":
+            from fintracker.application.conversation.settings_flow import settings_action
+
+            return await settings_action(
+                settings, actor=actor, workspace=workspace, action=argument, rest=rest
+            )
         case "inv":
             return await _invite_action(settings, actor=actor, workspace=workspace, action=argument)
         case "rec":
@@ -233,6 +239,18 @@ async def _menu(
             return await sections.history_view(settings, actor=actor, workspace=workspace)
         case "analytics":
             return await report_view(settings, actor=actor, workspace=workspace)
+        case "review":
+            from fintracker.application.conversation.analytics_flow import weekly_review_view
+
+            return await weekly_review_view(settings, actor=actor, workspace=workspace)
+        case "summary":
+            from fintracker.application.conversation.analytics_flow import period_summary_view
+
+            return await period_summary_view(settings, actor=actor, workspace=workspace)
+        case "nextplan":
+            from fintracker.application.conversation.analytics_flow import next_plan_view
+
+            return await next_plan_view(settings, actor=actor, workspace=workspace)
         case "goals":
             return await goals_view(settings, actor=actor, workspace=workspace)
         case "members":
@@ -489,10 +507,14 @@ async def _fix_action(
     rest: list[str],
     user_id: uuid.UUID,
 ) -> list[Reply]:
-    from fintracker.application.conversation.corrections import apply_amount_correction
+    from fintracker.application.conversation.corrections import (
+        apply_amount_correction,
+        apply_category_correction,
+        remember_category_rule,
+    )
 
     workspace_id = actor.require_workspace()
-    if action != "apply" or len(rest) < 3:
+    if action not in {"apply", "cat", "rule"} or len(rest) < 2:
         return [Reply(text="Кнопка устарела.")]
     transaction_id = await _resolve_uuid(
         settings,
@@ -501,6 +523,41 @@ async def _fix_action(
         table="transactions",
         prefix=rest[0],
     )
+    if action == "rule":
+        category_id = await _resolve_uuid(
+            settings,
+            workspace_id=workspace_id,
+            user_id=user_id,
+            table="categories",
+            prefix=rest[1],
+        )
+        return await remember_category_rule(
+            settings,
+            actor=actor,
+            workspace=workspace,
+            transaction_id=transaction_id,
+            category_id=category_id,
+        )
+    if action == "cat":
+        if len(rest) < 3:
+            return [Reply(text="Кнопка устарела.")]
+        category_id = await _resolve_uuid(
+            settings,
+            workspace_id=workspace_id,
+            user_id=user_id,
+            table="categories",
+            prefix=rest[2],
+        )
+        return await apply_category_correction(
+            settings,
+            actor=actor,
+            workspace=workspace,
+            transaction_id=transaction_id,
+            expected_version=int(rest[1]),
+            category_id=category_id,
+        )
+    if len(rest) < 3:
+        return [Reply(text="Кнопка устарела.")]
     expected_version = int(rest[1])
     amount = int(rest[2]) if rest[2] != "-" else None
     date_iso = rest[3] if len(rest) > 3 and rest[3] != "-" else None

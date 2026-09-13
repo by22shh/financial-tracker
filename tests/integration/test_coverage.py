@@ -190,9 +190,7 @@ async def test_ar20_money_change_marks_reconciliation_stale_note_does_not(
         fixture.uow,
         actor=fixture.actor,
         transaction_id=posted.transaction_id,
-        new_spec=expense_spec(
-            fixture, amount=rub(800), category="Продукты", account="Карта"
-        ),
+        new_spec=expense_spec(fixture, amount=rub(800), category="Продукты", account="Карта"),
         expected_version=None,
     )
     await owner_session.refresh(row)

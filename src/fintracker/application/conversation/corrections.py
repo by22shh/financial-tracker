@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 
-from fintracker.application.conversation.keyboards import Button, callback
+from fintracker.application.conversation.keyboards import Button, callback, short
 from fintracker.application.conversation.types import IncomingMessage, Reply
 from fintracker.application.ledger.service import (
     load_current_spec,
@@ -39,6 +39,11 @@ _SIMPLE_CORRECTION = re.compile(
     r"испр(?:авь|ави)\s+(?P<old>\d[\d\s.,]*)\s+на\s+(?P<new>\d[\d\s.,]*)", re.IGNORECASE
 )
 _NOTE_ADD = re.compile(r"добавь\s+комментарий\s*[:\-—]?\s*(?P<note>.+)$", re.IGNORECASE | re.DOTALL)
+# «Перенеси в Продукты», «это Рестораны» — исправление категории (FR-27, FR-24).
+_CATEGORY_MOVE = re.compile(
+    r"(?:перенеси|отнеси|это|поставь|запиши)\s+(?:в|на|как)?\s*(?P<name>[^,.!?]{2,60})",
+    re.IGNORECASE,
+)
 
 
 async def try_handle_correction(
@@ -84,6 +89,11 @@ async def try_handle_correction(
             note=match.group("note").strip(),
             mode="append",
         )
+    moved = await _propose_category_move(
+        settings, actor=actor, workspace=workspace, transaction_id=target, text=text
+    )
+    if moved is not None:
+        return moved
     return await _propose_amount_or_date(
         settings, actor=actor, workspace=workspace, transaction_id=target, text=text
     )
@@ -454,3 +464,205 @@ async def apply_note(
     return await transaction_card_reply(
         settings, actor=actor, workspace=workspace, transaction_id=transaction_id
     )
+
+
+async def _match_category_name(
+    settings: Settings, *, actor: ActorContext, text: str
+) -> tuple[uuid.UUID, str] | None:
+    """Найти категорию по названию или синониму из текста исправления (FR-27)."""
+    from fintracker.application.catalog.categories import list_categories
+    from fintracker.application.catalog.normalize import normalize_name
+
+    workspace_id = actor.require_workspace()
+    match = _CATEGORY_MOVE.search(text)
+    if match is None:
+        return None
+    wanted = normalize_name(match.group("name"))
+    if not wanted:
+        return None
+    async with session_scope(
+        settings, RuntimeRole.API, user_id=actor.user_id, workspace_id=workspace_id
+    ) as session:
+        categories = await list_categories(session, workspace_id=workspace_id)
+    best: tuple[uuid.UUID, str] | None = None
+    for category in categories:
+        normalized = normalize_name(category.name)
+        if not normalized:
+            continue
+        matches = normalized == wanted or normalized in wanted
+        if matches and (best is None or len(normalized) > len(normalize_name(best[1]))):
+            best = (category.id, category.name)
+    return best
+
+
+async def _propose_category_move(
+    settings: Settings,
+    *,
+    actor: ActorContext,
+    workspace: Workspace,
+    transaction_id: uuid.UUID,
+    text: str,
+) -> list[Reply] | None:
+    """Показать перенос в другую категорию до применения (FR-27, FR-33)."""
+    target = await _match_category_name(settings, actor=actor, text=text)
+    if target is None:
+        return None
+    category_id, category_name = target
+
+    workspace_id = actor.require_workspace()
+    async with session_scope(
+        settings, RuntimeRole.API, user_id=actor.user_id, workspace_id=workspace_id
+    ) as session:
+        transaction, _revision, spec = await load_current_spec(
+            session, workspace_id=workspace_id, transaction_id=transaction_id
+        )
+        if len(spec.allocations) != 1:
+            return [
+                Reply(
+                    text=(
+                        "У операции несколько частей: откройте карточку и измените "
+                        "нужную часть отдельно."
+                    ),
+                    buttons=(
+                        (
+                            Button(
+                                "Открыть карточку", callback("tx", "open", transaction_id.hex[:16])
+                            ),
+                        ),
+                    ),
+                )
+            ]
+        current_category_id = spec.allocations[0].category_id
+        version = transaction.entity_version
+        current_name = "без категории"
+        if current_category_id is not None:
+            from fintracker.db.models.catalog import Category
+
+            row = (
+                await session.execute(
+                    select(Category.name).where(
+                        Category.workspace_id == workspace_id,
+                        Category.id == current_category_id,
+                    )
+                )
+            ).scalar_one_or_none()
+            current_name = row or current_name
+
+    if current_category_id == category_id:
+        return [Reply(text=f"Операция уже отнесена к статье «{category_name}».")]
+    return [
+        Reply(
+            text=(
+                f"Перенести запись: {current_name} → {category_name}?\n"
+                "Прошлые записи не переклассифицируются."
+            ),
+            buttons=(
+                (
+                    Button(
+                        "Подтвердить",
+                        callback(
+                            "fix", "cat", transaction_id.hex[:16], str(version), short(category_id)
+                        ),
+                    ),
+                    Button("Отмена", callback("noop", "x")),
+                ),
+            ),
+        )
+    ]
+
+
+async def apply_category_correction(
+    settings: Settings,
+    *,
+    actor: ActorContext,
+    workspace: Workspace,
+    transaction_id: uuid.UUID,
+    expected_version: int,
+    category_id: uuid.UUID,
+) -> list[Reply]:
+    """Применить перенос и предложить запомнить правило (FR-24, FR-27)."""
+    workspace_id = actor.require_workspace()
+    async with session_scope(
+        settings, RuntimeRole.API, user_id=actor.user_id, workspace_id=workspace_id
+    ) as session:
+        uow = UnitOfWork(session=session, correlation_id=actor.correlation_id)
+        await uow.lock_workspace(workspace_id)
+        _, revision, spec = await load_current_spec(
+            session, workspace_id=workspace_id, transaction_id=transaction_id
+        )
+        allocation = replace(spec.allocations[0], category_id=category_id)
+        await revise_transaction(
+            session,
+            uow,
+            actor=actor,
+            transaction_id=transaction_id,
+            new_spec=replace(spec, allocations=(allocation,)),
+            expected_version=expected_version,
+        )
+        keyword = (revision.merchant or revision.description or revision.note or "").strip()
+
+    from fintracker.application.conversation.sections import transaction_card_reply
+
+    replies = await transaction_card_reply(
+        settings, actor=actor, workspace=workspace, transaction_id=transaction_id
+    )
+    if not keyword:
+        return replies
+    # Однократная покупка не переназначает прошлые расходы (FR-24).
+    offer = Reply(
+        text=(
+            f"Всегда относить «{keyword}» к статье этой записи?\n"
+            "Правило подействует только для новых записей."
+        ),
+        buttons=(
+            (
+                Button(
+                    "Всегда сюда",
+                    callback("fix", "rule", transaction_id.hex[:16], short(category_id)),
+                ),
+                Button("Только эту", callback("noop", "x")),
+            ),
+        ),
+    )
+    return [*replies, offer]
+
+
+async def remember_category_rule(
+    settings: Settings,
+    *,
+    actor: ActorContext,
+    workspace: Workspace,
+    transaction_id: uuid.UUID,
+    category_id: uuid.UUID,
+) -> list[Reply]:
+    """Сохранить личное правило по ключевому слову записи (FR-24, CMD-27)."""
+    from fintracker.application.catalog.rules import learn_from_correction
+
+    workspace_id = actor.require_workspace()
+    async with session_scope(
+        settings, RuntimeRole.API, user_id=actor.user_id, workspace_id=workspace_id
+    ) as session:
+        uow = UnitOfWork(session=session, correlation_id=actor.correlation_id)
+        _, revision, _ = await load_current_spec(
+            session, workspace_id=workspace_id, transaction_id=transaction_id
+        )
+        keyword = (revision.merchant or revision.description or revision.note or "").strip()
+        if not keyword:
+            return [Reply(text="Не удалось определить условие правила.")]
+        rule = await learn_from_correction(
+            session,
+            uow,
+            actor=actor,
+            keyword=keyword,
+            category_id=category_id,
+        )
+    return [
+        Reply(
+            text=(
+                f"Запомнил: «{rule.keyword}» → {rule.category_name}.\n"
+                "Правило личное и действует только для новых записей. "
+                "Изменить можно в разделе «Мои настройки»."
+            ),
+            buttons=((Button("Мои правила", callback("set", "rules")),),),
+        )
+    ]

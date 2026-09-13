@@ -166,6 +166,18 @@ async def _handle_command(
             from fintracker.application.conversation.analytics_flow import report_view
 
             return await report_view(settings, actor=actor, workspace=workspace)
+        case "/review":
+            from fintracker.application.conversation.analytics_flow import weekly_review_view
+
+            return await weekly_review_view(settings, actor=actor, workspace=workspace)
+        case "/summary":
+            from fintracker.application.conversation.analytics_flow import period_summary_view
+
+            return await period_summary_view(settings, actor=actor, workspace=workspace)
+        case "/plan":
+            from fintracker.application.conversation.analytics_flow import next_plan_view
+
+            return await next_plan_view(settings, actor=actor, workspace=workspace)
         case "/members":
             return await sections.members_view(settings, actor=actor, workspace=workspace)
         case "/goals":

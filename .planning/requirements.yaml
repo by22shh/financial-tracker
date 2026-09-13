@@ -231,6 +231,7 @@
   status: verified
   implementation:
     - src/fintracker/application/conversation/media.py
+    - src/fintracker/application/identity/preferences.py
   verification:
     - tests/acceptance/test_input_guards.py::test_a21_long_voice_rejected_before_paid_processing
   evidence:
@@ -714,11 +715,15 @@
   title: "Отключены уведомления конкретной категории"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
+    - src/fintracker/application/identity/preferences.py
     - src/fintracker/application/integrations/importer.py
   verification:
+    - tests/acceptance/test_settings_and_rules.py::test_personal_settings_do_not_affect_other_member
+    - tests/integration/test_rules_and_preferences.py::test_notification_family_is_personal
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A66
   title: "Пользователь заблокировал бота"
@@ -1713,8 +1718,9 @@
   title: "U2 отключил уведомления о чужих тратах"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: planned
+  status: implemented
   implementation:
+    - src/fintracker/application/identity/preferences.py
   verification:
   evidence:
 
@@ -2486,6 +2492,7 @@
   status: implemented
   implementation:
     - src/fintracker/application/analytics/coverage.py
+    - src/fintracker/application/analytics/reviews.py
     - src/fintracker/application/catalog/directory.py
     - src/fintracker/application/ledger/service.py
     - src/fintracker/application/planning/plan.py
@@ -3565,19 +3572,32 @@
   title: "GET/PATCH /my/notification-preferences,/my/input-preferences"
   source: docs/DATA_CONTRACT.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
+    - src/fintracker/application/conversation/settings_flow.py
+    - src/fintracker/application/identity/preferences.py
   verification:
+    - tests/acceptance/test_settings_and_rules.py::test_input_preferences_toggle
+    - tests/acceptance/test_settings_and_rules.py::test_personal_settings_open_and_toggle
+    - tests/integration/test_rules_and_preferences.py::test_input_preferences_are_per_member
+    - tests/integration/test_rules_and_preferences.py::test_notification_family_validation_and_conflict
   evidence:
+    - .planning/evidence/latest.json
 
 - id: CMD-27
   title: "GET/POST /classification-rules; PATCH /classification-rules/{id}; POST /classification-rules/{id}/archive"
   source: docs/DATA_CONTRACT.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
+    - src/fintracker/application/catalog/rules.py
+    - src/fintracker/application/conversation/corrections.py
+    - src/fintracker/application/conversation/settings_flow.py
   verification:
+    - tests/acceptance/test_settings_and_rules.py::test_rule_can_be_removed
+    - tests/integration/test_rules_and_preferences.py::test_archived_rule_stops_matching
   evidence:
+    - .planning/evidence/latest.json
 
 - id: CMD-28
   title: "POST /imports/preview; GET /imports/{id}; POST /imports/{id}/commit,/revert"
@@ -3604,19 +3624,29 @@
   title: "PATCH /settings"
   source: docs/DATA_CONTRACT.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
+    - src/fintracker/application/conversation/settings_flow.py
+    - src/fintracker/application/identity/preferences.py
   verification:
+    - tests/integration/test_rules_and_preferences.py::test_currency_change_refused_when_money_exists
+    - tests/integration/test_rules_and_preferences.py::test_workspace_settings_require_admin
   evidence:
+    - .planning/evidence/latest.json
 
 - id: CMD-31
   title: "global GET/PATCH /v1/me; POST /v1/me/deletion-preview,/delete"
   source: docs/DATA_CONTRACT.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
+    - src/fintracker/application/conversation/settings_flow.py
+    - src/fintracker/application/identity/preferences.py
   verification:
+    - tests/acceptance/test_settings_and_rules.py::test_account_deletion_blocked_for_admin
+    - tests/acceptance/test_settings_and_rules.py::test_account_deletion_for_plain_member
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-01
   title: "Идентификация"
@@ -3655,6 +3685,7 @@
   stage: P0
   status: implemented
   implementation:
+    - src/fintracker/application/catalog/rules.py
     - src/fintracker/application/identity/membership.py
   verification:
   evidence:
@@ -3828,12 +3859,17 @@
   title: "Однозначный ввод"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/conversation/service.py
+    - src/fintracker/application/conversation/settings_flow.py
+    - src/fintracker/application/identity/preferences.py
     - src/fintracker/application/intelligence/media_pipeline.py
   verification:
+    - tests/acceptance/test_settings_and_rules.py::test_input_preferences_toggle
+    - tests/integration/test_rules_and_preferences.py::test_input_preferences_are_per_member
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-20
   title: "Черновики"
@@ -3879,22 +3915,34 @@
   title: "Правила"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
+    - src/fintracker/application/catalog/rules.py
     - src/fintracker/application/conversation/entry.py
     - src/fintracker/db/models/catalog.py
   verification:
+    - tests/integration/test_rules_and_preferences.py::test_equally_specific_conflict_is_refused
+    - tests/integration/test_rules_and_preferences.py::test_member_rule_beats_workspace_rule
+    - tests/integration/test_rules_and_preferences.py::test_more_specific_rule_wins_inside_level
+    - tests/integration/test_rules_and_preferences.py::test_rule_beats_alias_and_alias_beats_nothing
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-24
   title: "Обучение на исправлениях"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
+    - src/fintracker/application/catalog/rules.py
+    - src/fintracker/application/conversation/corrections.py
     - src/fintracker/db/models/catalog.py
   verification:
+    - tests/acceptance/test_settings_and_rules.py::test_category_correction_offers_rule
+    - tests/integration/test_rules_and_preferences.py::test_learning_does_not_reclassify_past
+    - tests/integration/test_rules_and_preferences.py::test_rule_for_archived_category_is_refused
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-25
   title: "Без категории"
@@ -3928,12 +3976,15 @@
   title: "Периоды"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
+    - src/fintracker/application/conversation/corrections.py
     - src/fintracker/core/calendar.py
     - src/fintracker/db/models/planning.py
   verification:
+    - tests/acceptance/test_settings_and_rules.py::test_category_correction_offers_rule
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-28
   title: "Переводы"
@@ -4081,6 +4132,7 @@
   status: implemented
   implementation:
     - src/fintracker/application/analytics/reports.py
+    - src/fintracker/application/analytics/reviews.py
   verification:
   evidence:
 
@@ -4088,10 +4140,16 @@
   title: "Ранний риск"
   source: docs/TZ.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
+    - src/fintracker/application/analytics/reviews.py
   verification:
+    - tests/integration/test_reviews.py::test_early_risk_needs_enough_observed_days
+    - tests/integration/test_reviews.py::test_early_risk_skips_unset_zero_and_protected_limits
+    - tests/integration/test_reviews.py::test_early_risk_threshold_is_configurable
+    - tests/integration/test_reviews.py::test_early_risk_triggers_above_both_thresholds
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-43
   title: "Условия расчёта"
@@ -4210,41 +4268,63 @@
   title: "Частота и тихие часы"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/conversation/types.py
     - src/fintracker/application/delivery/dispatch.py
+    - src/fintracker/application/identity/preferences.py
     - src/fintracker/db/models/platform.py
   verification:
+    - tests/acceptance/test_settings_and_rules.py::test_quiet_hours_preset
+    - tests/integration/test_rules_and_preferences.py::test_quiet_hours_saved_in_personal_timezone
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-54
   title: "Управление"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
+    - src/fintracker/application/conversation/settings_flow.py
+    - src/fintracker/application/identity/preferences.py
     - src/fintracker/db/models/access.py
   verification:
+    - tests/acceptance/test_settings_and_rules.py::test_personal_settings_do_not_affect_other_member
+    - tests/integration/test_rules_and_preferences.py::test_notification_family_is_personal
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-55
   title: "Недельный обзор"
   source: docs/TZ.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
+    - src/fintracker/application/analytics/reviews.py
+    - src/fintracker/application/conversation/analytics_flow.py
   verification:
+    - tests/acceptance/test_reviews_flow.py::test_help_lists_review_commands
+    - tests/acceptance/test_reviews_flow.py::test_weekly_review_available_by_command_and_button
+    - tests/integration/test_reviews.py::test_weekly_review_has_required_sections
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-56
   title: "Итог периода"
   source: docs/TZ.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
+    - src/fintracker/application/analytics/reviews.py
+    - src/fintracker/application/conversation/analytics_flow.py
   verification:
+    - tests/acceptance/test_reviews_flow.py::test_help_lists_review_commands
+    - tests/acceptance/test_reviews_flow.py::test_period_summary_and_next_plan
+    - tests/integration/test_reviews.py::test_period_summary_does_not_call_leftovers_savings
+    - tests/integration/test_reviews.py::test_period_summary_separates_income_and_other_flows
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-57
   title: "Набор отчётов P0"
@@ -4271,10 +4351,15 @@
   title: "Объяснение изменений"
   source: docs/TZ.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
+    - src/fintracker/application/analytics/reports.py
+    - src/fintracker/application/analytics/reviews.py
   verification:
+    - tests/integration/test_reviews.py::test_explain_changes_separates_count_and_average
+    - tests/integration/test_reviews.py::test_explain_changes_without_counts_for_aggregates
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-60
   title: "Проценты и сравнение"
@@ -4290,10 +4375,18 @@
   title: "Мастер плана"
   source: docs/TZ.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
+    - src/fintracker/application/analytics/reviews.py
+    - src/fintracker/application/conversation/analytics_flow.py
   verification:
+    - tests/acceptance/test_reviews_flow.py::test_period_summary_and_next_plan
+    - tests/acceptance/test_reviews_flow.py::test_plan_command_keeps_income_and_balance_separate
+    - tests/integration/test_reviews.py::test_next_period_draft_reports_deficit
+    - tests/integration/test_reviews.py::test_next_period_draft_shows_balance_apart_from_income
+    - tests/integration/test_reviews.py::test_next_period_draft_without_income_basis
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-62
   title: "Ограничения"
@@ -4467,6 +4560,7 @@
   status: implemented
   implementation:
     - src/fintracker/application/conversation/analytics_flow.py
+    - src/fintracker/application/identity/preferences.py
     - src/fintracker/application/intelligence/analysis.py
     - src/fintracker/db/models/intelligence.py
   verification:
@@ -4644,6 +4738,7 @@
   status: verified
   implementation:
     - src/fintracker/application/conversation/onboarding_flow.py
+    - src/fintracker/application/conversation/settings_flow.py
     - src/fintracker/application/onboarding/wizard.py
     - src/fintracker/core/calendar.py
     - src/fintracker/db/models/planning.py
@@ -4669,6 +4764,7 @@
   stage: P0
   status: implemented
   implementation:
+    - src/fintracker/application/conversation/analytics_flow.py
     - src/fintracker/application/conversation/context.py
     - src/fintracker/application/planning/periods.py
     - src/fintracker/application/planning/rollover.py
@@ -5286,8 +5382,9 @@
   title: "Порог раннего риска max(500 ₽, 10% лимита)"
   source: docs/TZ.md §10–11, §9.1.1
   stage: P0
-  status: planned
+  status: implemented
   implementation:
+    - src/fintracker/application/analytics/reviews.py
   verification:
   evidence:
 
@@ -5423,11 +5520,14 @@
   title: "Тихие часы 22:00–09:00 в личном поясе"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/delivery/dispatch.py
+    - src/fintracker/application/identity/preferences.py
   verification:
+    - tests/integration/test_rules_and_preferences.py::test_quiet_hours_saved_in_personal_timezone
   evidence:
+    - .planning/evidence/latest.json
 
 - id: LIM-08
   title: "Атомарный пакет импорта/слияния <= 5000 операций"

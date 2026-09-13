@@ -77,6 +77,10 @@ async def report_view(
                     Button("Рекомендации", callback("rec", "list")),
                     Button("Категории", callback("menu", "categories")),
                 ),
+                (
+                    Button("Обзор недели", callback("menu", "review")),
+                    Button("Итог периода", callback("menu", "summary")),
+                ),
                 (Button("← Меню", callback("menu", "main")),),
             ),
         )
@@ -310,3 +314,91 @@ async def recommendation_action(
         ),
     }
     return [Reply(text=texts[decision])]
+
+
+async def weekly_review_view(
+    settings: Settings, *, actor: ActorContext, workspace: Workspace
+) -> list[Reply]:
+    """Недельный обзор по запросу (FR-55)."""
+    from fintracker.application.analytics.reviews import build_weekly_review
+
+    workspace_id = actor.require_workspace()
+    today = dt.datetime.now(ZoneInfo(workspace.timezone)).date()
+    async with session_scope(
+        settings, RuntimeRole.API, user_id=actor.user_id, workspace_id=workspace_id
+    ) as session:
+        review = await build_weekly_review(session, workspace=workspace, today=today)
+    return [
+        Reply(
+            text=review.render(),
+            buttons=(
+                (
+                    Button("Итог периода", callback("menu", "summary")),
+                    Button("Отчёт", callback("menu", "analytics")),
+                ),
+                (Button("← Меню", callback("menu", "main")),),
+            ),
+        )
+    ]
+
+
+async def period_summary_view(
+    settings: Settings, *, actor: ActorContext, workspace: Workspace
+) -> list[Reply]:
+    """Итог текущего периода с разделением потоков (FR-56)."""
+    from fintracker.application.analytics.reviews import build_period_summary
+
+    workspace_id = actor.require_workspace()
+    today = dt.datetime.now(ZoneInfo(workspace.timezone)).date()
+    async with session_scope(
+        settings, RuntimeRole.API, user_id=actor.user_id, workspace_id=workspace_id
+    ) as session:
+        period = await period_for_date(session, workspace_id=workspace_id, day=today)
+        summary = await build_period_summary(
+            session, workspace=workspace, period_id=period.id, today=today
+        )
+    return [
+        Reply(
+            text=summary.render(),
+            buttons=(
+                (
+                    Button("План на следующий", callback("menu", "nextplan")),
+                    Button("Обзор недели", callback("menu", "review")),
+                ),
+                (Button("← Меню", callback("menu", "main")),),
+            ),
+        )
+    ]
+
+
+async def next_plan_view(
+    settings: Settings, *, actor: ActorContext, workspace: Workspace
+) -> list[Reply]:
+    """Проект плана следующего периода с основаниями строк (FR-61)."""
+    from fintracker.application.analytics.reviews import build_next_period_draft
+
+    workspace_id = actor.require_workspace()
+    today = dt.datetime.now(ZoneInfo(workspace.timezone)).date()
+    async with session_scope(
+        settings, RuntimeRole.API, user_id=actor.user_id, workspace_id=workspace_id
+    ) as session:
+        current = await period_for_date(session, workspace_id=workspace_id, day=today)
+        # Следующий период материализуется тем же вызовом (FR-92).
+        following = await period_for_date(
+            session, workspace_id=workspace_id, day=current.end_exclusive
+        )
+        draft = await build_next_period_draft(
+            session, workspace=workspace, period_id=following.id, today=today
+        )
+    return [
+        Reply(
+            text=draft.render(workspace.currency),
+            buttons=(
+                (
+                    Button("Перенести остатки", callback("menu", "budget")),
+                    Button("Изменить лимиты", callback("menu", "categories")),
+                ),
+                (Button("← Меню", callback("menu", "main")),),
+            ),
+        )
+    ]

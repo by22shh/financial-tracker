@@ -51,6 +51,10 @@ class SpendingRow:
     beneficiary_id: uuid.UUID | None
     amount_minor: int
     transaction_count: int
+    # Количество отдельных операций и признак агрегата (FR-59): по дневным и
+    # периодным агрегатам количество покупок не восстанавливается.
+    individual_count: int = 0
+    has_aggregate: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -176,6 +180,7 @@ async def spending_report(
             Allocation.amount_minor,
             Allocation.transaction_id,
             TransactionRevision.amount_minor.label("transaction_total"),
+            TransactionRevision.granularity,
         )
         .join(
             Transaction,
@@ -209,6 +214,8 @@ async def spending_report(
 
     grouped: dict[tuple[uuid.UUID | None, uuid.UUID | None], int] = {}
     transactions: dict[tuple[uuid.UUID | None, uuid.UUID | None], set[uuid.UUID]] = {}
+    individual: dict[tuple[uuid.UUID | None, uuid.UUID | None], set[uuid.UUID]] = {}
+    aggregated: set[tuple[uuid.UUID | None, uuid.UUID | None]] = set()
     matched_transactions: dict[uuid.UUID, int] = {}
     total = 0
     uncategorized = 0
@@ -223,6 +230,10 @@ async def spending_report(
             key = (row.category_id, row.beneficiary_id)
         grouped[key] = grouped.get(key, 0) + signed
         transactions.setdefault(key, set()).add(row.transaction_id)
+        if row.granularity == "individual":
+            individual.setdefault(key, set()).add(row.transaction_id)
+        else:
+            aggregated.add(key)
         matched_transactions[row.transaction_id] = row.transaction_total
         total += signed
         if row.category_id is None:
@@ -236,6 +247,8 @@ async def spending_report(
             beneficiary_id=key[1],
             amount_minor=amount,
             transaction_count=len(transactions.get(key, set())),
+            individual_count=len(individual.get(key, set())),
+            has_aggregate=key in aggregated,
         )
         for key, amount in sorted(grouped.items(), key=lambda item: -item[1])
     )
