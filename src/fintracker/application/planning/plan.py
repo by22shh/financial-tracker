@@ -656,3 +656,158 @@ async def reallocate_limit(
         actor_user_id=actor.user_id,
     )
     return created
+
+
+async def change_line_limit(
+    session: AsyncSession,
+    uow: UnitOfWork,
+    *,
+    actor: ActorContext,
+    period_id: uuid.UUID,
+    stable_line_id: uuid.UUID,
+    new_limit_minor: int | None,
+    expected_version: int,
+    scope: str = "period",
+) -> BudgetVersion:
+    """Изменить лимит строки в этом периоде или в шаблоне (FR-33, FR-93, A219).
+
+    ``scope="period"`` меняет только текущий период: шаблон и будущие планы
+    остаются прежними. ``scope="template"`` создаёт новую версию шаблона с
+    сохранённым автором — её действие начинается со следующей границы.
+    """
+    workspace_id = actor.require_workspace()
+    if scope not in {"period", "template"}:
+        raise ValidationFailed("Область изменения должна быть period или template")
+    if new_limit_minor is not None and new_limit_minor < 0:
+        raise ValidationFailed("Лимит не может быть отрицательным")
+    if scope == "template" and not actor.is_admin:
+        from fintracker.core.errors import PermissionDenied
+
+        raise PermissionDenied("Изменение шаблона выполняет администратор бюджета")
+
+    version = await current_budget_version(session, workspace_id=workspace_id, period_id=period_id)
+    if version is None:
+        raise NotFound("План периода не найден")
+    uow.check_expected_version(version.version, expected_version, label="План периода")
+
+    rows = (
+        (
+            await session.execute(
+                select(BudgetLine).where(
+                    BudgetLine.workspace_id == workspace_id,
+                    BudgetLine.budget_version_id == version.id,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if all(row.stable_line_id != stable_line_id for row in rows):
+        raise NotFound("Строка плана не найдена")
+
+    payload = [
+        PlanLineSpec(
+            category_id=row.category_id,
+            beneficiary_id=row.beneficiary_id,
+            limit_minor=(
+                new_limit_minor if row.stable_line_id == stable_line_id else row.limit_minor
+            ),
+            rollover_mode=row.rollover_mode,
+            is_protected=row.is_protected,
+            stable_line_id=row.stable_line_id,
+        )
+        for row in rows
+    ]
+    updated = await create_budget_version(
+        session,
+        workspace_id=workspace_id,
+        period_id=period_id,
+        kind="working",
+        plan_status="approved",
+        origin="manual",
+        lines=payload,
+        overall_limit_minor=version.overall_limit_minor,
+        approved_by=actor.user_id,
+        reason=(
+            "Изменение лимита в текущем периоде"
+            if scope == "period"
+            else "Изменение лимита с обновлением шаблона"
+        ),
+    )
+    await uow.bump_revisions(workspace_id, plan=True)
+
+    if scope == "template":
+        await _update_template_line(
+            session,
+            workspace_id=workspace_id,
+            actor=actor,
+            stable_line_id=stable_line_id,
+            new_limit_minor=new_limit_minor,
+            lines=payload,
+        )
+    return updated
+
+
+async def _update_template_line(
+    session: AsyncSession,
+    *,
+    workspace_id: uuid.UUID,
+    actor: ActorContext,
+    stable_line_id: uuid.UUID,
+    new_limit_minor: int | None,
+    lines: list[PlanLineSpec],
+) -> None:
+    """Новая версия шаблона с сохранённым автором (FR-93, A219)."""
+    import datetime as dt
+
+    from fintracker.db.models.planning import RecurringPlanTemplate
+
+    current = (
+        await session.execute(
+            select(RecurringPlanTemplate)
+            .where(RecurringPlanTemplate.workspace_id == workspace_id)
+            .order_by(
+                RecurringPlanTemplate.effective_from.desc(),
+                RecurringPlanTemplate.version.desc(),
+            )
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if current is None:
+        return
+    payload: list[dict[str, object]] = []
+    for raw in current.lines:
+        if not isinstance(raw, dict):
+            continue
+        item = dict(raw)
+        matching = next(
+            (
+                spec
+                for spec in lines
+                if spec.stable_line_id == stable_line_id
+                and str(spec.category_id) == str(item.get("category_id"))
+                and str(spec.beneficiary_id or "") == str(item.get("beneficiary_id") or "")
+            ),
+            None,
+        )
+        if matching is not None:
+            item["limit_minor"] = new_limit_minor
+        payload.append(item)
+
+    current.superseded_at = dt.datetime.now(dt.UTC)
+    session.add(
+        RecurringPlanTemplate(
+            workspace_id=workspace_id,
+            version=current.version + 1,
+            enabled=current.enabled,
+            # Новая версия действует со следующей границы, текущий период
+            # задним числом не переписывается (FR-93).
+            effective_from=dt.date.today(),
+            approval_actor_id=actor.user_id,
+            lines=payload,
+            income_rule=dict(current.income_rule),
+            goal_rules=list(current.goal_rules),
+            overall_limit_minor=current.overall_limit_minor,
+        )
+    )
+    await session.flush()

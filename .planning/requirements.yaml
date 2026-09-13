@@ -764,10 +764,12 @@
   title: "Расчётный период начинается 10-го"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
   verification:
+    - tests/integration/test_plan_scenarios.py::test_a67_plan_is_anchored_to_period_start
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A68
   title: "Разбор двух листов"
@@ -1595,28 +1597,34 @@
   title: "Ввести примерный доход или диапазон"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
   verification:
+    - tests/integration/test_plan_scenarios.py::test_a145_income_estimate_keeps_its_precision
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A146
   title: "Общий план 100 000 ₽ детализировать на источники 60 000 и 40 000 ₽"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
   verification:
+    - tests/integration/test_plan_scenarios.py::test_a146_detailed_sources_do_not_double_income
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A147
   title: "В мастере лимит продуктов 20 000 ₽ и будущая аренда 40 000 ₽"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
   verification:
+    - tests/integration/test_plan_scenarios.py::test_a147_limit_is_not_a_purchase
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A148
   title: "Завершить настройку с лимитами выше ресурса или без заданного дохода"
@@ -2360,10 +2368,12 @@
   title: "Период 10–23 сентября; зарплата по расписанию 60 000 ₽ 10-го и 40 000 ₽ 25-го"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
   verification:
+    - tests/integration/test_plan_scenarios.py::test_a216_income_belongs_to_its_period
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A217
   title: "Для 14 дней известен только месячный доход 100 000 ₽ без дат и правила распределения"
@@ -2390,19 +2400,24 @@
   title: "Изменить лимит 15 000 на 17 000 только в текущем периоде, затем выбрать отдельную правку «Этот и следующие»"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
+    - src/fintracker/application/planning/plan.py
   verification:
+    - tests/integration/test_plan_scenarios.py::test_a219_period_change_does_not_touch_template
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A220
   title: "Шаблонный лимит 15 000 ₽, утверждённый перенос 500 ₽"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
   verification:
+    - tests/integration/test_plan_scenarios.py::test_a220_rollover_does_not_change_template_limit
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A221
   title: "Отключить повторение плана и дождаться границы"
@@ -2420,10 +2435,12 @@
   title: "При автоматическом повторении обнаружен новый дефицит или AI предлагает другие суммы"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
   verification:
+    - tests/integration/test_plan_scenarios.py::test_a222_deficit_marks_plan_for_review
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A223
   title: "Создать бюджет с первым началом в будущем и попытаться записать сегодняшнюю покупку"
@@ -2452,10 +2469,12 @@
   title: "Обычный участник меняет календарь либо финансовый шаблон"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
   verification:
+    - tests/integration/test_plan_scenarios.py::test_a225_member_cannot_change_template
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A226
   title: "Две правки календаря и открытие периода конкурируют"
@@ -4200,6 +4219,7 @@
   implementation:
     - src/fintracker/application/conversation/corrections.py
     - src/fintracker/application/ledger/service.py
+    - src/fintracker/application/planning/plan.py
   verification:
   evidence:
 
@@ -4949,6 +4969,7 @@
   status: verified
   implementation:
     - src/fintracker/application/planning/periods.py
+    - src/fintracker/application/planning/plan.py
     - src/fintracker/application/planning/rollover.py
     - src/fintracker/db/models/planning.py
   verification:

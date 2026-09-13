@@ -185,8 +185,13 @@ async def upcoming_payments(
     today: dt.date,
     horizon_days: int = 30,
     currency: str = "RUB",
+    direction: str = "payment",
 ) -> list[UpcomingPayment]:
-    """Ближайшие и просроченные обязательства (FR-45, B1)."""
+    """Ближайшие и просроченные экземпляры расписания (FR-45, FR-47, B1).
+
+    ``direction`` разделяет обязательства и ожидаемые доходы: зарплата имеет
+    собственные экземпляры ожиданий и не смешивается с платежами (FR-47).
+    """
     rows = (
         await session.execute(
             select(Occurrence, ScheduledItem.name, ScheduleVersion.category_id)
@@ -205,7 +210,7 @@ async def upcoming_payments(
                 Occurrence.workspace_id == workspace_id,
                 Occurrence.state.in_(("planned", "partially_settled")),
                 Occurrence.due_date <= today + dt.timedelta(days=horizon_days),
-                ScheduledItem.direction == "payment",
+                ScheduledItem.direction == direction,
             )
             .order_by(Occurrence.due_date, Occurrence.id)
         )
