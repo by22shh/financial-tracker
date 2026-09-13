@@ -19,7 +19,7 @@ async def _post(user: BotUser, text: str) -> None:
 
 
 async def test_a156_link_and_manual_code_give_same_path(bot: None, test_settings: Settings) -> None:
-    """A156: ссылка приглашения и ручной ввод кода дают одинаковые полномочия."""
+    """CMD-04, CMD-05, A156: ссылка приглашения и ручной ввод кода дают одинаковые полномочия."""
     admin = make_user(test_settings, 914001)
     await create_budget(admin, name="Общий бюджет")
     first_code = await issue_invite_code(admin)
@@ -41,7 +41,7 @@ async def test_a156_link_and_manual_code_give_same_path(bot: None, test_settings
 
 
 async def test_a165_a166_context_is_pinned_at_receipt(bot: None, test_settings: Settings) -> None:
-    """A165, A166: переключение бюджета не переносит уже принятое сообщение."""
+    """CMD-03, A165, A166: переключение бюджета не переносит уже принятое сообщение."""
     user = make_user(test_settings, 914010)
     await create_budget(user, name="Первый бюджет")
     await _post(user, "продукты 500")
@@ -133,7 +133,7 @@ async def test_a197_note_author_survives_leaving(bot: None, test_settings: Setti
 
 
 async def test_a174_stale_admin_transfer_is_not_applied(bot: None, test_settings: Settings) -> None:
-    """A174: устаревшее предложение передачи роли не исполняется."""
+    """CMD-07, A174: устаревшее предложение передачи роли не исполняется."""
     from fintracker.application.identity.actor import ensure_user, get_active_workspace_id
     from fintracker.application.identity.membership import (
         accept_admin_transfer,

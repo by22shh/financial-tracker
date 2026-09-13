@@ -97,7 +97,7 @@ async def _complete_fixture(session: AsyncSession, **kwargs):
 async def test_a128_repeated_task_creates_one_run(
     clean_db: None, ai_settings: Settings, owner_session: AsyncSession
 ) -> None:
-    """A128: доставленная дважды задача даёт один логический обзор."""
+    """CMD-23, A128: доставленная дважды задача даёт один логический обзор."""
     fixture = await _complete_fixture(owner_session)
     provider = ScriptedAIProvider(responses=[recommendation_json()])
     set_provider_override(provider)
@@ -249,7 +249,7 @@ async def test_a93_no_ai_key_keeps_report(
 async def test_ai08_card_without_metric_reference_is_rejected(
     clean_db: None, ai_settings: Settings, owner_session: AsyncSession
 ) -> None:
-    """AI-08: карточка без ссылки на показатель снимка не доставляется."""
+    """ADR-09, AI-06, AI-08: карточка без ссылки на показатель снимка не доставляется."""
     fixture = await _complete_fixture(owner_session)
     _, metrics = await build_snapshot_row(
         owner_session, workspace=fixture.workspace, period_id=fixture.period.id, today=TODAY
@@ -481,7 +481,7 @@ async def test_a133_correction_marks_recommendation_stale(
 async def test_a134_muted_direction_is_not_offered(
     clean_db: None, ai_settings: Settings, owner_session: AsyncSession
 ) -> None:
-    """A134: отключённое направление не предлагается, лимиты продолжают работать."""
+    """CMD-25, A134: отключённое направление не предлагается, лимиты продолжают работать."""
     fixture = await _complete_fixture(owner_session)
     _, metrics = await build_snapshot_row(
         owner_session, workspace=fixture.workspace, period_id=fixture.period.id, today=TODAY

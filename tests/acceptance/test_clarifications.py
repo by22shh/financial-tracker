@@ -15,7 +15,7 @@ pytestmark = [pytest.mark.pg, requires_pg]
 async def test_bare_amount_answers_the_single_open_question(
     bot: None, test_settings: Settings
 ) -> None:
-    """AR-06: при одном открытом вопросе «500» отвечает именно на него."""
+    """CMD-10, AR-06: при одном открытом вопросе «500» отвечает именно на него."""
     user = make_user(test_settings, 913001)
     await create_budget(user)
     await user.send("Купил продукты")

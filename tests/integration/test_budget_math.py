@@ -102,7 +102,7 @@ async def _add_commitment(
 
 
 async def test_b1_remaining_and_future_payment(owner_session: AsyncSession) -> None:
-    """B1: лимит 10000, покупки 6000, возврат 1000, обязательство 2000."""
+    """FORM-01, FR-35, B1: лимит 10000, покупки 6000, возврат 1000, обязательство 2000."""
     fixture = await build_fixture(owner_session, limits={"Продукты": 1_000_000})
     purchase = await post_transaction(
         owner_session,
@@ -158,7 +158,7 @@ async def test_b1_remaining_and_future_payment(owner_session: AsyncSession) -> N
 
 
 async def test_b2_zero_and_unset_limit(owner_session: AsyncSession) -> None:
-    """B2: нулевой и незаданный лимит различаются; процент не считается."""
+    """FORM-02, FR-08, B2: нулевой и незаданный лимит различаются; процент не считается."""
     fixture = await build_fixture(owner_session, limits={"Продукты": 0, "Рестораны": None})
     await post_transaction(
         owner_session,
@@ -295,7 +295,7 @@ async def test_b3_group_and_beneficiaries_counted_once(owner_session: AsyncSessi
 
 
 async def test_b4_baseline_versus_working_plan(owner_session: AsyncSession) -> None:
-    """B4: превышение исходного плана видно после повышения текущего лимита."""
+    """FR-37, CMD-19, B4: превышение исходного плана видно после повышения текущего лимита."""
     fixture = await build_fixture(owner_session, limits={"Рестораны": 500_000})
     await post_transaction(
         owner_session,

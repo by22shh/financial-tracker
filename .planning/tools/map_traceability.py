@@ -89,11 +89,41 @@ def scan_extra() -> dict[str, set[str]]:
     return found
 
 
+def acceptance_links() -> dict[str, set[str]]:
+    """Связь сценария приёмки с требованиями из колонки «Связь с ТЗ».
+
+    Проверенный сценарий является доказательством для требований, к которым
+    он привязан документом приёмки, а не только для собственного идентификатора.
+    """
+    path = ROOT / "docs" / "ACCEPTANCE.md"
+    links: dict[str, set[str]] = defaultdict(set)
+    if not path.exists():
+        return links
+    for line in path.read_text(encoding="utf-8").splitlines():
+        cells = [cell.strip() for cell in line.split("|")]
+        if len(cells) < 5:
+            continue
+        scenario = cells[1]
+        if not re.fullmatch(r"A\d+", scenario):
+            continue
+        for target in ID_PATTERN.findall(cells[4]):
+            if target != scenario and target not in FALSE_POSITIVES:
+                links[scenario].add(target)
+    return links
+
+
 def main() -> int:
     implementation = scan(SRC)
     for key, values in scan_extra().items():
         implementation[key].update(values)
     verification = scan_tests()
+    # Проверенный сценарий подтверждает и связанные с ним требования ТЗ.
+    for scenario, targets in acceptance_links().items():
+        tests = verification.get(scenario)
+        if not tests:
+            continue
+        for target in targets:
+            verification[target].update(tests)
     registry_path = ROOT / ".planning" / "requirements.yaml"
     lines = registry_path.read_text(encoding="utf-8").splitlines()
 

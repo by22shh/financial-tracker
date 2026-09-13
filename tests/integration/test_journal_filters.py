@@ -51,7 +51,7 @@ async def _spend(
 
 
 async def test_journal_filters_by_category_and_account(owner_session: AsyncSession) -> None:
-    """FR-07: фильтры по статье и счёту сужают журнал."""
+    """CMD-12, FR-07: фильтры по статье и счёту сужают журнал."""
     fixture = await build_fixture(owner_session)
     await _spend(owner_session, fixture, category="Продукты", account="Карта")
     await _spend(owner_session, fixture, category="Рестораны", account="Кошелёк")

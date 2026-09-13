@@ -247,8 +247,10 @@ def grants_sql() -> list[str]:
     for table in APPEND_ONLY:
         # Историческая ревизия и движение счёта не изменяются runtime ролью.
         statements.append(f"REVOKE UPDATE, DELETE ON {table} FROM {roles}")
-    # alembic_version принадлежит только владельцу миграций.
+    # alembic_version меняет только владелец миграций; чтение нужно readiness
+    # для проверки совместимости схемы (OPS-02).
     statements.append(f"REVOKE ALL ON alembic_version FROM {roles}")
+    statements.append(f"GRANT SELECT ON alembic_version TO {roles}")
     return statements
 
 

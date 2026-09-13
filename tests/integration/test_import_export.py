@@ -224,7 +224,7 @@ async def test_a72_daily_cell_becomes_single_aggregate(
 
 
 async def test_a79_repeated_snapshot_adds_nothing(owner_session: AsyncSession) -> None:
-    """A79: повторный импорт неизменного снимка не создаёт новых операций."""
+    """CMD-28, A79: повторный импорт неизменного снимка не создаёт новых операций."""
     fixture = await build_fixture(owner_session, start=dt.date(2026, 8, 10))
     preview = await build_preview(
         owner_session, actor=fixture.actor, workbook=synthetic_workbook(), currency="RUB"
@@ -428,7 +428,7 @@ async def test_a63_import_batch_limit(owner_session: AsyncSession) -> None:
 
 
 def test_a108_formula_text_is_escaped() -> None:
-    """A108: внешний текст, похожий на формулу, экспортируется как текст."""
+    """SEC-08, A108: внешний текст, похожий на формулу, экспортируется как текст."""
     assert sanitize_cell("=SUM(A1:A9)").startswith("'=")
     assert sanitize_cell("+1234").startswith("'+")
     assert sanitize_cell("-1234").startswith("'-")

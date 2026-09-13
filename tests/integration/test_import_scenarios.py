@@ -185,7 +185,7 @@ async def test_a37_refund_in_next_period_reduces_current_line(
 
 
 async def test_a85_group_total_equals_sum_of_operations(owner_session: AsyncSession) -> None:
-    """A85: итог группы равен сумме операций после тех же фильтров."""
+    """FR-57, A85: итог группы равен сумме операций после тех же фильтров."""
     fixture = await build_fixture(owner_session)
     for amount, category in ((1_000, "Продукты"), (2_000, "Продукты"), (500, "Рестораны")):
         await post_transaction(

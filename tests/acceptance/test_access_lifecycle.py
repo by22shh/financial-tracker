@@ -22,7 +22,7 @@ async def _budget_with_member(test_settings: Settings, admin_id: int, member_id:
 
 
 async def test_a168_member_leaves_and_loses_access(bot: None, test_settings: Settings) -> None:
-    """A168: после выхода доступ прекращён, общие записи участника сохранены."""
+    """CMD-06, A168: после выхода доступ прекращён, общие записи участника сохранены."""
     admin, member = await _budget_with_member(test_settings, 920001, 920002, categories="Продукты")
     await member.send("продукты 500")
     await member.press(member.button_data("Записать"))
@@ -60,7 +60,7 @@ async def test_a169_old_buttons_do_not_restore_access(bot: None, test_settings: 
 
 
 async def test_a172_admin_cannot_leave_without_transfer(bot: None, test_settings: Settings) -> None:
-    """A172: администратору предложена передача роли или удаление."""
+    """CMD-08, A172: администратору предложена передача роли или удаление."""
     admin, _member = await _budget_with_member(test_settings, 920020, 920021)
     await admin.send("/members")
     await admin.press(admin.button_data("Выйти из бюджета"))

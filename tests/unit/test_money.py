@@ -63,7 +63,7 @@ def test_money_sum_of_empty_is_explicit_zero() -> None:
 
 
 def test_allocate_one_kopeck_over_three_equal_items() -> None:
-    """A27: сумма частей после распределения равна итогу."""
+    """FORM-09, A27: сумма частей после распределения равна итогу."""
     parts = allocate_largest_remainder(Money(1, "RUB"), [1, 1, 1])
     assert sum(part.minor for part in parts) == 1
     assert [part.minor for part in parts] == [1, 0, 0]

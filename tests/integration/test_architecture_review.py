@@ -75,7 +75,7 @@ async def test_ar01_concurrent_delivery_is_accepted_once(
 async def test_ar02_no_state_before_commit_and_no_second_job_after(
     clean_db: None, test_settings: Settings
 ) -> None:
-    """AR-02: до commit нет следов приёма; повтор после commit не создаёт вторую задачу."""
+    """TECH-03, AR-02: до commit нет следов приёма; повтор после commit не создаёт вторую задачу."""
     payload = _update(880003)
 
     # Обрыв до commit: транзакция откатывается целиком.
@@ -508,7 +508,7 @@ async def test_ar25_manual_accounting_works_without_plan_and_ai(
 async def test_ar21_reference_account_has_no_invented_balance(
     clean_db: None, test_settings: Settings, owner_session: AsyncSession
 ) -> None:
-    """AR-21: справочная карта не даёт выдуманного остатка и конвертации."""
+    """CMD-14, AR-21: справочная карта не даёт выдуманного остатка и конвертации."""
     from fintracker.application.catalog.directory import create_account
     from fintracker.application.ledger.service import account_balance
     from fintracker.core.errors import ValidationFailed

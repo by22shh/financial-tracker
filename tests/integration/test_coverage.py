@@ -35,7 +35,7 @@ DAY = dt.date(2026, 9, 12)
 
 
 async def test_fr71_reconciliation_shows_difference(owner_session: AsyncSession) -> None:
-    """FR-71: сверка показывает расхождение и не превращает его в доход."""
+    """CMD-15, FR-71: сверка показывает расхождение и не превращает его в доход."""
     fixture = await build_fixture(owner_session)
     await post_transaction(
         owner_session,
@@ -234,7 +234,7 @@ async def test_fr69_personal_confirmation_does_not_close_whole_period(
 
 
 async def test_r02_quality_check_lists_open_items(owner_session: AsyncSession) -> None:
-    """R02: экран «Проверить учёт» показывает незакрытые места."""
+    """FR-70, FR-38, R02: экран «Проверить учёт» показывает незакрытые места."""
     from dataclasses import replace
 
     from fintracker.domain.ledger.model import AllocationRole, AllocationSpec
@@ -269,7 +269,7 @@ async def test_r02_quality_check_lists_open_items(owner_session: AsyncSession) -
 async def test_a83_a84_aggregate_replacement_requires_matching_sum(
     owner_session: AsyncSession,
 ) -> None:
-    """A83/A84: агрегат и детали не суммируются; расхождение требует решения."""
+    """TECH-07, A83/A84: агрегат и детали не суммируются; расхождение требует решения."""
     from dataclasses import replace
 
     from fintracker.domain.ledger.model import (

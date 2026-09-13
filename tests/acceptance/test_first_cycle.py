@@ -28,7 +28,7 @@ async def test_a141_new_user_sees_create_and_join(bot: None, test_settings: Sett
 
 
 async def test_a142_create_budget_from_scratch(bot: None, test_settings: Settings) -> None:
-    """A142: бюджет создаётся с нуля без таблицы; создатель — администратор."""
+    """CMD-02, A142: бюджет создаётся с нуля без таблицы; создатель — администратор."""
     user = make_user(test_settings, 900002)
     text = await create_budget(user, name="Личный бюджет")
     assert "Личный бюджет" in text

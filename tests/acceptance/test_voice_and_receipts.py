@@ -83,7 +83,7 @@ async def test_voice_without_configured_asr_keeps_material(
 
 
 async def test_a21_long_audio_is_refused_before_paid_call(bot: None, ai_enabled: Settings) -> None:
-    """A21, NFR-11: длинная запись отклоняется до обращения к платному сервису."""
+    """LIM-03, A21, NFR-11: длинная запись отклоняется до обращения к платному сервису."""
     provider = ScriptedAsrProvider(transcripts=["не должно вызваться"])
     set_asr_override(provider)
     try:

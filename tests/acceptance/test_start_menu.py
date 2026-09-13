@@ -13,7 +13,7 @@ pytestmark = [pytest.mark.pg, requires_pg]
 
 
 async def test_fr05_new_user_sees_two_paths(bot: None, test_settings: Settings) -> None:
-    """FR-05: новому пользователю доступны создание и вход по коду."""
+    """SEC-01, FR-05: новому пользователю доступны создание и вход по коду."""
     user = make_user(test_settings, 912001)
     await user.send("/start")
     text = user.text()

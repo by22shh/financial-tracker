@@ -27,7 +27,7 @@ DAY = dt.date(2026, 9, 12)
 
 
 async def test_a39_goal_allocation_is_not_an_expense(owner_session: AsyncSession) -> None:
-    """A39: выделение 5000 на цель внутри счёта не создаёт расхода."""
+    """FR-40, FR-51, CMD-21, A39: выделение 5000 на цель внутри счёта не создаёт расхода."""
     from fintracker.application.analytics.reports import spending_report
 
     fixture = await build_fixture(owner_session)

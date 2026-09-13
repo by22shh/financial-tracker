@@ -207,7 +207,7 @@ async def test_a216_income_belongs_to_its_period(owner_session: AsyncSession) ->
 
 
 async def test_a219_period_change_does_not_touch_template(owner_session: AsyncSession) -> None:
-    """A219: правка лимита в периоде не меняет шаблон; правка шаблона — меняет."""
+    """CMD-18, A219: правка лимита в периоде не меняет шаблон; правка шаблона — меняет."""
     fixture = await build_fixture(owner_session, limits={"Продукты": 1_500_000})
     template = RecurringPlanTemplate(
         workspace_id=fixture.workspace.id,

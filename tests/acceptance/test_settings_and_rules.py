@@ -51,7 +51,7 @@ async def test_personal_settings_do_not_affect_other_member(
 
 
 async def test_input_preferences_toggle(bot: None, test_settings: Settings) -> None:
-    """FR-19, CMD-26: автозапись и порог крупной суммы личные и явные."""
+    """LIM-11, FR-19, CMD-26: автозапись и порог крупной суммы личные и явные."""
     user = make_user(test_settings, 907004)
     await create_budget(user)
     await user.press("set:personal")

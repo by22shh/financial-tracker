@@ -41,7 +41,7 @@ NOW = dt.datetime(2026, 9, 12, 12, 0, tzinfo=dt.UTC)
 async def test_ret08_raw_payload_is_deleted_after_term(
     clean_db: None, test_settings: Settings
 ) -> None:
-    """RET-08: сырой payload входящего события удаляется по сроку."""
+    """RET-05, RET-08: сырой payload входящего события удаляется по сроку."""
     await accept_telegram_update(
         test_settings,
         {
@@ -72,7 +72,10 @@ async def test_ret08_raw_payload_is_deleted_after_term(
 async def test_ret08_draft_sources_cleared_but_transaction_remains(
     clean_db: None, test_settings: Settings, owner_session: AsyncSession
 ) -> None:
-    """RET-08: сырой текст и транскрипт удаляются, проведённая операция остаётся."""
+    """RET-01, RET-02, RET-03, RET-08: сырой текст и транскрипт удаляются.
+
+    Проведённая операция при этом остаётся в общей истории.
+    """
     fixture = await build_fixture(owner_session)
     posted = await post_transaction(
         owner_session,
@@ -115,7 +118,7 @@ async def test_ret08_draft_sources_cleared_but_transaction_remains(
 async def test_expired_draft_never_becomes_posted(
     clean_db: None, test_settings: Settings, owner_session: AsyncSession
 ) -> None:
-    """FR-20: срок не превращает черновик в подтверждённый расход."""
+    """LIM-05, FR-20: срок не превращает черновик в подтверждённый расход."""
     fixture = await build_fixture(owner_session)
     draft = Draft(
         workspace_id=fixture.workspace.id,
@@ -148,7 +151,10 @@ async def test_expired_draft_never_becomes_posted(
 async def test_a109_attachment_removed_but_operation_remains(
     clean_db: None, test_settings: Settings, owner_session: AsyncSession
 ) -> None:
-    """A109: по истечении срока серверная копия удалена, операция остаётся."""
+    """ADR-11, RET-04, SEC-05, A109: серверная копия удалена по сроку.
+
+    Сама операция при этом остаётся.
+    """
     fixture = await build_fixture(owner_session)
     posted = await post_transaction(
         owner_session,
@@ -195,7 +201,7 @@ async def test_a109_attachment_removed_but_operation_remains(
 async def test_ret10_staging_objects_cleaned_after_day(
     clean_db: None, test_settings: Settings, owner_session: AsyncSession
 ) -> None:
-    """RET-10: непривязанные staging объекты очищаются через 24 часа."""
+    """RET-09, RET-10: непривязанные staging объекты очищаются через 24 часа."""
     fixture = await build_fixture(owner_session)
     attachment = Attachment(
         workspace_id=fixture.workspace.id,

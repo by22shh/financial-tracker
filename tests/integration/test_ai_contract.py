@@ -149,7 +149,7 @@ def test_profile_substitution_is_rejected(field: str, value: str) -> None:
 async def test_a16_unknown_category_id_is_rejected(
     clean_db: None, ai_settings: Settings, owner_session: AsyncSession
 ) -> None:
-    """A16: ID категории вне справочника не проходит валидацию, запись не идёт."""
+    """ADR-08, AI-01, A16: ID категории вне справочника не проходит валидацию, запись не идёт."""
     fixture = await build_fixture(owner_session)
     catalog = await load_catalog(
         owner_session,
@@ -170,7 +170,7 @@ async def test_a16_unknown_category_id_is_rejected(
 async def test_server_resolves_date_and_money(
     clean_db: None, ai_settings: Settings, owner_session: AsyncSession
 ) -> None:
-    """AI-03: дату разрешает сервер, сумма переводится в minor units без float."""
+    """AI-01, TECH-03, AI-03: дату разрешает сервер, сумма переводится в minor units без float."""
     fixture = await build_fixture(owner_session)
     catalog = await load_catalog(
         owner_session, workspace_id=fixture.workspace.id, currency="RUB", timezone=TZ

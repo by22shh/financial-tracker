@@ -30,7 +30,7 @@ DAY = dt.date(2026, 9, 12)
 async def test_ar07_a98_concurrent_edits_conflict_without_overwrite(
     clean_db: None, test_settings: Settings, owner_session: AsyncSession
 ) -> None:
-    """AR-07/A98: две правки с одной expected_version — одна успешна, вторая 409."""
+    """ADR-04, AR-07/A98: две правки с одной expected_version — одна успешна, вторая 409."""
     fixture = await build_fixture(owner_session)
     posted = await post_transaction(
         owner_session,
@@ -93,7 +93,7 @@ async def test_ar07_a98_concurrent_edits_conflict_without_overwrite(
 async def test_ar09_a154_last_invite_use_goes_to_one_of_two(
     clean_db: None, test_settings: Settings, owner_session: AsyncSession
 ) -> None:
-    """AR-09/A154: при последнем применении кода проходит ровно один вход."""
+    """LIM-01, LIM-02, AR-09/A154: при последнем применении кода проходит ровно один вход."""
     fixture = await build_fixture(owner_session)
     async with session_scope(
         test_settings, RuntimeRole.OWNER, workspace_id=fixture.workspace.id

@@ -65,14 +65,14 @@ def _line(
 
 
 def test_early_risk_needs_enough_observed_days() -> None:
-    """FR-42: прогноз не строится, пока данных недостаточно."""
+    """FORM-03, FR-41, FR-42: прогноз не строится, пока данных недостаточно."""
     line = _line(limit_minor=1_000_000, fact_minor=900_000)
     assert early_risk_lines(lines=(line,), observed_days=3, remaining_days=27) == []
     assert early_risk_lines(lines=(line,), observed_days=10, remaining_days=0) == []
 
 
 def test_early_risk_triggers_above_both_thresholds() -> None:
-    """FR-42: срабатывание при превышении абсолютного и относительного порогов."""
+    """FORM-11, FR-42: срабатывание при превышении абсолютного и относительного порогов."""
     # Темп 30 000 ₽ за 10 дней → прогноз 90 000 ₽ при лимите 50 000 ₽.
     line = _line(limit_minor=5_000_000, fact_minor=3_000_000)
     risky = early_risk_lines(lines=(line,), observed_days=10, remaining_days=20)
@@ -435,3 +435,40 @@ async def test_next_period_draft_without_income_basis(owner_session: AsyncSessio
     assert draft.deficit_minor is None
     assert draft.flexible_available_minor is None
     assert "основание не задано" in draft.render("RUB")
+
+
+def test_b8_fixed_expense_forecast_uses_commitments() -> None:
+    """B8: прогноз складывает факт, неисполненные обязательства и гибкие траты."""
+    from fintracker.application.analytics.reports import build_forecast
+    from fintracker.application.planning.plan import PeriodStatus
+
+    line = _line(limit_minor=2_000_000, fact_minor=300_000, commitments_minor=400_000)
+    status = PeriodStatus(
+        period_id=uuid.uuid4(),
+        start_date=dt.date(2026, 9, 10),
+        end_inclusive=dt.date(2026, 10, 9),
+        currency="RUB",
+        plan_status="approved",
+        plan_origin="template",
+        budget_version_id=uuid.uuid4(),
+        lines=(line,),
+        total_fact_minor=300_000,
+        total_limit_minor=2_000_000,
+        overall_limit_minor=None,
+        uncategorized_fact_minor=0,
+        pending_drafts=0,
+        pending_confident_minor=0,
+        completeness="confirmed_complete",
+    )
+    forecast = build_forecast(
+        status=status,
+        today=dt.date(2026, 9, 24),
+        observed_days=15,
+        flexible_fact_minor=300_000,
+        coverage="confirmed_complete",
+    )
+    assert forecast.fact_minor == 300_000
+    assert forecast.commitments_minor == 400_000
+    assert forecast.total_minor is not None
+    assert forecast.total_minor >= forecast.fact_minor + forecast.commitments_minor
+    assert forecast.limitations, "ограничения расчёта указаны явно"

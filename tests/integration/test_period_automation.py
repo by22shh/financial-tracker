@@ -65,7 +65,7 @@ async def _add_template(
 async def test_a212_period_opens_without_ai_and_keeps_identity(
     owner_session: AsyncSession,
 ) -> None:
-    """A212: новый период открывается без AI; ID бюджета и справочники целы."""
+    """CMD-16, A212: новый период открывается без AI; ID бюджета и справочники целы."""
     fixture = await build_fixture(owner_session, start=dt.date(2026, 8, 10))
     workspace_id = fixture.workspace.id
     categories_before = set(fixture.categories.values())
@@ -367,7 +367,7 @@ async def test_a223_future_start_blocks_today_purchase(
 async def test_a226_policy_change_keeps_single_sequence(
     owner_session: AsyncSession,
 ) -> None:
-    """A226/FR-94: новое правило не создаёт вторую последовательность периодов."""
+    """CMD-17, A226/FR-94: новое правило не создаёт вторую последовательность периодов."""
     fixture = await build_fixture(owner_session, start=dt.date(2026, 8, 10))
     await ensure_periods(
         owner_session, workspace_id=fixture.workspace.id, until_date=dt.date(2026, 9, 15)

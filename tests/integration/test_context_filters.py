@@ -167,7 +167,7 @@ async def test_note_length_limit_is_not_silently_truncated(
 async def test_a189_person_profile_does_not_create_membership(
     owner_session: AsyncSession,
 ) -> None:
-    """A189: аналитический профиль человека не создаёт членство и приглашение."""
+    """CMD-13, A189: аналитический профиль человека не создаёт членство и приглашение."""
     from fintracker.db.models.access import BudgetInvite, Membership
 
     fixture = await build_fixture(owner_session)

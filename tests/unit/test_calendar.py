@@ -122,7 +122,7 @@ def test_a210_quarterly_cycle() -> None:
 
 
 def test_a211_fixed_week_across_dst_shift() -> None:  # AR-23
-    """A211: ровно семь локальных календарных дней, не 168 часов."""
+    """FORM-07, A211: ровно семь локальных календарных дней, не 168 часов."""
     tz = "Europe/Berlin"  # переход на летнее время 29 марта 2026
     policy = PeriodPolicy.every_days(dt.date(2026, 3, 26), tz, 7)
     period = policy.period(0)
@@ -137,7 +137,7 @@ def test_a211_fixed_week_across_dst_shift() -> None:  # AR-23
 
 
 def test_a48_a49_period_boundary_at_local_midnight() -> None:
-    """A48/A49, AR-23: граница периода по локальной полуночи 10-го числа."""
+    """FORM-08, A48/A49, AR-23: граница периода по локальной полуночи 10-го числа."""
     policy = PeriodPolicy.monthly(dt.date(2026, 8, 10), TZ)
     assert policy.sequence_for_date(dt.date(2026, 9, 9)) == 0
     assert policy.sequence_for_date(dt.date(2026, 9, 10)) == 1
@@ -168,7 +168,7 @@ def test_date_before_anchor_has_no_sequence() -> None:
 
 
 def test_a52_month_clamp_does_not_drift() -> None:
-    """A52, AR-23: день 31 в феврале сокращается, а в марте снова 31-е.
+    """FORM-06, A52, AR-23: день 31 в феврале сокращается, а в марте снова 31-е.
 
     Управляемое время без дрейфа: високосность и короткие месяцы не сдвигают
     якорь навсегда.

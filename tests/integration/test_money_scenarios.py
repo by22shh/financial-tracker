@@ -160,7 +160,7 @@ async def test_a35_withdrawal_then_cash_purchase(owner_session: AsyncSession) ->
 
 
 async def test_a36_partial_refund_reduces_net_spending(owner_session: AsyncSession) -> None:
-    """A36: покупка 1000 и возврат 300 дают чистый расход 700; возврат не доход."""
+    """ADR-10, FR-25, A36: покупка 1000 и возврат 300 дают чистый расход 700; возврат не доход."""
     fixture = await build_fixture(owner_session)
     purchase = await post_transaction(
         owner_session,
@@ -242,7 +242,7 @@ async def test_a38_second_refund_cannot_exceed_purchase(owner_session: AsyncSess
 
 
 async def test_a41_a42_mixed_payment_and_settlement(owner_session: AsyncSession) -> None:
-    """A41/A42: оплата 3000 за двоих; потребление 1500, возмещение закрывает долг."""
+    """CMD-22, A41/A42: оплата 3000 за двоих; потребление 1500, возмещение закрывает долг."""
     fixture = await build_fixture(owner_session)
     await post_mixed_payment(
         owner_session,
@@ -320,7 +320,7 @@ async def test_a41_a42_mixed_payment_and_settlement(owner_session: AsyncSession)
 
 
 async def test_a45_a46_ar15_revision_sequence(owner_session: AsyncSession) -> None:
-    """AR-15: 10000 → расход 1000 → правка 800 → заметка → void → restore."""
+    """CMD-11, AR-15: 10000 → расход 1000 → правка 800 → заметка → void → restore."""
     fixture = await build_fixture(owner_session)
     account_id = fixture.accounts["Карта"]
     adjustment = OpeningAdjustment(

@@ -163,7 +163,7 @@ async def test_active_workspace_requires_exactly_one_admin(owner_session: AsyncS
 
 
 async def test_category_parent_must_be_same_workspace(owner_session: AsyncSession) -> None:
-    """AR-11: составной FK запрещает связать объекты разных бюджетов."""
+    """SEC-09, AR-11: составной FK запрещает связать объекты разных бюджетов."""
     _, first = await _seed_workspace(owner_session, name="Первый")
     _, second = await _seed_workspace(owner_session, name="Второй")
     parent = Category(
@@ -206,7 +206,7 @@ async def test_duplicate_active_category_name_rejected(owner_session: AsyncSessi
 async def test_rls_isolates_workspaces(
     clean_db: None, test_settings: Settings, owner_session: AsyncSession
 ) -> None:
-    """AR-12: runtime роль видит только выбранное пространство."""
+    """ADR-06, SEC-09, AR-12: runtime роль видит только выбранное пространство."""
     _, first = await _seed_workspace(owner_session, name="Первый")
     _, second = await _seed_workspace(owner_session, name="Второй")
     owner_session.add_all(
@@ -266,7 +266,7 @@ async def test_rls_bootstrap_reveals_only_own_memberships(
 async def test_runtime_role_cannot_update_account_entries(
     clean_db: None, test_settings: Settings
 ) -> None:
-    """DATA_CONTRACT §2.4: прямая UPDATE движения счёта runtime ролью запрещена."""
+    """ADR-03, DATA_CONTRACT §2.4: прямая UPDATE движения счёта runtime ролью запрещена."""
     factory = get_sessionmaker(test_settings, RuntimeRole.API)
     async with factory() as session, session.begin():
         with pytest.raises(DBAPIError, match=r"permission denied|нет прав"):

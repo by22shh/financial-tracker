@@ -83,7 +83,7 @@ async def test_a227_monthly_payment_not_duplicated_by_weekly_budget(
 async def test_r04_partial_payment_keeps_overdue_remainder_once(
     owner_session: AsyncSession,
 ) -> None:
-    """R04/A227: счёт 1000 на 9-е, оплачено 600 — на 10-е видны 400 просрочки."""
+    """CMD-20, R04/A227: счёт 1000 на 9-е, оплачено 600 — на 10-е видны 400 просрочки."""
     fixture = await build_fixture(owner_session, categories=("Связь",))
     await create_schedule(
         owner_session,

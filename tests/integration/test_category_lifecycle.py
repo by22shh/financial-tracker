@@ -125,7 +125,7 @@ async def test_a116_rename_keeps_identity_and_sums(owner_session: AsyncSession) 
 
 
 async def test_a117_a119_delete_and_restore(owner_session: AsyncSession) -> None:
-    """A117, A119: категория без связей удаляется; архивная восстанавливается с тем же ID."""
+    """CMD-09, A117, A119: удаление без связей и восстановление с тем же ID."""
     fixture = await build_fixture(owner_session)
     lonely = await create_category(
         owner_session, fixture.uow, actor=fixture.actor, name="Временная"

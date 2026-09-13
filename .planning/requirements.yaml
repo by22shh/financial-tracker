@@ -2676,11 +2676,13 @@
   title: "Модульный монолит; API, worker и scheduler из одного артефакта"
   source: docs/ARCHITECTURE.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/runtime/cli.py
   verification:
+    - tests/integration/test_release_and_runtime.py::test_adr01_single_artifact_runs_all_roles
   evidence:
+    - .planning/evidence/latest.json
 
 - id: ADR-02
   title: "Python 3.13, aiogram 3, FastAPI, Pydantic 2, SQLAlchemy 2.0, psycopg 3, Alembic; PostgreSQL 17"
@@ -2699,7 +2701,7 @@
   title: "Версии финансовой операции и неизменяемые движения счетов"
   source: docs/ARCHITECTURE.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/analytics/coverage.py
     - src/fintracker/application/analytics/reviews.py
@@ -2711,19 +2713,23 @@
     - src/fintracker/db/models/ledger.py
     - src/fintracker/domain/ledger/model.py
   verification:
+    - tests/integration/test_schema_constraints.py::test_runtime_role_cannot_update_account_entries
   evidence:
+    - .planning/evidence/latest.json
 
 - id: ADR-04
   title: "READ COMMITTED и блокировка строки бюджета для финансовых и административных изменений"
   source: docs/ARCHITECTURE.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - .env.example
     - src/fintracker/db/session.py
     - src/fintracker/db/uow.py
   verification:
+    - tests/integration/test_concurrency.py::test_ar07_a98_concurrent_edits_conflict_without_overwrite
   evidence:
+    - .planning/evidence/latest.json
 
 - id: ADR-05
   title: "Durable inbox, PostgreSQL jobs, outbox; доставка минимум один раз"
@@ -2748,7 +2754,7 @@
   title: "Серверная авторизация на каждом действии плюс RLS для изоляции строк"
   source: docs/ARCHITECTURE.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/conversation/context.py
     - src/fintracker/application/identity/actor.py
@@ -2765,7 +2771,9 @@
     - src/fintracker/db/session.py
     - src/fintracker/db/uow.py
   verification:
+    - tests/integration/test_schema_constraints.py::test_rls_isolates_workspaces
   evidence:
+    - .planning/evidence/latest.json
 
 - id: ADR-07
   title: "Календарные даты, исключённая правая граница, версии политики и шаблона"
@@ -2787,7 +2795,7 @@
   title: "AI создаёт типизированное предложение; деньги проводит доменный сервис"
   source: docs/ARCHITECTURE.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/conversation/entry.py
     - src/fintracker/application/intelligence/prompts.py
@@ -2795,13 +2803,15 @@
     - src/fintracker/db/models/platform.py
     - src/fintracker/infra/ai/schemas.py
   verification:
+    - tests/integration/test_ai_contract.py::test_a16_unknown_category_id_is_rejected
   evidence:
+    - .planning/evidence/latest.json
 
 - id: ADR-09
   title: "Точные SQL агрегаты и версионированные снимки для AI"
   source: docs/ARCHITECTURE.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - .env.example
     - src/fintracker/application/analytics/reports.py
@@ -2810,26 +2820,30 @@
     - src/fintracker/db/models/intelligence.py
     - src/fintracker/db/uow.py
   verification:
+    - tests/integration/test_recommendations.py::test_ai08_card_without_metric_reference_is_rejected
   evidence:
+    - .planning/evidence/latest.json
 
 - id: ADR-10
   title: "Единые команды для Telegram, API, ручного ввода и импорта"
   source: docs/ARCHITECTURE.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/api/app.py
     - src/fintracker/application/conversation/service.py
     - src/fintracker/application/ledger/operations.py
     - src/fintracker/application/ledger/service.py
   verification:
+    - tests/integration/test_money_scenarios.py::test_a36_partial_refund_reduces_net_spending
   evidence:
+    - .planning/evidence/latest.json
 
 - id: ADR-11
   title: "Приватное хранилище; скачивание через сервер с проверкой доступа"
   source: docs/ARCHITECTURE.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - .env.example
     - src/fintracker/application/maintenance/retention.py
@@ -2837,7 +2851,9 @@
     - src/fintracker/infra/storage.py
     - src/fintracker/infra/telegram/files.py
   verification:
+    - tests/integration/test_retention.py::test_a109_attachment_removed_but_operation_remains
   evidence:
+    - .planning/evidence/latest.json
 
 - id: ADR-12
   title: "Ограниченная конкуренция, явные квоты, отдельные классы задач"
@@ -2861,7 +2877,8 @@
   title: "Один регион, управляемая PostgreSQL с PITR, контейнерные процессы"
   source: docs/ARCHITECTURE.md
   stage: P0
-  status: implemented
+  status: blocked
+  blocker: "BL-04: управляемая PostgreSQL с PITR и регион выбираются вместе со средой"
   implementation:
     - .env.example
     - docker-compose.yml
@@ -2878,7 +2895,7 @@
   title: "Восстановление в закрытом режиме с независимым журналом доступа"
   source: docs/ARCHITECTURE.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - .env.example
     - docker-compose.yml
@@ -2889,28 +2906,34 @@
     - src/fintracker/db/models/access.py
     - src/fintracker/infra/security_log.py
   verification:
+    - tests/integration/test_security_change.py::test_ar32_acl_revision_grows_with_applied_change
   evidence:
+    - .planning/evidence/latest.json
 
 - id: ADR-15
   title: "Миграции с совместимостью соседних выпусков, проверки на настоящей PostgreSQL"
   source: docs/ARCHITECTURE.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - .github/workflows/ci.yml
   verification:
+    - tests/integration/test_release_and_runtime.py::test_adr15_ops01_migrations_run_as_separate_step
   evidence:
+    - .planning/evidence/latest.json
 
 - id: ADR-16
   title: "Изменять архитектуру по измеренному ограничению"
   source: docs/ARCHITECTURE.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/db/migrations/versions/0007_money_join_indexes.py
     - src/fintracker/db/models/ledger.py
   verification:
+    - tests/integration/test_release_and_runtime.py::test_adr16_architecture_change_has_measured_basis
   evidence:
+    - .planning/evidence/latest.json
 
 - id: ADR-17
   title: "GPT-5.6 Luna, reasoning.effort=medium, напрямую через OpenAI Responses API"
@@ -2936,22 +2959,28 @@
   title: "Извлечение"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/intelligence/extraction.py
     - src/fintracker/infra/ai/schemas.py
   verification:
+    - tests/integration/test_ai_contract.py::test_a16_unknown_category_id_is_rejected
+    - tests/integration/test_ai_contract.py::test_server_resolves_date_and_money
   evidence:
+    - .planning/evidence/latest.json
 
 - id: AI-02
   title: "Контекст"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/intelligence/extraction.py
   verification:
+    - tests/integration/test_delivery.py::test_invite_secret_never_stored_in_payload
+    - tests/integration/test_recommendations.py::test_a179_one_run_gives_independent_deliveries
   evidence:
+    - .planning/evidence/latest.json
 
 - id: AI-03
   title: "Структурированный результат"
@@ -2963,8 +2992,10 @@
     - src/fintracker/infra/ai/openai_client.py
     - src/fintracker/infra/ai/schemas.py
   verification:
+    - tests/integration/test_ai_contract.py::test_a16_unknown_category_id_is_rejected
     - tests/integration/test_ai_contract.py::test_extra_fields_and_bad_types_are_rejected
     - tests/integration/test_ai_contract.py::test_server_resolves_date_and_money
+    - tests/integration/test_category_lifecycle.py::test_a123_archived_category_blocks_posting
     - tests/integration/test_receipts_and_voice.py::test_receipt_schema_rejects_extra_fields
   evidence:
     - .planning/evidence/latest.json
@@ -2975,6 +3006,7 @@
   stage: P0
   status: verified
   implementation:
+    - src/fintracker/application/conversation/entry.py
   verification:
     - tests/quality/test_extraction_accuracy.py::test_ai04_autopost_ignores_model_self_confidence
     - tests/quality/test_extraction_accuracy.py::test_ai04_guarded_inputs_are_not_recorded
@@ -2995,7 +3027,10 @@
     - src/fintracker/domain/parsing/dates.py
     - src/fintracker/domain/parsing/intent.py
   verification:
+    - tests/acceptance/test_input_guards.py::test_a06_missing_amount_asks_without_inventing
     - tests/quality/test_extraction_accuracy.py::test_ai04_guarded_inputs_are_not_recorded
+    - tests/unit/test_parsing.py::test_a06_no_amount_found
+    - tests/unit/test_parsing.py::test_purchase_verb_without_amount_is_a_transaction
   evidence:
     - .planning/evidence/latest.json
 
@@ -3003,12 +3038,14 @@
   title: "Ограниченный план запроса"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/conversation/analytics_flow.py
     - src/fintracker/infra/ai/schemas.py
   verification:
+    - tests/integration/test_recommendations.py::test_ai08_card_without_metric_reference_is_rejected
   evidence:
+    - .planning/evidence/latest.json
 
 - id: AI-07
   title: "Изменение данных"
@@ -3016,8 +3053,12 @@
   stage: P0
   status: verified
   implementation:
+    - src/fintracker/application/intelligence/analysis.py
   verification:
+    - tests/acceptance/test_input_guards.py::test_a12_limit_change_requires_confirmation
+    - tests/acceptance/test_report_slices.py::test_a132_choosing_action_changes_nothing_financial
     - tests/integration/test_ai_contract.py::test_ai07_model_proposes_but_does_not_change_plan
+    - tests/unit/test_parsing.py::test_intent_guards
   evidence:
     - .planning/evidence/latest.json
 
@@ -3032,6 +3073,7 @@
     - src/fintracker/db/models/intelligence.py
     - src/fintracker/infra/ai/schemas.py
   verification:
+    - tests/integration/test_recommendations.py::test_a138_generation_failure_gives_numeric_summary
     - tests/integration/test_recommendations.py::test_ai08_card_without_metric_reference_is_rejected
     - tests/integration/test_recommendations.py::test_ai08_unknown_metric_and_missing_formula_rejected
   evidence:
@@ -3045,8 +3087,10 @@
   implementation:
     - src/fintracker/application/intelligence/prompts.py
   verification:
+    - tests/acceptance/test_voice_and_receipts.py::test_a31_photo_without_ai_key_keeps_draft
     - tests/integration/test_ai_contract.py::test_ai09_instruction_in_data_is_not_executed
     - tests/integration/test_collaboration_scenarios.py::test_a198_instruction_in_note_stays_data
+    - tests/integration/test_receipts_and_voice.py::test_a32_instruction_inside_receipt_is_data
   evidence:
     - .planning/evidence/latest.json
 
@@ -3100,12 +3144,14 @@
   title: "Ручная правка с 700 на 650, затем поздний AI ответ 700"
   source: docs/ARCHITECTURE_REVIEW.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/intelligence/media_pipeline.py
     - src/fintracker/application/ledger/service.py
   verification:
+    - tests/integration/test_security_change.py::test_ar05_late_model_answer_does_not_override_manual_value
   evidence:
+    - .planning/evidence/latest.json
 
 - id: AR-06
   title: "Два ожидающих вопроса, свободное «500», ответ на закрытую карточку"
@@ -3242,11 +3288,13 @@
   title: "Два возврата одновременно исчерпывают одну часть чека"
   source: docs/ARCHITECTURE_REVIEW.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/ledger/operations.py
   verification:
+    - tests/integration/test_security_change.py::test_ar17_two_refunds_cannot_exceed_returnable
   evidence:
+    - .planning/evidence/latest.json
 
 - id: AR-18
   title: "Возврат покупки из цели и отмена/изменение связанной исходной покупки"
@@ -3396,32 +3444,40 @@
   title: "Один получатель заблокировал бота, другой получил; timeout sendMessage; 429"
   source: docs/ARCHITECTURE_REVIEW.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/infra/telegram/sender.py
   verification:
+    - tests/integration/test_delivery.py::test_a100_unknown_send_result_keeps_record
+    - tests/integration/test_delivery.py::test_a66_blocked_recipient_stops_only_own_delivery
   evidence:
+    - .planning/evidence/latest.json
 
 - id: AR-31
   title: "Остановить SecurityChange на каждом из пяти шагов, включая недоступный/неполный журнал"
   source: docs/ARCHITECTURE_REVIEW.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/identity/security_change.py
     - src/fintracker/infra/security_log.py
   verification:
+    - tests/integration/test_security_change.py::test_ar31_second_change_waits_for_fence
+    - tests/integration/test_security_change.py::test_ar31_unavailable_journal_stops_before_success
   evidence:
+    - .planning/evidence/latest.json
 
 - id: AR-32
   title: "Restore backup до выхода, исключения, передачи admin и удаления бюджета"
   source: docs/ARCHITECTURE_REVIEW.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/identity/security_change.py
   verification:
+    - tests/integration/test_security_change.py::test_ar32_acl_revision_grows_with_applied_change
   evidence:
+    - .planning/evidence/latest.json
 
 - id: AR-33
   title: "Полный restore из реально доступного backup/WAL и проверка ссылок на вложения"
@@ -3444,6 +3500,7 @@
     - src/fintracker/application/analytics/reports.py
     - src/fintracker/db/migrations/versions/0007_money_join_indexes.py
   verification:
+    - tests/integration/test_release_and_runtime.py::test_adr16_architecture_change_has_measured_basis
     - tests/performance/test_performance.py::test_nfr01_nfr07_intake_rate
     - tests/performance/test_performance.py::test_nfr06_filtered_journal_on_large_volume
     - tests/performance/test_performance.py::test_nfr06_report_on_large_journal
@@ -3551,7 +3608,8 @@
 - id: B7
   title: "Консервативные доступные деньги"
   source: docs/ACCEPTANCE.md
-  stage: P0
+  stage: P1
+  note: "Раздел 11.2 ТЗ отнесён к P1: свободные деньги и их формула."
   status: implemented
   implementation:
     - src/fintracker/application/commitments/goals.py
@@ -3563,11 +3621,13 @@
   title: "Прогноз фиксированных расходов"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/analytics/reports.py
   verification:
+    - tests/integration/test_reviews.py::test_b8_fixed_expense_forecast_uses_commitments
   evidence:
+    - .planning/evidence/latest.json
 
 - id: B9
   title: "Неполная история"
@@ -3597,256 +3657,306 @@
   title: "global POST /v1/telegram/webhook"
   source: docs/DATA_CONTRACT.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/api/routes/telegram.py
     - src/fintracker/application/ingestion/accept_update.py
   verification:
+    - tests/integration/test_delivery.py::test_a95_duplicate_update_accepted_once
   evidence:
+    - .planning/evidence/latest.json
 
 - id: CMD-02
   title: "global GET /v1/budgets; POST/PATCH /v1/budget-setups; POST /v1/budget-setups/{id}/publish"
   source: docs/DATA_CONTRACT.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/identity/actor.py
     - src/fintracker/application/onboarding/wizard.py
   verification:
+    - tests/acceptance/test_first_cycle.py::test_a142_create_budget_from_scratch
   evidence:
+    - .planning/evidence/latest.json
 
 - id: CMD-03
   title: "POST /activate"
   source: docs/DATA_CONTRACT.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/identity/actor.py
   verification:
+    - tests/acceptance/test_context_scenarios.py::test_a165_a166_context_is_pinned_at_receipt
   evidence:
+    - .planning/evidence/latest.json
 
 - id: CMD-04
   title: "GET /members; POST /invites; POST /invites/{id}/revoke"
   source: docs/DATA_CONTRACT.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/identity/invites.py
   verification:
+    - tests/acceptance/test_context_scenarios.py::test_a156_link_and_manual_code_give_same_path
   evidence:
+    - .planning/evidence/latest.json
 
 - id: CMD-05
   title: "global POST /v1/invites/preview и /accept"
   source: docs/DATA_CONTRACT.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/identity/invites.py
   verification:
+    - tests/acceptance/test_context_scenarios.py::test_a156_link_and_manual_code_give_same_path
   evidence:
+    - .planning/evidence/latest.json
 
 - id: CMD-06
   title: "POST /leave; POST /members/{user}/remove и /allow-rejoin"
   source: docs/DATA_CONTRACT.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/identity/membership.py
   verification:
+    - tests/acceptance/test_access_lifecycle.py::test_a168_member_leaves_and_loses_access
   evidence:
+    - .planning/evidence/latest.json
 
 - id: CMD-07
   title: "POST /admin-transfers; global POST /v1/admin-transfers/{id}/accept"
   source: docs/DATA_CONTRACT.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/identity/membership.py
   verification:
+    - tests/acceptance/test_context_scenarios.py::test_a174_stale_admin_transfer_is_not_applied
   evidence:
+    - .planning/evidence/latest.json
 
 - id: CMD-08
   title: "POST /deletion-preview и /delete"
   source: docs/DATA_CONTRACT.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/identity/membership.py
   verification:
+    - tests/acceptance/test_access_lifecycle.py::test_a172_admin_cannot_leave_without_transfer
   evidence:
+    - .planning/evidence/latest.json
 
 - id: CMD-09
   title: "GET/POST /categories; PATCH /categories/{id}; POST /categories/{id}/removal-preview,/remove,/restore,/merge"
   source: docs/DATA_CONTRACT.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/catalog/categories.py
   verification:
+    - tests/integration/test_category_lifecycle.py::test_a117_a119_delete_and_restore
   evidence:
+    - .planning/evidence/latest.json
 
 - id: CMD-10
   title: "GET /drafts; GET/PATCH /drafts/{id}; POST /drafts/{id}/confirm,/cancel,/retry-parse"
   source: docs/DATA_CONTRACT.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/conversation/entry.py
   verification:
+    - tests/acceptance/test_clarifications.py::test_bare_amount_answers_the_single_open_question
   evidence:
+    - .planning/evidence/latest.json
 
 - id: CMD-11
   title: "POST /transactions; PATCH /transactions/{id}; POST /transactions/{id}/void,/restore"
   source: docs/DATA_CONTRACT.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/ledger/service.py
   verification:
+    - tests/integration/test_money_scenarios.py::test_a45_a46_ar15_revision_sequence
   evidence:
+    - .planning/evidence/latest.json
 
 - id: CMD-12
   title: "GET /transactions; GET /transactions/{id}; GET /transactions/{id}/revisions"
   source: docs/DATA_CONTRACT.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/ledger/service.py
   verification:
+    - tests/integration/test_journal_filters.py::test_journal_filters_by_category_and_account
   evidence:
+    - .planning/evidence/latest.json
 
 - id: CMD-13
   title: "GET/POST /people,/beneficiaries,/tags; PATCH /people/{id},/beneficiaries/{id},/tags/{id}"
   source: docs/DATA_CONTRACT.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/catalog/directory.py
   verification:
+    - tests/integration/test_context_filters.py::test_a189_person_profile_does_not_create_membership
   evidence:
+    - .planning/evidence/latest.json
 
 - id: CMD-14
   title: "GET/POST /accounts; PATCH /accounts/{id}; POST /accounts/{id}/archive"
   source: docs/DATA_CONTRACT.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/catalog/directory.py
   verification:
+    - tests/integration/test_architecture_review.py::test_ar21_reference_account_has_no_invented_balance
   evidence:
+    - .planning/evidence/latest.json
 
 - id: CMD-15
   title: "GET/POST /reconciliations; POST /reconciliations/{id}/accept; GET/POST /coverage; PATCH /coverage/{id}"
   source: docs/DATA_CONTRACT.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/analytics/coverage.py
   verification:
+    - tests/integration/test_coverage.py::test_fr71_reconciliation_shows_difference
   evidence:
+    - .planning/evidence/latest.json
 
 - id: CMD-16
   title: "GET /periods; GET /periods/{id}/status"
   source: docs/DATA_CONTRACT.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/planning/periods.py
     - src/fintracker/application/planning/plan.py
   verification:
+    - tests/integration/test_period_automation.py::test_a212_period_opens_without_ai_and_keeps_identity
   evidence:
+    - .planning/evidence/latest.json
 
 - id: CMD-17
   title: "POST /period-policy/preview,/accept"
   source: docs/DATA_CONTRACT.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/planning/periods.py
   verification:
+    - tests/integration/test_period_automation.py::test_a226_policy_change_keeps_single_sequence
   evidence:
+    - .planning/evidence/latest.json
 
 - id: CMD-18
   title: "GET/PATCH /plan-template; GET/PATCH /income-plan"
   source: docs/DATA_CONTRACT.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/planning/plan.py
   verification:
+    - tests/integration/test_plan_scenarios.py::test_a219_period_change_does_not_touch_template
   evidence:
+    - .planning/evidence/latest.json
 
 - id: CMD-19
   title: "POST /budget-proposals; POST /budget-proposals/{id}/accept"
   source: docs/DATA_CONTRACT.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/planning/plan.py
   verification:
+    - tests/integration/test_budget_math.py::test_b4_baseline_versus_working_plan
   evidence:
+    - .planning/evidence/latest.json
 
 - id: CMD-20
   title: "GET/POST /schedules; PATCH /schedules/{id}; GET /occurrences; PATCH /occurrences/{id}; POST /occurrences/{id}/skip,/cancel,/link-payment"
   source: docs/DATA_CONTRACT.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/commitments/schedules.py
   verification:
+    - tests/integration/test_commitments.py::test_r04_partial_payment_keeps_overdue_remainder_once
   evidence:
+    - .planning/evidence/latest.json
 
 - id: CMD-21
   title: "GET/POST /goals; PATCH /goals/{id}; POST /goals/{id}/movements"
   source: docs/DATA_CONTRACT.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/commitments/goals.py
     - src/fintracker/application/conversation/goals_flow.py
   verification:
+    - tests/integration/test_goal_and_import_semantics.py::test_a39_goal_allocation_is_not_an_expense
   evidence:
+    - .planning/evidence/latest.json
 
 - id: CMD-22
   title: "GET /receivables; POST /receivables/{id}/settlements"
   source: docs/DATA_CONTRACT.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/ledger/operations.py
   verification:
+    - tests/integration/test_money_scenarios.py::test_a41_a42_mixed_payment_and_settlement
   evidence:
+    - .planning/evidence/latest.json
 
 - id: CMD-23
   title: "GET /reports,/recommendations; POST /analysis-runs"
   source: docs/DATA_CONTRACT.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/analytics/reports.py
     - src/fintracker/application/intelligence/analysis.py
   verification:
+    - tests/integration/test_recommendations.py::test_a128_repeated_task_creates_one_run
   evidence:
+    - .planning/evidence/latest.json
 
 - id: CMD-24
   title: "POST /recommendations/{id}/feedback"
   source: docs/DATA_CONTRACT.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/intelligence/analysis.py
   verification:
+    - tests/acceptance/test_report_slices.py::test_a132_choosing_action_changes_nothing_financial
   evidence:
+    - .planning/evidence/latest.json
 
 - id: CMD-25
   title: "GET/PATCH /analysis-preferences"
   source: docs/DATA_CONTRACT.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/intelligence/analysis.py
   verification:
+    - tests/integration/test_recommendations.py::test_a134_muted_direction_is_not_offered
   evidence:
+    - .planning/evidence/latest.json
 
 - id: CMD-26
   title: "GET/PATCH /my/notification-preferences,/my/input-preferences"
@@ -3883,22 +3993,26 @@
   title: "POST /imports/preview; GET /imports/{id}; POST /imports/{id}/commit,/revert"
   source: docs/DATA_CONTRACT.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/conversation/io_flow.py
     - src/fintracker/application/integrations/importer.py
   verification:
+    - tests/integration/test_import_export.py::test_a79_repeated_snapshot_adds_nothing
   evidence:
+    - .planning/evidence/latest.json
 
 - id: CMD-29
   title: "POST /exports; GET /exports/{id}; GET /files/{id}/content"
   source: docs/DATA_CONTRACT.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/conversation/io_flow.py
   verification:
+    - tests/integration/test_qa_integrations.py::test_qa02_export_repeat_is_stable
   evidence:
+    - .planning/evidence/latest.json
 
 - id: CMD-30
   title: "PATCH /settings"
@@ -3932,32 +4046,45 @@
   title: "Идентификация"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/identity/actor.py
   verification:
+    - tests/acceptance/test_first_cycle.py::test_a141_new_user_sees_create_and_join
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-02
   title: "Пространство учёта"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/db/models/access.py
   verification:
+    - tests/acceptance/test_first_cycle.py::test_a142_create_budget_from_scratch
+    - tests/acceptance/test_first_cycle.py::test_a151_budget_id_is_not_an_invite
+    - tests/integration/test_reminders.py::test_a149_boundary_creates_one_period_without_command
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-03
   title: "Люди и назначение расхода"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/catalog/directory.py
     - src/fintracker/db/models/access.py
   verification:
+    - tests/acceptance/test_access_lifecycle.py::test_a157_joining_does_not_import_personal_data
+    - tests/acceptance/test_entry_scenarios.py::test_a02_beneficiary_does_not_replace_author
+    - tests/acceptance/test_entry_scenarios.py::test_a03_shared_expense_is_counted_once
+    - tests/integration/test_category_lifecycle.py::test_a76_unknown_beneficiary_is_not_invented
+    - tests/integration/test_context_filters.py::test_a181_author_spender_beneficiary_are_independent
+    - tests/integration/test_goal_and_import_semantics.py::test_a190_beneficiary_without_spender
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-04
   title: "Роли"
@@ -3968,7 +4095,13 @@
     - src/fintracker/application/catalog/rules.py
     - src/fintracker/application/identity/membership.py
   verification:
+    - tests/acceptance/test_access_lifecycle.py::test_a175_member_cannot_delete_budget
     - tests/acceptance/test_context_scenarios.py::test_a156_link_and_manual_code_give_same_path
+    - tests/acceptance/test_context_scenarios.py::test_a162_shared_change_is_visible_to_everyone
+    - tests/acceptance/test_entry_scenarios.py::test_a186_shared_note_visible_to_members
+    - tests/acceptance/test_first_cycle.py::test_a150_member_cannot_issue_invite
+    - tests/acceptance/test_first_cycle.py::test_a163_member_corrects_admin_record
+    - tests/integration/test_plan_scenarios.py::test_a225_member_cannot_change_template
   evidence:
     - .planning/evidence/latest.json
 
@@ -3981,9 +4114,12 @@
     - src/fintracker/application/conversation/keyboards.py
     - src/fintracker/application/conversation/service.py
   verification:
+    - tests/acceptance/test_entry_scenarios.py::test_a17_unlinked_self_is_not_invented
+    - tests/acceptance/test_first_cycle.py::test_a141_new_user_sees_create_and_join
     - tests/acceptance/test_start_menu.py::test_fr05_new_user_sees_two_paths
     - tests/acceptance/test_start_menu.py::test_fr05_repeat_start_does_not_duplicate_budget
     - tests/acceptance/test_start_menu.py::test_fr05_unfinished_setup_can_be_resumed
+    - tests/unit/test_parsing.py::test_a14_currency_is_not_guessed_from_letters
   evidence:
     - .planning/evidence/latest.json
 
@@ -3991,13 +4127,15 @@
   title: "Категории"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/conversation/category_flow.py
     - src/fintracker/application/conversation/views.py
     - src/fintracker/application/planning/plan.py
   verification:
+    - tests/integration/test_category_lifecycle.py::test_a113_new_category_without_limit_is_available
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-07
   title: "История"
@@ -4034,12 +4172,14 @@
   title: "Состояния"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/conversation/callbacks.py
     - src/fintracker/application/conversation/views.py
   verification:
+    - tests/integration/test_budget_math.py::test_b2_zero_and_unset_limit
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-09
   title: "Доступность"
@@ -4067,8 +4207,17 @@
     - src/fintracker/domain/parsing/amounts.py
     - src/fintracker/domain/parsing/arithmetic.py
   verification:
+    - tests/acceptance/test_entry_scenarios.py::test_a188_comment_in_same_message_is_one_expense
+    - tests/acceptance/test_first_cycle.py::test_first_expense_and_card
+    - tests/acceptance/test_input_guards.py::test_a06_missing_amount_asks_without_inventing
+    - tests/unit/test_parsing.py::test_a06_no_amount_found
+    - tests/unit/test_parsing.py::test_a07_two_items_by_price
+    - tests/unit/test_parsing.py::test_a08_thousand_suffix
+    - tests/unit/test_parsing.py::test_a14_currency_is_not_guessed_from_letters
     - tests/unit/test_parsing.py::test_ambiguous_dot_thousand_is_flagged
     - tests/unit/test_parsing.py::test_arithmetic_is_limited_and_exact
+    - tests/unit/test_parsing.py::test_purchase_verb_without_amount_is_a_transaction
+    - tests/unit/test_parsing.py::test_transaction_kind_hint
   evidence:
     - .planning/evidence/latest.json
 
@@ -4076,12 +4225,17 @@
   title: "Несколько операций"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/conversation/entry.py
     - src/fintracker/application/conversation/sections.py
   verification:
+    - tests/acceptance/test_entry_scenarios.py::test_a199_note_scope_is_clarified_for_two_expenses
+    - tests/acceptance/test_input_guards.py::test_a04_two_expenses_create_batch
+    - tests/acceptance/test_input_guards.py::test_a05_incomplete_batch_stays_draft
+    - tests/unit/test_parsing.py::test_multiple_amounts_detected
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-12
   title: "Намерение"
@@ -4093,7 +4247,11 @@
     - src/fintracker/application/conversation/service.py
     - src/fintracker/domain/parsing/intent.py
   verification:
+    - tests/acceptance/test_input_guards.py::test_a09_hypothetical_does_not_create_expense
+    - tests/acceptance/test_input_guards.py::test_a10_negated_purchase_is_not_recorded
+    - tests/acceptance/test_input_guards.py::test_a12_limit_change_requires_confirmation
     - tests/quality/test_extraction_accuracy.py::test_ai04_guarded_inputs_are_not_recorded
+    - tests/unit/test_parsing.py::test_intent_guards
   evidence:
     - .planning/evidence/latest.json
 
@@ -4108,7 +4266,13 @@
     - src/fintracker/application/intelligence/media_pipeline.py
     - src/fintracker/infra/asr/provider.py
   verification:
+    - tests/acceptance/test_input_guards.py::test_a21_long_voice_rejected_before_paid_processing
     - tests/acceptance/test_input_guards.py::test_voice_without_asr_keeps_draft_not_zero_expense
+    - tests/acceptance/test_voice_and_receipts.py::test_a182_voice_note_is_kept_for_correction
+    - tests/acceptance/test_voice_and_receipts.py::test_a18_clear_voice_gives_correct_card
+    - tests/acceptance/test_voice_and_receipts.py::test_a19_ambiguous_voice_amount_asks_once
+    - tests/acceptance/test_voice_and_receipts.py::test_a20_audio_without_speech_keeps_problem_state
+    - tests/acceptance/test_voice_and_receipts.py::test_a21_long_audio_is_refused_before_paid_call
     - tests/acceptance/test_voice_and_receipts.py::test_voice_without_configured_asr_keeps_material
   evidence:
     - .planning/evidence/latest.json
@@ -4117,13 +4281,17 @@
   title: "Фото и документы"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/intelligence/extraction.py
     - src/fintracker/application/intelligence/media_pipeline.py
     - src/fintracker/infra/ai/schemas.py
   verification:
+    - tests/acceptance/test_voice_and_receipts.py::test_a183_receipt_caption_is_linked_to_operation
+    - tests/acceptance/test_voice_and_receipts.py::test_a28_album_of_one_receipt_is_single_package
+    - tests/integration/test_receipts_and_voice.py::test_a22_mixed_receipt_splits_into_two_allocations
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-15
   title: "Проверка суммы"
@@ -4133,8 +4301,14 @@
   implementation:
     - src/fintracker/domain/ledger/receipt.py
   verification:
+    - tests/integration/test_receipts_and_voice.py::test_a23_cash_and_change_do_not_replace_total
+    - tests/integration/test_receipts_and_voice.py::test_a24_mismatch_blocks_autopost_without_invented_line
+    - tests/integration/test_receipts_and_voice.py::test_a25_unreadable_lines_offer_total_with_incomplete_detail
+    - tests/integration/test_receipts_and_voice.py::test_a26_included_vat_is_not_added_twice
+    - tests/integration/test_receipts_and_voice.py::test_a27_one_kopeck_discount_distributes_deterministically
     - tests/integration/test_receipts_and_voice.py::test_reconcile_only_within_tolerance
     - tests/integration/test_receipts_and_voice.py::test_tip_is_added_to_total_not_to_lines
+    - tests/unit/test_money.py::test_allocate_one_kopeck_over_three_equal_items
   evidence:
     - .planning/evidence/latest.json
 
@@ -4142,22 +4316,27 @@
   title: "Смешанный чек"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/domain/ledger/receipt.py
   verification:
+    - tests/integration/test_receipts_and_voice.py::test_a22_mixed_receipt_splits_into_two_allocations
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-17
   title: "Платёж или намерение"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/intelligence/media_pipeline.py
     - src/fintracker/infra/ai/schemas.py
   verification:
+    - tests/integration/test_receipts_and_voice.py::test_a29_bank_screenshot_balance_is_not_a_transaction
+    - tests/integration/test_receipts_and_voice.py::test_a30_cart_requires_payment_confirmation
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-18
   title: "QR"
@@ -4183,6 +4362,8 @@
     - src/fintracker/application/identity/preferences.py
     - src/fintracker/application/intelligence/media_pipeline.py
   verification:
+    - tests/acceptance/test_first_cycle.py::test_first_expense_and_card
+    - tests/acceptance/test_input_guards.py::test_a15_autopost_disabled_shows_confirmation
     - tests/acceptance/test_settings_and_rules.py::test_input_preferences_toggle
     - tests/integration/test_rules_and_preferences.py::test_input_preferences_are_per_member
     - tests/quality/test_extraction_accuracy.py::test_ai04_autopost_ignores_model_self_confidence
@@ -4198,6 +4379,7 @@
     - src/fintracker/application/maintenance/retention.py
     - src/fintracker/db/models/platform.py
   verification:
+    - tests/acceptance/test_input_guards.py::test_a05_incomplete_batch_stays_draft
     - tests/integration/test_retention.py::test_expired_draft_never_becomes_posted
   evidence:
     - .planning/evidence/latest.json
@@ -4215,6 +4397,11 @@
     - src/fintracker/application/conversation/sections.py
     - src/fintracker/db/models/catalog.py
   verification:
+    - tests/acceptance/test_category_scenarios.py::test_a115_create_category_and_move_record
+    - tests/acceptance/test_context_scenarios.py::test_a162_shared_change_is_visible_to_everyone
+    - tests/integration/test_category_lifecycle.py::test_a113_new_category_without_limit_is_available
+    - tests/integration/test_category_lifecycle.py::test_a114_repeated_create_gives_one_category
+    - tests/integration/test_import_export.py::test_a69_a74_a82_real_source_reconciles_to_kopeck
     - tests/integration/test_schema_constraints.py::test_duplicate_active_category_name_rejected
   evidence:
     - .planning/evidence/latest.json
@@ -4223,13 +4410,22 @@
   title: "Изменения справочника"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/catalog/categories.py
     - src/fintracker/application/conversation/category_flow.py
     - src/fintracker/db/models/catalog.py
   verification:
+    - tests/acceptance/test_category_scenarios.py::test_a118_archive_keeps_expenses_in_reports
+    - tests/acceptance/test_category_scenarios.py::test_a120_reassign_shows_links_before_archive
+    - tests/integration/test_category_lifecycle.py::test_a116_rename_keeps_identity_and_sums
+    - tests/integration/test_category_lifecycle.py::test_a117_a119_delete_and_restore
+    - tests/integration/test_category_lifecycle.py::test_a121_group_removal_shows_branch
+    - tests/integration/test_category_lifecycle.py::test_a122_merge_keeps_total_spending
+    - tests/integration/test_category_lifecycle.py::test_a123_archived_category_blocks_posting
+    - tests/integration/test_goal_and_import_semantics.py::test_a71_a75_source_mapping_is_by_meaning
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-23
   title: "Правила"
@@ -4241,6 +4437,7 @@
     - src/fintracker/application/conversation/entry.py
     - src/fintracker/db/models/catalog.py
   verification:
+    - tests/acceptance/test_entry_scenarios.py::test_a02_beneficiary_does_not_replace_author
     - tests/integration/test_rules_and_preferences.py::test_equally_specific_conflict_is_refused
     - tests/integration/test_rules_and_preferences.py::test_member_rule_beats_workspace_rule
     - tests/integration/test_rules_and_preferences.py::test_more_specific_rule_wins_inside_level
@@ -4268,12 +4465,14 @@
   title: "Без категории"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/conversation/entry.py
     - src/fintracker/application/planning/plan.py
   verification:
+    - tests/integration/test_money_scenarios.py::test_a36_partial_refund_reduces_net_spending
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-26
   title: "Деньги"
@@ -4288,7 +4487,11 @@
     - src/fintracker/domain/parsing/dates.py
     - src/fintracker/infra/ai/schemas.py
   verification:
+    - tests/acceptance/test_first_cycle.py::test_first_expense_and_card
+    - tests/integration/test_period_automation.py::test_a215_late_processing_keeps_purchase_in_its_period
+    - tests/unit/test_calendar.py::test_a211_fixed_week_across_dst_shift
     - tests/unit/test_money.py::test_rub_minor_units
+    - tests/unit/test_parsing.py::test_a08_thousand_suffix
   evidence:
     - .planning/evidence/latest.json
 
@@ -4303,6 +4506,10 @@
     - src/fintracker/db/models/planning.py
   verification:
     - tests/acceptance/test_settings_and_rules.py::test_category_correction_offers_rule
+    - tests/integration/test_money_scenarios.py::test_a47_date_change_moves_between_periods
+    - tests/integration/test_period_automation.py::test_a215_late_processing_keeps_purchase_in_its_period
+    - tests/integration/test_reminders.py::test_a149_boundary_creates_one_period_without_command
+    - tests/unit/test_calendar.py::test_a207_single_day_period
   evidence:
     - .planning/evidence/latest.json
 
@@ -4310,33 +4517,44 @@
   title: "Переводы"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/ledger/operations.py
   verification:
+    - tests/integration/test_money_scenarios.py::test_a34_transfer_between_own_accounts
+    - tests/integration/test_money_scenarios.py::test_a35_withdrawal_then_cash_purchase
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-29
   title: "Возвраты"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/ledger/operations.py
     - src/fintracker/domain/ledger/model.py
   verification:
+    - tests/integration/test_import_scenarios.py::test_a37_refund_in_next_period_reduces_current_line
+    - tests/integration/test_money_scenarios.py::test_a36_partial_refund_reduces_net_spending
+    - tests/integration/test_money_scenarios.py::test_a38_second_refund_cannot_exceed_purchase
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-30
   title: "Совместная покупка и доля"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/ledger/operations.py
     - src/fintracker/db/models/ledger.py
   verification:
+    - tests/acceptance/test_entry_scenarios.py::test_a03_shared_expense_is_counted_once
+    - tests/integration/test_import_export.py::test_a73_formula_is_preserved_as_text
+    - tests/integration/test_money_scenarios.py::test_a41_a42_mixed_payment_and_settlement
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-31
   title: "Кредитные карты P1"
@@ -4353,111 +4571,144 @@
   title: "Исторические долги"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/analytics/reports.py
   verification:
+    - tests/integration/test_import_export.py::test_a77_historic_debt_keeps_unknown_meaning
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-33
   title: "Изменение"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/conversation/corrections.py
     - src/fintracker/application/ledger/service.py
     - src/fintracker/application/planning/plan.py
   verification:
+    - tests/acceptance/test_category_scenarios.py::test_a115_create_category_and_move_record
+    - tests/acceptance/test_category_scenarios.py::test_a126_conflicting_correction_is_reported
+    - tests/acceptance/test_context_scenarios.py::test_a167_reply_corrects_the_card_budget
+    - tests/acceptance/test_first_cycle.py::test_a163_member_corrects_admin_record
+    - tests/integration/test_category_lifecycle.py::test_a124_correction_changes_linked_record
+    - tests/integration/test_category_lifecycle.py::test_a125_ambiguous_correction_offers_choice
+    - tests/integration/test_collaboration_scenarios.py::test_a192_note_does_not_silently_change_spender
+    - tests/integration/test_context_filters.py::test_a185_note_change_does_not_touch_money
+    - tests/integration/test_money_scenarios.py::test_a45_correction_blocked_by_linked_refund
+    - tests/integration/test_money_scenarios.py::test_a47_date_change_moves_between_periods
+    - tests/integration/test_plan_scenarios.py::test_a219_period_change_does_not_touch_template
+    - tests/integration/test_recommendations.py::test_a133_correction_marks_recommendation_stale
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-34
   title: "Отмена"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/conversation/corrections.py
     - src/fintracker/application/ledger/operations.py
     - src/fintracker/application/ledger/service.py
   verification:
+    - tests/integration/test_category_lifecycle.py::test_a127_void_and_restore_without_fake_refund
+    - tests/integration/test_money_scenarios.py::test_a45_a46_ar15_revision_sequence
+    - tests/integration/test_money_scenarios.py::test_a45_correction_blocked_by_linked_refund
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-35
   title: "Бюджетные статьи"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/planning/plan.py
     - src/fintracker/db/models/planning.py
   verification:
+    - tests/integration/test_budget_math.py::test_b1_remaining_and_future_payment
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-36
   title: "Версии"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/db/models/planning.py
   verification:
+    - tests/integration/test_category_lifecycle.py::test_a122_merge_keeps_total_spending
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-37
   title: "Перераспределение"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/catalog/categories.py
     - src/fintracker/application/planning/plan.py
     - src/fintracker/db/models/planning.py
   verification:
+    - tests/integration/test_budget_math.py::test_b4_baseline_versus_working_plan
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-38
   title: "Влияние неопределённых данных"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/planning/plan.py
   verification:
+    - tests/integration/test_coverage.py::test_r02_quality_check_lists_open_items
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-39
   title: "Перенос"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/planning/plan.py
     - src/fintracker/application/planning/rollover.py
     - src/fintracker/db/models/planning.py
   verification:
+    - tests/integration/test_plan_scenarios.py::test_a220_rollover_does_not_change_template_limit
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-40
   title: "Фонды будущих расходов"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/commitments/goals.py
   verification:
+    - tests/integration/test_goal_and_import_semantics.py::test_a39_goal_allocation_is_not_an_expense
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-41
   title: "Базовый прогноз P0"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/analytics/reports.py
     - src/fintracker/application/analytics/reviews.py
   verification:
+    - tests/integration/test_reviews.py::test_early_risk_needs_enough_observed_days
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-42
   title: "Ранний риск"
@@ -4487,10 +4738,14 @@
   title: "Сценарий"
   source: docs/TZ.md
   stage: P1
-  status: planned
+  status: verified
   implementation:
+    - src/fintracker/application/planning/plan.py
   verification:
+    - tests/acceptance/test_input_guards.py::test_a09_hypothetical_does_not_create_expense
+    - tests/unit/test_parsing.py::test_intent_guards
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-45
   title: "Расписание"
@@ -4505,7 +4760,9 @@
     - src/fintracker/domain/schedule.py
     - src/fintracker/runtime/scheduler.py
   verification:
+    - tests/integration/test_commitments.py::test_a227_monthly_payment_not_duplicated_by_weekly_budget
     - tests/integration/test_commitments.py::test_monthly_rule_uses_last_existing_day
+    - tests/integration/test_commitments.py::test_r04_partial_payment_keeps_overdue_remainder_once
     - tests/integration/test_reminders.py::test_reminder_appears_only_within_lead_time
   evidence:
     - .planning/evidence/latest.json
@@ -4520,6 +4777,7 @@
     - src/fintracker/application/conversation/payments_flow.py
     - src/fintracker/db/models/commitments.py
   verification:
+    - tests/integration/test_plan_scenarios.py::test_a147_limit_is_not_a_purchase
     - tests/integration/test_reminders.py::test_reminder_text_marks_expectation_not_expense
   evidence:
     - .planning/evidence/latest.json
@@ -4528,64 +4786,78 @@
   title: "Повторяющиеся доходы"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/commitments/schedules.py
     - src/fintracker/db/models/commitments.py
     - src/fintracker/domain/schedule.py
   verification:
+    - tests/unit/test_parsing.py::test_transaction_kind_hint
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-48
   title: "Детектор подписок P1"
   source: docs/TZ.md
   stage: P1
-  status: planned
+  status: verified
   implementation:
+    - src/fintracker/application/commitments/schedules.py
   verification:
+    - tests/integration/test_recommendations.py::test_a140_unknown_subscription_is_not_claimed_detected
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-49
   title: "Цель"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/commitments/goals.py
     - src/fintracker/application/conversation/goals_flow.py
     - src/fintracker/db/models/commitments.py
   verification:
+    - tests/integration/test_commitments.py::test_a227_monthly_payment_not_duplicated_by_weekly_budget
+    - tests/integration/test_commitments.py::test_r04_partial_payment_keeps_overdue_remainder_once
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-50
   title: "Прогресс"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/commitments/goals.py
     - src/fintracker/application/conversation/goals_flow.py
     - src/fintracker/db/models/commitments.py
   verification:
+    - tests/integration/test_goal_and_import_semantics.py::test_a39_goal_allocation_is_not_an_expense
+    - tests/integration/test_goal_and_import_semantics.py::test_a40_transfer_with_goal_is_single_contribution
+    - tests/integration/test_goal_and_import_semantics.py::test_a78_savings_row_is_not_consumption
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-51
   title: "Использование цели"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/commitments/goals.py
     - src/fintracker/application/conversation/goals_flow.py
     - src/fintracker/db/models/commitments.py
   verification:
+    - tests/integration/test_goal_and_import_semantics.py::test_a39_goal_allocation_is_not_an_expense
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-52
   title: "Пороговые события"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/conversation/sections.py
     - src/fintracker/application/delivery/render.py
@@ -4593,7 +4865,14 @@
     - src/fintracker/application/planning/rollover.py
     - src/fintracker/db/models/platform.py
   verification:
+    - tests/integration/test_plan_review.py::test_a228_single_day_period_has_no_separate_review_job
+    - tests/integration/test_plan_review.py::test_form10_lead_days_by_period_length
+    - tests/integration/test_thresholds.py::test_a56_jump_from_70_to_105_gives_single_overspend
+    - tests/integration/test_thresholds.py::test_a58_repeated_evaluation_creates_no_duplicate
+    - tests/integration/test_thresholds.py::test_a59_refund_then_growth_does_not_repeat_threshold
+    - tests/integration/test_thresholds.py::test_a60_plan_change_keeps_threshold_history
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-53
   title: "Частота и тихие часы"
@@ -4610,6 +4889,15 @@
     - src/fintracker/db/models/platform.py
   verification:
     - tests/acceptance/test_settings_and_rules.py::test_quiet_hours_preset
+    - tests/integration/test_delivery.py::test_a64_daily_quota_limits_proactive_messages
+    - tests/integration/test_plan_review.py::test_a228_single_day_period_has_no_separate_review_job
+    - tests/integration/test_plan_review.py::test_form10_lead_days_by_period_length
+    - tests/integration/test_reminders.py::test_a139_coinciding_proactive_events_are_merged
+    - tests/integration/test_reminders.py::test_a160_disabled_family_keeps_shared_history
+    - tests/integration/test_reminders.py::test_a161_quiet_hours_are_personal_for_each_recipient
+    - tests/integration/test_reminders.py::test_a61_settled_payment_is_not_reminded
+    - tests/integration/test_reminders.py::test_a62_author_card_is_immediate_summary_waits
+    - tests/integration/test_reminders.py::test_a63_import_sends_one_summary
     - tests/integration/test_reminders.py::test_reminders_are_not_duplicated_within_a_day
     - tests/integration/test_rules_and_preferences.py::test_quiet_hours_saved_in_personal_timezone
   evidence:
@@ -4665,12 +4953,14 @@
   title: "Набор отчётов P0"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/analytics/reports.py
     - src/fintracker/application/conversation/analytics_flow.py
   verification:
+    - tests/integration/test_import_scenarios.py::test_a85_group_total_equals_sum_of_operations
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-58
   title: "Естественный язык"
@@ -4680,6 +4970,8 @@
   implementation:
     - src/fintracker/application/conversation/analytics_flow.py
   verification:
+    - tests/acceptance/test_input_guards.py::test_a11_question_returns_report_not_expense
+    - tests/acceptance/test_report_slices.py::test_a229_month_question_on_short_period_is_clarified
     - tests/acceptance/test_report_slices.py::test_spender_slice_requires_linked_profile
   evidence:
     - .planning/evidence/latest.json
@@ -4702,12 +4994,14 @@
   title: "Проценты и сравнение"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/analytics/reports.py
     - src/fintracker/application/conversation/analytics_flow.py
   verification:
+    - tests/acceptance/test_report_slices.py::test_a229_month_question_on_short_period_is_clarified
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-61
   title: "Мастер плана"
@@ -4720,6 +5014,7 @@
   verification:
     - tests/acceptance/test_reviews_flow.py::test_period_summary_and_next_plan
     - tests/acceptance/test_reviews_flow.py::test_plan_command_keeps_income_and_balance_separate
+    - tests/integration/test_plan_scenarios.py::test_a67_plan_is_anchored_to_period_start
     - tests/integration/test_reviews.py::test_next_period_draft_reports_deficit
     - tests/integration/test_reviews.py::test_next_period_draft_shows_balance_apart_from_income
     - tests/integration/test_reviews.py::test_next_period_draft_without_income_basis
@@ -4730,59 +5025,82 @@
   title: "Ограничения"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/conversation/analytics_flow.py
     - src/fintracker/application/conversation/onboarding_flow.py
     - src/fintracker/application/onboarding/wizard.py
   verification:
+    - tests/integration/test_goal_and_import_semantics.py::test_a148_deficit_requires_explicit_confirmation
+    - tests/integration/test_plan_scenarios.py::test_a222_deficit_marks_plan_for_review
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-63
   title: "Предварительный просмотр"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/conversation/io_flow.py
     - src/fintracker/application/integrations/importer.py
     - src/fintracker/application/integrations/sheet_parser.py
     - src/fintracker/db/models/integrations.py
   verification:
+    - tests/integration/test_import_export.py::test_a68_sheet_title_gives_period_bounds
+    - tests/integration/test_import_export.py::test_a69_a74_a82_real_source_reconciles_to_kopeck
+    - tests/integration/test_import_export.py::test_a79_repeated_snapshot_adds_nothing
+    - tests/integration/test_import_export.py::test_a81_preview_alone_changes_nothing
+    - tests/integration/test_import_scenarios.py::test_a70_same_row_number_does_not_merge_categories
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-64
   title: "Дневные агрегаты"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/integrations/sheet_parser.py
   verification:
+    - tests/integration/test_category_lifecycle.py::test_a76_unknown_beneficiary_is_not_invented
+    - tests/integration/test_import_export.py::test_a68_sheet_title_gives_period_bounds
+    - tests/integration/test_import_export.py::test_a69_a74_a82_real_source_reconciles_to_kopeck
+    - tests/integration/test_import_export.py::test_a72_daily_cell_becomes_single_aggregate
+    - tests/integration/test_import_export.py::test_a73_formula_is_preserved_as_text
+    - tests/integration/test_import_scenarios.py::test_a196_import_does_not_invent_spender
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-65
   title: "Сверка"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/integrations/importer.py
     - src/fintracker/application/integrations/sheet_parser.py
     - src/fintracker/db/models/integrations.py
   verification:
+    - tests/integration/test_goal_and_import_semantics.py::test_a78_savings_row_is_not_consumption
+    - tests/integration/test_import_export.py::test_a69_a74_a82_real_source_reconciles_to_kopeck
+    - tests/integration/test_import_export.py::test_a82_unbalanced_import_is_blocked
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-66
   title: "Повторный импорт изменённого источника"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/integrations/importer.py
     - src/fintracker/db/models/integrations.py
   verification:
+    - tests/integration/test_goal_and_import_semantics.py::test_a71_a75_source_mapping_is_by_meaning
+    - tests/integration/test_import_scenarios.py::test_a80_changed_cell_creates_revision_not_sum
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-67
   title: "Выгрузка"
@@ -4794,6 +5112,8 @@
     - src/fintracker/application/integrations/exporter.py
     - src/fintracker/db/models/integrations.py
   verification:
+    - tests/integration/test_collaboration_scenarios.py::test_a230_export_covers_multi_month_period
+    - tests/integration/test_import_export.py::test_a200_export_preserves_note_and_roles
     - tests/integration/test_import_export.py::test_export_matrix_is_not_limited_to_31_columns
   evidence:
     - .planning/evidence/latest.json
@@ -4824,11 +5144,13 @@
   title: "Восстановление пропусков"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/db/models/access.py
   verification:
+    - tests/integration/test_coverage.py::test_r02_quality_check_lists_open_items
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-71
   title: "Сверка счёта"
@@ -4849,86 +5171,122 @@
   title: "Замещение агрегата"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/analytics/coverage.py
     - src/fintracker/application/integrations/importer.py
     - src/fintracker/db/models/integrations.py
   verification:
+    - tests/integration/test_coverage.py::test_a83_a84_aggregate_replacement_requires_matching_sum
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-73
   title: "Запуск анализа"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/conversation/analytics_flow.py
     - src/fintracker/application/intelligence/analysis.py
     - src/fintracker/db/models/intelligence.py
   verification:
+    - tests/integration/test_recommendations.py::test_a128_repeated_task_creates_one_run
+    - tests/integration/test_recommendations.py::test_a129_no_new_data_does_not_repeat_advice
+    - tests/integration/test_recommendations.py::test_a130_incomplete_history_blocks_recommendations
+    - tests/integration/test_recommendations.py::test_a179_one_run_gives_independent_deliveries
+    - tests/integration/test_reminders.py::test_a139_coinciding_proactive_events_are_merged
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-74
   title: "Направления оптимизации"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/intelligence/analysis.py
   verification:
+    - tests/integration/test_recommendations.py::test_a136_unknown_price_gives_card_without_effect
+    - tests/integration/test_recommendations.py::test_a140_unknown_subscription_is_not_claimed_detected
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-75
   title: "Карточка рекомендации"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/intelligence/analysis.py
     - src/fintracker/db/models/intelligence.py
     - src/fintracker/infra/ai/schemas.py
   verification:
+    - tests/integration/test_recommendations.py::test_a130_incomplete_history_blocks_recommendations
+    - tests/integration/test_recommendations.py::test_a131_alternative_effect_names_conditions_and_horizon
+    - tests/integration/test_recommendations.py::test_a135_alternatives_share_group
+    - tests/integration/test_recommendations.py::test_a136_unknown_price_gives_card_without_effect
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-76
   title: "Действия и обратная связь"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/conversation/analytics_flow.py
     - src/fintracker/application/identity/preferences.py
     - src/fintracker/application/intelligence/analysis.py
     - src/fintracker/db/models/intelligence.py
   verification:
+    - tests/acceptance/test_report_slices.py::test_a132_choosing_action_changes_nothing_financial
+    - tests/acceptance/test_report_slices.py::test_a137_done_mark_does_not_claim_proven_savings
+    - tests/integration/test_collaboration_scenarios.py::test_a164_concurrent_edit_gives_one_revision
+    - tests/integration/test_recommendations.py::test_a133_correction_marks_recommendation_stale
+    - tests/integration/test_recommendations.py::test_a134_muted_direction_is_not_offered
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-77
   title: "Код приглашения"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/identity/invites.py
     - src/fintracker/application/ingestion/accept_update.py
     - src/fintracker/core/ids.py
     - src/fintracker/db/models/access.py
   verification:
+    - tests/acceptance/test_context_scenarios.py::test_a156_link_and_manual_code_give_same_path
+    - tests/acceptance/test_first_cycle.py::test_a150_member_cannot_issue_invite
+    - tests/acceptance/test_first_cycle.py::test_a151_budget_id_is_not_an_invite
+    - tests/acceptance/test_first_cycle.py::test_a153_invalid_code_reveals_nothing
+    - tests/integration/test_delivery.py::test_invite_secret_never_stored_in_payload
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-78
   title: "Вход по коду"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/conversation/onboarding_flow.py
     - src/fintracker/application/identity/invites.py
     - src/fintracker/db/migrations/versions/0005_invite_lookup.py
     - src/fintracker/db/models/access.py
   verification:
+    - tests/acceptance/test_access_lifecycle.py::test_a157_joining_does_not_import_personal_data
+    - tests/acceptance/test_access_lifecycle.py::test_a171_rejoin_gets_member_role_and_new_generation
+    - tests/acceptance/test_context_scenarios.py::test_a156_link_and_manual_code_give_same_path
+    - tests/acceptance/test_first_cycle.py::test_a152_joined_member_sees_history_before_join
+    - tests/acceptance/test_first_cycle.py::test_a153_invalid_code_reveals_nothing
+    - tests/acceptance/test_first_cycle.py::test_a155_repeated_join_does_not_duplicate
+    - tests/integration/test_concurrency.py::test_ar09_a154_last_invite_use_goes_to_one_of_two
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-79
   title: "Активный бюджет"
@@ -4945,6 +5303,8 @@
     - src/fintracker/db/models/access.py
     - src/fintracker/db/models/platform.py
   verification:
+    - tests/acceptance/test_context_scenarios.py::test_a165_a166_context_is_pinned_at_receipt
+    - tests/acceptance/test_context_scenarios.py::test_a167_reply_corrects_the_card_budget
     - tests/acceptance/test_input_guards.py::test_no_budget_selected_blocks_recording
   evidence:
     - .planning/evidence/latest.json
@@ -4953,83 +5313,120 @@
   title: "Выход участника"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/conversation/callbacks.py
     - src/fintracker/application/identity/membership.py
     - src/fintracker/application/identity/security_change.py
   verification:
+    - tests/acceptance/test_access_lifecycle.py::test_a168_member_leaves_and_loses_access
+    - tests/acceptance/test_access_lifecycle.py::test_a169_old_buttons_do_not_restore_access
+    - tests/acceptance/test_access_lifecycle.py::test_a171_rejoin_gets_member_role_and_new_generation
+    - tests/acceptance/test_context_scenarios.py::test_a197_note_author_survives_leaving
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-81
   title: "Исключение"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/identity/membership.py
     - src/fintracker/application/identity/security_change.py
   verification:
+    - tests/acceptance/test_access_lifecycle.py::test_a170_removed_member_cannot_rejoin_by_code
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-82
   title: "Передача администрирования"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/identity/membership.py
   verification:
+    - tests/acceptance/test_access_lifecycle.py::test_a172_admin_cannot_leave_without_transfer
+    - tests/acceptance/test_access_lifecycle.py::test_a173_admin_transfer_swaps_roles_atomically
+    - tests/acceptance/test_context_scenarios.py::test_a174_stale_admin_transfer_is_not_applied
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-83
   title: "Удаление бюджета"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/conversation/callbacks.py
     - src/fintracker/application/delivery/dispatch.py
     - src/fintracker/application/identity/membership.py
     - src/fintracker/db/models/access.py
   verification:
+    - tests/acceptance/test_access_lifecycle.py::test_a175_member_cannot_delete_budget
+    - tests/acceptance/test_access_lifecycle.py::test_a176_a177_delete_closes_budget_and_spares_other
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-84
   title: "Мастер создания"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/conversation/onboarding_flow.py
     - src/fintracker/application/onboarding/wizard.py
     - src/fintracker/db/models/access.py
   verification:
+    - tests/acceptance/test_first_cycle.py::test_a142_create_budget_from_scratch
+    - tests/acceptance/test_first_cycle.py::test_a143_publish_is_idempotent
+    - tests/integration/test_goal_and_import_semantics.py::test_a148_deficit_requires_explicit_confirmation
+    - tests/integration/test_plan_scenarios.py::test_a147_limit_is_not_a_purchase
+    - tests/unit/test_calendar.py::test_a201_first_period_and_preview
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-85
   title: "План дохода"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/onboarding/wizard.py
     - src/fintracker/db/models/planning.py
   verification:
+    - tests/acceptance/test_access_lifecycle.py::test_a157_joining_does_not_import_personal_data
+    - tests/acceptance/test_first_cycle.py::test_a144_income_plan_does_not_create_money
+    - tests/integration/test_goal_and_import_semantics.py::test_a148_deficit_requires_explicit_confirmation
+    - tests/integration/test_goal_and_import_semantics.py::test_a217_monthly_income_is_not_copied_to_short_period
+    - tests/integration/test_plan_scenarios.py::test_a145_income_estimate_keeps_its_precision
+    - tests/integration/test_plan_scenarios.py::test_a146_detailed_sources_do_not_double_income
+    - tests/integration/test_plan_scenarios.py::test_a216_income_belongs_to_its_period
+    - tests/unit/test_calendar.py::test_a210_quarterly_cycle
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-86
   title: "Общая видимость и уведомления"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/delivery/dispatch.py
     - src/fintracker/application/delivery/render.py
     - src/fintracker/db/models/access.py
     - src/fintracker/db/models/platform.py
   verification:
+    - tests/acceptance/test_access_lifecycle.py::test_a176_a177_delete_closes_budget_and_spares_other
+    - tests/acceptance/test_context_scenarios.py::test_a162_shared_change_is_visible_to_everyone
+    - tests/acceptance/test_first_cycle.py::test_a158_shared_visibility_counts_once
+    - tests/integration/test_delivery.py::test_a158_one_event_creates_personal_deliveries
+    - tests/integration/test_delivery.py::test_a159_failed_delivery_does_not_block_others
+    - tests/integration/test_reminders.py::test_a160_disabled_family_keeps_shared_history
+    - tests/integration/test_reminders.py::test_a161_quiet_hours_are_personal_for_each_recipient
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-87
   title: "Комментарий"
@@ -5040,6 +5437,17 @@
     - src/fintracker/application/conversation/corrections.py
     - src/fintracker/application/conversation/entry.py
   verification:
+    - tests/acceptance/test_context_scenarios.py::test_a197_note_author_survives_leaving
+    - tests/acceptance/test_entry_scenarios.py::test_a184_note_append_is_idempotent
+    - tests/acceptance/test_entry_scenarios.py::test_a186_shared_note_visible_to_members
+    - tests/acceptance/test_entry_scenarios.py::test_a188_comment_in_same_message_is_one_expense
+    - tests/acceptance/test_entry_scenarios.py::test_a199_note_scope_is_clarified_for_two_expenses
+    - tests/acceptance/test_voice_and_receipts.py::test_a182_voice_note_is_kept_for_correction
+    - tests/acceptance/test_voice_and_receipts.py::test_a183_receipt_caption_is_linked_to_operation
+    - tests/integration/test_collaboration_scenarios.py::test_a187_concurrent_note_edit_keeps_first_text
+    - tests/integration/test_collaboration_scenarios.py::test_a198_instruction_in_note_stays_data
+    - tests/integration/test_context_filters.py::test_a181_author_spender_beneficiary_are_independent
+    - tests/integration/test_context_filters.py::test_a185_note_change_does_not_touch_money
     - tests/integration/test_context_filters.py::test_note_length_limit_is_not_silently_truncated
   evidence:
     - .planning/evidence/latest.json
@@ -5048,13 +5456,22 @@
   title: "Кто потратил"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/catalog/directory.py
     - src/fintracker/application/conversation/entry.py
     - src/fintracker/db/models/access.py
   verification:
+    - tests/acceptance/test_voice_and_receipts.py::test_a183_receipt_caption_is_linked_to_operation
+    - tests/integration/test_collaboration_scenarios.py::test_a192_note_does_not_silently_change_spender
+    - tests/integration/test_context_filters.py::test_a181_author_spender_beneficiary_are_independent
+    - tests/integration/test_context_filters.py::test_a189_person_profile_does_not_create_membership
+    - tests/integration/test_context_filters.py::test_a191_ambiguous_alias_requires_clarification
+    - tests/integration/test_context_filters.py::test_a195_text_search_and_person_filter_differ
+    - tests/integration/test_goal_and_import_semantics.py::test_a190_beneficiary_without_spender
+    - tests/integration/test_import_scenarios.py::test_a196_import_does_not_invent_spender
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-89
   title: "Поиск и фильтрация контекста"
@@ -5066,7 +5483,12 @@
     - src/fintracker/application/analytics/reports.py
     - src/fintracker/application/catalog/directory.py
   verification:
+    - tests/integration/test_context_filters.py::test_a193_ar19_combined_filters_do_not_multiply_sums
+    - tests/integration/test_context_filters.py::test_a194_unknown_spender_is_not_attributed
+    - tests/integration/test_context_filters.py::test_a195_text_search_and_person_filter_differ
     - tests/integration/test_context_filters.py::test_has_note_filters
+    - tests/integration/test_context_filters.py::test_note_search_is_case_insensitive_and_escapes_wildcards
+    - tests/integration/test_import_export.py::test_a200_export_preserves_note_and_roles
   evidence:
     - .planning/evidence/latest.json
 
@@ -5082,6 +5504,12 @@
     - src/fintracker/core/calendar.py
     - src/fintracker/db/models/planning.py
   verification:
+    - tests/integration/test_period_automation.py::test_a223_future_start_blocks_today_purchase
+    - tests/unit/test_calendar.py::test_a201_first_period_and_preview
+    - tests/unit/test_calendar.py::test_a203_fixed_fourteen_days
+    - tests/unit/test_calendar.py::test_a205_options_offered_without_silent_correction
+    - tests/unit/test_calendar.py::test_a206_invalid_intervals_rejected
+    - tests/unit/test_calendar.py::test_a207_single_day_period
     - tests/unit/test_calendar.py::test_date_before_anchor_has_no_sequence
   evidence:
     - .planning/evidence/latest.json
@@ -5090,25 +5518,47 @@
   title: "Правила повторения"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/core/calendar.py
     - src/fintracker/db/models/planning.py
   verification:
+    - tests/unit/test_calendar.py::test_a201_first_period_and_preview
+    - tests/unit/test_calendar.py::test_a202_monthly_cycle_10_to_9
+    - tests/unit/test_calendar.py::test_a203_fixed_fourteen_days
+    - tests/unit/test_calendar.py::test_a204_month_versus_thirty_days_diverge
+    - tests/unit/test_calendar.py::test_a206_invalid_intervals_rejected
+    - tests/unit/test_calendar.py::test_a208_january_31_anchor_keeps_original_day
+    - tests/unit/test_calendar.py::test_a209_leap_year_february_boundary
+    - tests/unit/test_calendar.py::test_a210_quarterly_cycle
+    - tests/unit/test_calendar.py::test_a211_fixed_week_across_dst_shift
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-92
   title: "Автоматическое открытие"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/conversation/analytics_flow.py
     - src/fintracker/application/conversation/context.py
     - src/fintracker/application/planning/periods.py
     - src/fintracker/application/planning/rollover.py
   verification:
+    - tests/integration/test_commitments.py::test_a227_monthly_payment_not_duplicated_by_weekly_budget
+    - tests/integration/test_commitments.py::test_r04_partial_payment_keeps_overdue_remainder_once
+    - tests/integration/test_period_automation.py::test_a212_period_opens_without_ai_and_keeps_identity
+    - tests/integration/test_period_automation.py::test_a213_concurrent_open_creates_single_period
+    - tests/integration/test_period_automation.py::test_a214_recovery_after_missed_boundaries
+    - tests/integration/test_period_automation.py::test_a214_template_version_of_boundary_is_used
+    - tests/integration/test_period_automation.py::test_a215_late_processing_keeps_purchase_in_its_period
+    - tests/integration/test_period_automation.py::test_a218_template_copies_limits_not_facts
+    - tests/integration/test_period_automation.py::test_a221_disabled_template_gives_unapproved_draft
+    - tests/integration/test_reminders.py::test_a149_boundary_creates_one_period_without_command
+    - tests/unit/test_calendar.py::test_a207_single_day_period
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-93
   title: "Повторение плана"
@@ -5121,7 +5571,17 @@
     - src/fintracker/application/planning/rollover.py
     - src/fintracker/db/models/planning.py
   verification:
+    - tests/integration/test_commitments.py::test_a227_monthly_payment_not_duplicated_by_weekly_budget
+    - tests/integration/test_commitments.py::test_r04_partial_payment_keeps_overdue_remainder_once
+    - tests/integration/test_period_automation.py::test_a218_template_copies_limits_not_facts
+    - tests/integration/test_period_automation.py::test_a221_disabled_template_gives_unapproved_draft
     - tests/integration/test_period_automation.py::test_approved_plan_is_not_overwritten_by_template
+    - tests/integration/test_plan_scenarios.py::test_a216_income_belongs_to_its_period
+    - tests/integration/test_plan_scenarios.py::test_a219_period_change_does_not_touch_template
+    - tests/integration/test_plan_scenarios.py::test_a220_rollover_does_not_change_template_limit
+    - tests/integration/test_plan_scenarios.py::test_a222_deficit_marks_plan_for_review
+    - tests/integration/test_plan_scenarios.py::test_a225_member_cannot_change_template
+    - tests/integration/test_reminders.py::test_a149_boundary_creates_one_period_without_command
   evidence:
     - .planning/evidence/latest.json
 
@@ -5135,7 +5595,10 @@
     - src/fintracker/core/calendar.py
     - src/fintracker/db/models/planning.py
   verification:
+    - tests/integration/test_collaboration_scenarios.py::test_a230_export_covers_multi_month_period
     - tests/integration/test_period_automation.py::test_a226_policy_change_keeps_single_sequence
+    - tests/integration/test_plan_scenarios.py::test_a225_member_cannot_change_template
+    - tests/unit/test_calendar.py::test_a224_transition_period_on_calendar_change
   evidence:
     - .planning/evidence/latest.json
 
@@ -5169,7 +5632,8 @@
   title: "Интерфейс"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: blocked
+  blocker: "BL-03: проверка на реальных клиентах Telegram требует токена и HTTPS"
   implementation:
     - src/fintracker/application/conversation/types.py
   verification:
@@ -5179,7 +5643,8 @@
   title: "Пилот"
   source: docs/TZ.md
   stage: P0
-  status: planned
+  status: blocked
+  blocker: "BL-03, BL-04: пилот требует реальных участников и среды размещения"
   implementation:
   verification:
   evidence:
@@ -5188,7 +5653,7 @@
   title: "Приём"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/api/routes/telegram.py
     - src/fintracker/application/ingestion/accept_update.py
@@ -5196,39 +5661,55 @@
     - src/fintracker/bot/dispatcher.py
     - src/fintracker/db/models/platform.py
   verification:
+    - tests/integration/test_delivery.py::test_invite_secret_never_stored_in_payload
   evidence:
+    - .planning/evidence/latest.json
 
 - id: TECH-02
   title: "Идемпотентность"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/ingestion/accept_update.py
     - src/fintracker/application/ingestion/process_event.py
     - src/fintracker/db/models/platform.py
   verification:
+    - tests/acceptance/test_entry_scenarios.py::test_a184_note_append_is_idempotent
+    - tests/acceptance/test_voice_and_receipts.py::test_a28_album_of_one_receipt_is_single_package
   evidence:
+    - .planning/evidence/latest.json
 
 - id: TECH-03
   title: "Проведение"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/ledger/service.py
   verification:
+    - tests/integration/test_ai_contract.py::test_server_resolves_date_and_money
+    - tests/integration/test_architecture_review.py::test_ar02_no_state_before_commit_and_no_second_job_after
   evidence:
+    - .planning/evidence/latest.json
 
 - id: TECH-04
   title: "Конкуренция"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/db/uow.py
   verification:
+    - tests/acceptance/test_access_lifecycle.py::test_a169_old_buttons_do_not_restore_access
+    - tests/acceptance/test_access_lifecycle.py::test_a173_admin_transfer_swaps_roles_atomically
+    - tests/integration/test_collaboration_scenarios.py::test_a164_concurrent_edit_gives_one_revision
+    - tests/integration/test_collaboration_scenarios.py::test_a187_concurrent_note_edit_keeps_first_text
+    - tests/integration/test_concurrency.py::test_ar09_a154_last_invite_use_goes_to_one_of_two
+    - tests/integration/test_period_automation.py::test_a213_concurrent_open_creates_single_period
+    - tests/integration/test_period_automation.py::test_a226_policy_change_keeps_single_sequence
   evidence:
+    - .planning/evidence/latest.json
 
 - id: TECH-05
   title: "Outbox"
@@ -5241,7 +5722,10 @@
     - src/fintracker/db/models/platform.py
     - src/fintracker/db/uow.py
   verification:
+    - tests/acceptance/test_first_cycle.py::test_a158_shared_visibility_counts_once
     - tests/integration/test_commitments.py::test_repeated_settlement_event_is_idempotent
+    - tests/integration/test_delivery.py::test_a158_one_event_creates_personal_deliveries
+    - tests/integration/test_thresholds.py::test_a58_repeated_evaluation_creates_no_duplicate
   evidence:
     - .planning/evidence/latest.json
 
@@ -5262,11 +5746,13 @@
   title: "Уровни совпадения"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/ingestion/accept_update.py
   verification:
+    - tests/integration/test_coverage.py::test_a83_a84_aggregate_replacement_requires_matching_sum
   evidence:
+    - .planning/evidence/latest.json
 
 - id: NFR-01
   title: "Приём события p95 <= 1 с до долговечного сохранения"
@@ -5274,6 +5760,7 @@
   stage: P0
   status: verified
   implementation:
+    - src/fintracker/application/ingestion/accept_update.py
   verification:
     - tests/performance/test_performance.py::test_nfr01_nfr07_intake_rate
   evidence:
@@ -5285,6 +5772,7 @@
   stage: P0
   status: verified
   implementation:
+    - src/fintracker/application/conversation/service.py
   verification:
     - tests/performance/test_performance.py::test_nfr02_nfr03_dialog_latency
   evidence:
@@ -5296,6 +5784,7 @@
   stage: P0
   status: verified
   implementation:
+    - src/fintracker/application/conversation/service.py
   verification:
     - tests/performance/test_performance.py::test_nfr02_nfr03_dialog_latency
   evidence:
@@ -5305,7 +5794,8 @@
   title: "Голос p95 <= 20 с для записи до 30 с"
   source: docs/TZ.md §23
   stage: P0
-  status: planned
+  status: blocked
+  blocker: "BL-02: измеренная задержка голоса требует выбранной модели ASR"
   implementation:
   verification:
   evidence:
@@ -5314,7 +5804,8 @@
   title: "Чек p95 <= 30 с для читаемого изображения"
   source: docs/TZ.md §23
   stage: P0
-  status: planned
+  status: blocked
+  blocker: "BL-01: измеренная задержка разбора чека требует ключа OpenAI"
   implementation:
   verification:
   evidence:
@@ -5329,6 +5820,7 @@
     - src/fintracker/db/migrations/versions/0007_money_join_indexes.py
     - src/fintracker/db/models/ledger.py
   verification:
+    - tests/integration/test_release_and_runtime.py::test_adr16_architecture_change_has_measured_basis
     - tests/performance/test_performance.py::test_nfr06_filtered_journal_on_large_volume
     - tests/performance/test_performance.py::test_nfr06_report_on_large_journal
   evidence:
@@ -5340,6 +5832,7 @@
   stage: P0
   status: verified
   implementation:
+    - src/fintracker/application/platform/queue.py
   verification:
     - tests/performance/test_performance.py::test_nfr01_nfr07_intake_rate
   evidence:
@@ -5351,6 +5844,7 @@
   stage: P0
   status: verified
   implementation:
+    - src/fintracker/db/session.py
   verification:
     - tests/performance/test_performance.py::test_nfr08_concurrent_workspaces
   evidence:
@@ -5360,7 +5854,8 @@
   title: "Доступность собственного API 99,5% в месяц"
   source: docs/TZ.md §23
   stage: P0
-  status: planned
+  status: blocked
+  blocker: "BL-04: доступность 99,5% измеряется на выбранной среде размещения"
   implementation:
   verification:
   evidence:
@@ -5371,6 +5866,7 @@
   stage: P0
   status: verified
   implementation:
+    - src/fintracker/db/migrations/versions/0007_money_join_indexes.py
   verification:
     - tests/performance/test_performance.py::test_ar33_nfr10_restore_drill
   evidence:
@@ -5396,6 +5892,7 @@
   stage: P0
   status: verified
   implementation:
+    - src/fintracker/application/integrations/exporter.py
   verification:
     - tests/integration/test_qa_integrations.py::test_nfr12_export_available_to_every_member
     - tests/integration/test_qa_integrations.py::test_qa02_export_repeat_is_stable
@@ -5406,11 +5903,13 @@
   title: "Мониторинг перечисленных метрик"
   source: docs/TZ.md §23
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/platform/queue.py
   verification:
+    - tests/integration/test_ops_scenarios.py::test_a112_logs_do_not_contain_secrets
   evidence:
+    - .planning/evidence/latest.json
 
 - id: NFR-14
   title: "Деградация при недоступности AI"
@@ -5432,57 +5931,69 @@
   title: "Журнал и ревизии хранятся пока существует пространство"
   source: docs/TZ.md §24
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/maintenance/retention.py
   verification:
+    - tests/integration/test_retention.py::test_ret08_draft_sources_cleared_but_transaction_remains
   evidence:
+    - .planning/evidence/latest.json
 
 - id: RET-02
   title: "Исходное аудио до 24 ч после успешной обработки"
   source: docs/TZ.md §24
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/maintenance/retention.py
   verification:
+    - tests/integration/test_retention.py::test_ret08_draft_sources_cleared_but_transaction_remains
   evidence:
+    - .planning/evidence/latest.json
 
 - id: RET-03
   title: "Нераспознанное нужное вложение до 7 дней"
   source: docs/TZ.md §24
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/maintenance/retention.py
   verification:
+    - tests/integration/test_retention.py::test_ret08_draft_sources_cleared_but_transaction_remains
   evidence:
+    - .planning/evidence/latest.json
 
 - id: RET-04
   title: "Фото чеков 30 дней"
   source: docs/TZ.md §24
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/maintenance/retention.py
   verification:
+    - tests/integration/test_retention.py::test_a109_attachment_removed_but_operation_remains
   evidence:
+    - .planning/evidence/latest.json
 
 - id: RET-05
   title: "Технические логи 30 дней без финансового текста"
   source: docs/TZ.md §24
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/maintenance/retention.py
   verification:
+    - tests/integration/test_ops_scenarios.py::test_a112_logs_do_not_contain_secrets
+    - tests/integration/test_retention.py::test_ret08_raw_payload_is_deleted_after_term
   evidence:
+    - .planning/evidence/latest.json
 
 - id: RET-06
   title: "Резервные копии — окно 30 дней"
   source: docs/TZ.md §24
   stage: P0
-  status: implemented
+  status: blocked
+  blocker: "BL-04: окно резервных копий 30 дней задаётся управляемой средой"
   implementation:
     - src/fintracker/application/maintenance/retention.py
   verification:
@@ -5517,11 +6028,13 @@
   title: "Очистка удалённого бюджета в течение 24 ч"
   source: docs/TZ.md §24
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/maintenance/retention.py
   verification:
+    - tests/integration/test_retention.py::test_ret10_staging_objects_cleaned_after_day
   evidence:
+    - .planning/evidence/latest.json
 
 - id: RET-10
   title: "Непривязанные staging объекты очищаются через 24 ч"
@@ -5539,11 +6052,13 @@
   title: "Личность только из доверенного источника"
   source: docs/TZ.md §24, docs/ARCHITECTURE.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/identity/actor.py
   verification:
+    - tests/acceptance/test_start_menu.py::test_fr05_new_user_sees_two_paths
   evidence:
+    - .planning/evidence/latest.json
 
 - id: SEC-02
   title: "RLS ENABLE+FORCE, runtime роль без BYPASSRLS и не владелец"
@@ -5589,11 +6104,13 @@
   title: "Выдача файлов через авторизованный серверный endpoint"
   source: docs/TZ.md §24, docs/ARCHITECTURE.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/infra/storage.py
   verification:
+    - tests/integration/test_retention.py::test_a109_attachment_removed_but_operation_remains
   evidence:
+    - .planning/evidence/latest.json
 
 - id: SEC-06
   title: "Логи без токенов, ключей и финансового payload"
@@ -5623,27 +6140,32 @@
   title: "Экспорт защищён от formula injection"
   source: docs/TZ.md §24, docs/ARCHITECTURE.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/integrations/exporter.py
   verification:
+    - tests/integration/test_import_export.py::test_a108_formula_text_is_escaped
   evidence:
+    - .planning/evidence/latest.json
 
 - id: SEC-09
   title: "Составные FK не позволяют связать объекты разных бюджетов"
   source: docs/TZ.md §24, docs/ARCHITECTURE.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/db/models/ledger.py
   verification:
+    - tests/integration/test_schema_constraints.py::test_category_parent_must_be_same_workspace
+    - tests/integration/test_schema_constraints.py::test_rls_isolates_workspaces
   evidence:
+    - .planning/evidence/latest.json
 
 - id: SEC-10
   title: "Протокол SecurityChange для всех изменений доступа"
   source: docs/TZ.md §24, docs/ARCHITECTURE.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - .env.example
     - src/fintracker/application/identity/security_change.py
@@ -5651,43 +6173,52 @@
     - src/fintracker/db/models/access.py
     - src/fintracker/infra/security_log.py
   verification:
+    - tests/integration/test_security_change.py::test_ar32_acl_revision_grows_with_applied_change
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FORM-01
   title: "Формулы L, S, R, C, A по строке бюджета"
   source: docs/TZ.md §10–11, §9.1.1
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/ledger/operations.py
     - src/fintracker/application/planning/plan.py
   verification:
+    - tests/integration/test_budget_math.py::test_b1_remaining_and_future_payment
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FORM-02
   title: "Процент использования и состояния нулевого/незаданного лимита"
   source: docs/TZ.md §10–11, §9.1.1
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/planning/plan.py
   verification:
+    - tests/integration/test_budget_math.py::test_b2_zero_and_unset_limit
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FORM-03
   title: "Прогноз = факт + обязательства + гибкие, темп после 7 дней"
   source: docs/TZ.md §10–11, §9.1.1
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/analytics/reports.py
   verification:
+    - tests/integration/test_reviews.py::test_early_risk_needs_enough_observed_days
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FORM-04
   title: "Свободные деньги по формуле раздела 11.2 (P1)"
   source: docs/TZ.md §10–11, §9.1.1
-  stage: P0
+  stage: P1
+  note: "Раздел 11.2 ТЗ отнесён к P1: свободные деньги и их формула."
   status: planned
   implementation:
   verification:
@@ -5699,6 +6230,7 @@
   stage: P0
   status: verified
   implementation:
+    - src/fintracker/application/commitments/goals.py
   verification:
     - tests/integration/test_plan_review.py::test_form05_contribution_is_rounded_up
   evidence:
@@ -5708,41 +6240,49 @@
   title: "Календарный повтор от исходного anchor с ограничением месяца"
   source: docs/TZ.md §10–11, §9.1.1
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/core/calendar.py
   verification:
+    - tests/unit/test_calendar.py::test_a52_month_clamp_does_not_drift
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FORM-07
   title: "Фиксированный повтор в календарных днях"
   source: docs/TZ.md §10–11, §9.1.1
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/core/calendar.py
   verification:
+    - tests/unit/test_calendar.py::test_a211_fixed_week_across_dst_shift
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FORM-08
   title: "Полуинтервал периода и включённые даты в интерфейсе"
   source: docs/TZ.md §10–11, §9.1.1
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/core/calendar.py
   verification:
+    - tests/unit/test_calendar.py::test_a48_a49_period_boundary_at_local_midnight
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FORM-09
   title: "Распределение скидки методом наибольших остатков"
   source: docs/TZ.md §10–11, §9.1.1
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/core/money.py
   verification:
+    - tests/unit/test_money.py::test_allocate_one_kopeck_over_three_equal_items
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FORM-10
   title: "Опережение обзора плана min(3, длительность-1)"
@@ -5761,106 +6301,128 @@
   title: "Порог раннего риска max(500 ₽, 10% лимита)"
   source: docs/TZ.md §10–11, §9.1.1
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/analytics/reviews.py
   verification:
+    - tests/integration/test_reviews.py::test_early_risk_triggers_above_both_thresholds
   evidence:
+    - .planning/evidence/latest.json
 
 - id: OPS-01
   title: "Миграция отдельным заданием до нового кода"
   source: docs/ARCHITECTURE.md §13, §15
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - .github/workflows/ci.yml
     - src/fintracker/db/migrations/env.py
   verification:
+    - tests/integration/test_release_and_runtime.py::test_adr15_ops01_migrations_run_as_separate_step
   evidence:
+    - .planning/evidence/latest.json
 
 - id: OPS-02
   title: "Liveness отделён от readiness, AI не блокирует readiness"
   source: docs/ARCHITECTURE.md §13, §15
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/api/app.py
+    - src/fintracker/db/migrations/versions/0008_readiness_schema_read.py
+    - src/fintracker/db/rls.py
     - src/fintracker/runtime/health.py
   verification:
+    - tests/integration/test_release_and_runtime.py::test_ops02_readiness_is_separate_from_liveness
   evidence:
+    - .planning/evidence/latest.json
 
 - id: OPS-03
   title: "Раздельные среды и секреты вне репозитория"
   source: docs/ARCHITECTURE.md §13, §15
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - .env.example
     - src/fintracker/config.py
   verification:
+    - tests/integration/test_release_and_runtime.py::test_ops03_secrets_are_outside_repository
   evidence:
+    - .planning/evidence/latest.json
 
 - id: OPS-04
   title: "Совместимость соседних выпусков и schema_version"
   source: docs/ARCHITECTURE.md §13, §15
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - .github/workflows/ci.yml
     - src/fintracker/runtime/health.py
   verification:
+    - tests/integration/test_release_and_runtime.py::test_ops04_job_payload_carries_schema_version
   evidence:
+    - .planning/evidence/latest.json
 
 - id: OPS-05
   title: "Документированный откат приложения"
   source: docs/ARCHITECTURE.md §13, §15
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - .github/workflows/ci.yml
   verification:
+    - tests/integration/test_release_and_runtime.py::test_ops05_downgrade_and_upgrade_are_reversible
   evidence:
+    - .planning/evidence/latest.json
 
 - id: OPS-06
   title: "Полный передаваемый комплект результатов"
   source: docs/ARCHITECTURE.md §13, §15
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - Makefile
   verification:
+    - tests/integration/test_handover.py::test_ops06_handover_kit_is_complete
   evidence:
+    - .planning/evidence/latest.json
 
 - id: LIM-01
   title: "Код приглашения 12 символов, 7 дней, 10 применений"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/identity/invites.py
   verification:
+    - tests/integration/test_concurrency.py::test_ar09_a154_last_invite_use_goes_to_one_of_two
   evidence:
+    - .planning/evidence/latest.json
 
 - id: LIM-02
   title: "5 неуспешных вводов кода за 15 минут"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/identity/invites.py
     - src/fintracker/db/models/access.py
   verification:
+    - tests/integration/test_concurrency.py::test_ar09_a154_last_invite_use_goes_to_one_of_two
   evidence:
+    - .planning/evidence/latest.json
 
 - id: LIM-03
   title: "Голос до 3 минут с отказом до платной обработки"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/conversation/media.py
   verification:
+    - tests/acceptance/test_voice_and_receipts.py::test_a21_long_audio_is_refused_before_paid_call
   evidence:
+    - .planning/evidence/latest.json
 
 - id: LIM-04
   title: "Комментарий до 2000 символов без молчаливой обрезки"
@@ -5878,22 +6440,26 @@
   title: "Черновик активен 7 дней"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/conversation/entry.py
   verification:
+    - tests/integration/test_retention.py::test_expired_draft_never_becomes_posted
   evidence:
+    - .planning/evidence/latest.json
 
 - id: LIM-06
   title: "Не более 2 проактивных сообщений в день на получателя"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/delivery/dispatch.py
     - src/fintracker/db/models/platform.py
   verification:
+    - tests/integration/test_delivery.py::test_a64_daily_quota_limits_proactive_messages
   evidence:
+    - .planning/evidence/latest.json
 
 - id: LIM-07
   title: "Тихие часы 22:00–09:00 в личном поясе"
@@ -5924,30 +6490,36 @@
   title: "Изображение <= 40 Мп и <= 16384 px; альбом <= 10 файлов"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/conversation/media.py
   verification:
+    - tests/integration/test_qa_integrations.py::test_qa02_corrupted_image_is_rejected_before_paid_call
   evidence:
+    - .planning/evidence/latest.json
 
 - id: LIM-10
   title: "Telegram: сообщение <= 4096 символов, короткие callback"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/conversation/callbacks.py
     - src/fintracker/application/conversation/history_flow.py
     - src/fintracker/application/conversation/keyboards.py
   verification:
+    - tests/integration/test_delivery.py::test_a100_unknown_send_result_keeps_record
   evidence:
+    - .planning/evidence/latest.json
 
 - id: LIM-11
   title: "Месячный лимит расходов AI с деградацией"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/intelligence/quota.py
   verification:
+    - tests/acceptance/test_settings_and_rules.py::test_input_preferences_toggle
   evidence:
+    - .planning/evidence/latest.json

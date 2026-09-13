@@ -93,7 +93,7 @@ async def test_spender_slice_requires_linked_profile(bot: None, test_settings: S
 async def test_a132_choosing_action_changes_nothing_financial(
     bot: None, test_settings: Settings
 ) -> None:
-    """A132: «Выбрать действие» сохраняет намерение, но не меняет лимит и журнал."""
+    """CMD-24, A132: «Выбрать действие» сохраняет намерение, но не меняет лимит и журнал."""
     from sqlalchemy import select
 
     from fintracker.application.identity.actor import get_active_workspace_id

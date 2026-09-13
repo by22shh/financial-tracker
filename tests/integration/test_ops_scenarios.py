@@ -187,7 +187,7 @@ def test_a111_restore_evidence_is_recorded() -> None:
 
 
 async def test_a112_logs_do_not_contain_secrets(clean_db: None, test_settings: Settings) -> None:
-    """A112, SEC-06: в логах нет токена, ключей, ссылок с секретом и payload."""
+    """NFR-13, RET-05, A112, SEC-06: в логах нет токена, ключей, ссылок с секретом и payload."""
     import structlog
 
     from fintracker.application.ingestion.accept_update import accept_telegram_update

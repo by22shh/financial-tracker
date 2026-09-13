@@ -53,7 +53,7 @@ def telegram_update(update_id: int, *, text: str = "кофе 250", user_id: int 
 
 
 async def test_a95_duplicate_update_accepted_once(clean_db: None, test_settings: Settings) -> None:
-    """A95: один update, доставленный многократно, сохраняется один раз."""
+    """CMD-01, A95: один update, доставленный многократно, сохраняется один раз."""
     payload = telegram_update(777001)
     results = [await accept_telegram_update(test_settings, payload) for _ in range(20)]
     assert sum(1 for item in results if not item.duplicate) == 1
@@ -207,7 +207,7 @@ async def test_a159_failed_delivery_does_not_block_others(
 async def test_a66_blocked_recipient_stops_only_own_delivery(
     clean_db: None, test_settings: Settings, owner_session: AsyncSession
 ) -> None:
-    """A66: блокировка бота отключает доставку только этому человеку."""
+    """AR-30, A66: блокировка бота отключает доставку только этому человеку."""
     fixture = await build_fixture(owner_session, telegram_user_id=5301)
     other = User(id=uuid.uuid4(), telegram_user_id=5302)
     owner_session.add(other)
@@ -265,7 +265,7 @@ async def test_a66_blocked_recipient_stops_only_own_delivery(
 async def test_a100_unknown_send_result_keeps_record(
     clean_db: None, test_settings: Settings, owner_session: AsyncSession
 ) -> None:
-    """A100: неоднозначный таймаут отправки не отменяет сохранённую операцию."""
+    """AR-30, LIM-10, A100: неоднозначный таймаут отправки не отменяет сохранённую операцию."""
     fixture = await build_fixture(owner_session, telegram_user_id=5401)
     posted = await post_transaction(
         owner_session,
@@ -315,7 +315,7 @@ async def test_a100_unknown_send_result_keeps_record(
 async def test_a64_daily_quota_limits_proactive_messages(
     clean_db: None, test_settings: Settings, owner_session: AsyncSession
 ) -> None:
-    """A64: третье обычное проактивное сообщение за день переносится."""
+    """LIM-06, A64: третье обычное проактивное сообщение за день переносится."""
     fixture = await build_fixture(owner_session, telegram_user_id=5501)
     await owner_session.commit()
     async with session_scope(

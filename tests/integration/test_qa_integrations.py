@@ -93,7 +93,7 @@ async def test_qa02_worker_restart_keeps_single_job(
 async def test_qa02_corrupted_image_is_rejected_before_paid_call(
     clean_db: None, test_settings: Settings
 ) -> None:
-    """QA-02, NFR-11, SEC-07: повреждённый и слишком большой файл отклоняются до AI."""
+    """LIM-09, QA-02, NFR-11, SEC-07: повреждённый и слишком большой файл отклоняются до AI."""
     from fintracker.application.conversation.media import handle_media
     from fintracker.application.conversation.types import (
         Attachment,
@@ -150,7 +150,7 @@ async def test_qa02_corrupted_image_is_rejected_before_paid_call(
 
 
 async def test_qa02_export_repeat_is_stable(owner_session: AsyncSession) -> None:
-    """QA-02, NFR-12: повтор экспорта даёт тот же состав данных."""
+    """CMD-29, QA-02, NFR-12: повтор экспорта даёт тот же состав данных."""
     from fintracker.application.integrations.exporter import build_snapshot, to_csv
     from fintracker.application.ledger.service import post_transaction
     from tests.integration.test_money_scenarios import expense_spec, rub
