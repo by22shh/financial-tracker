@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import datetime as dt
+import itertools
 
 import pytest
 from sqlalchemy import select
@@ -77,18 +78,15 @@ async def test_a212_period_opens_without_ai_and_keeps_identity(
 
     from fintracker.db.models.catalog import Category
 
-    categories_after = {
-        row
-        for row in (
-            (
-                await owner_session.execute(
-                    select(Category.id).where(Category.workspace_id == workspace_id)
-                )
+    categories_after = set(
+        (
+            await owner_session.execute(
+                select(Category.id).where(Category.workspace_id == workspace_id)
             )
-            .scalars()
-            .all()
         )
-    }
+        .scalars()
+        .all()
+    )
     assert categories_before <= categories_after
     assert fixture.workspace.id == workspace_id, "постоянный ID бюджета сохранён"
 
@@ -165,7 +163,7 @@ async def test_a214_recovery_after_missed_boundaries(owner_session: AsyncSession
         .scalars()
         .all()
     )
-    for previous, following in zip(periods, periods[1:], strict=False):
+    for previous, following in itertools.pairwise(periods):
         assert previous.end_exclusive == following.start_date, "нет разрывов"
     assert periods[0].start_date == dt.date(2026, 5, 10)
     assert periods[-1].start_date == dt.date(2026, 9, 10)
@@ -404,7 +402,7 @@ async def test_a226_policy_change_keeps_single_sequence(
         .scalars()
         .all()
     )
-    for previous, following in zip(periods, periods[1:], strict=False):
+    for previous, following in itertools.pairwise(periods):
         assert previous.end_exclusive == following.start_date, "непрерывность сохранена"
     starts = [period.start_date for period in periods]
     assert len(starts) == len(set(starts)), "нет дублей начал"

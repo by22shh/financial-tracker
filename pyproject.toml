@@ -1,3 +1,4 @@
+# Стек и версии зафиксированы ADR-02; воспроизводимость — uv.lock (OPEN-03).
 [project]
 name = "fintracker"
 version = "0.1.0"

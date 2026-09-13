@@ -1,3 +1,4 @@
+# Локальная среда: PostgreSQL 17 и приватное хранилище (ADR-13, ADR-02).
 services:
   postgres:
     image: postgres:17.2-alpine

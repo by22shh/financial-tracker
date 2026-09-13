@@ -20,6 +20,10 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 REGISTRY = ROOT / ".planning" / "requirements.yaml"
 EXTRACTED = ROOT / ".planning" / "extracted_requirements.json"
 
+# Семейства сценариев описывают проверяемый результат, а не отдельный модуль:
+# для них обязательны проверка и доказательство, но не ссылка на реализацию.
+SCENARIO_FAMILIES = ("A", "B", "AR", "QA")
+
 VALID_STATUSES = {
     "planned",
     "implemented",
@@ -82,7 +86,9 @@ def main() -> int:
         status = str(item.get("status", "planned"))
         if status not in VALID_STATUSES:
             problems.append(f"{req_id}: недопустимый статус {status!r}")
-        if status in {"verified", "implemented"}:
+        family = re.match(r"^[A-Z]+", req_id)
+        is_scenario = bool(family) and family.group() in SCENARIO_FAMILIES
+        if status in {"verified", "implemented"} and not is_scenario:
             implementation = item.get("implementation") or []
             if not implementation:
                 problems.append(f"{req_id}: статус {status}, но реализация не указана")

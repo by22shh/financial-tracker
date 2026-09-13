@@ -47,7 +47,7 @@ async def test_a168_member_leaves_and_loses_access(bot: None, test_settings: Set
 
 async def test_a169_old_buttons_do_not_restore_access(bot: None, test_settings: Settings) -> None:
     """A169: старые кнопки после выхода не дают доступа к данным."""
-    admin, member = await _budget_with_member(test_settings, 920010, 920011, categories="Продукты")
+    _admin, member = await _budget_with_member(test_settings, 920010, 920011, categories="Продукты")
     await member.send("/budget")
     stale_button = member.button_data("Все категории")
 
@@ -61,7 +61,7 @@ async def test_a169_old_buttons_do_not_restore_access(bot: None, test_settings: 
 
 async def test_a172_admin_cannot_leave_without_transfer(bot: None, test_settings: Settings) -> None:
     """A172: администратору предложена передача роли или удаление."""
-    admin, member = await _budget_with_member(test_settings, 920020, 920021)
+    admin, _member = await _budget_with_member(test_settings, 920020, 920021)
     await admin.send("/members")
     await admin.press(admin.button_data("Выйти из бюджета"))
     text = admin.text()

@@ -244,7 +244,7 @@ async def test_a38_second_refund_cannot_exceed_purchase(owner_session: AsyncSess
 async def test_a41_a42_mixed_payment_and_settlement(owner_session: AsyncSession) -> None:
     """A41/A42: оплата 3000 за двоих; потребление 1500, возмещение закрывает долг."""
     fixture = await build_fixture(owner_session)
-    result = await post_mixed_payment(
+    await post_mixed_payment(
         owner_session,
         fixture.uow,
         actor=fixture.actor,

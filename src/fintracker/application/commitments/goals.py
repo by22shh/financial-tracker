@@ -2,6 +2,7 @@
 
 Резервирование и изменение лимита не создают CashLeg или AccountEntry без
 отдельного реального движения (DATA_CONTRACT §2.4).
+Команды CMD-21: цели, их движения и резервы.
 """
 
 from __future__ import annotations

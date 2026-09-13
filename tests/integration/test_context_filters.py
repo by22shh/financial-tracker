@@ -19,7 +19,7 @@ from fintracker.application.ledger.service import (
     post_transaction,
     revise_transaction,
 )
-from fintracker.core.errors import ConflictError
+from fintracker.core.errors import ConflictError, ValidationFailed
 from fintracker.db.models.ledger import TransactionRevision
 from tests.conftest import requires_pg
 from tests.integration.factories import build_fixture
@@ -150,7 +150,9 @@ async def test_note_length_limit_is_not_silently_truncated(
         workspace_id=fixture.workspace.id,
         transaction_id=posted.transaction_id,
     )
-    with pytest.raises(Exception):
+    from sqlalchemy.exc import DBAPIError
+
+    with pytest.raises((ValidationFailed, DBAPIError)):
         await revise_transaction(
             owner_session,
             fixture.uow,

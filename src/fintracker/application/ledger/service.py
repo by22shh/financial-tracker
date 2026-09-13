@@ -1,6 +1,8 @@
 """Единственный путь проведения и исправления денег (ADR-03, ADR-10, CMD-11).
 
 Формы, Telegram обработчики, импорт и AI-предложения используют этот сервис.
+Команды: CMD-11 (создание, правка, отмена, восстановление), CMD-12 (чтение
+журнала и ревизий).
 Операция, её ревизия, движения, эффект, счётчики версий и outbox сохраняются
 одним commit; точкой истины является commit базы (TECH-03).
 """
@@ -591,6 +593,22 @@ async def revise_transaction(
     transaction.entity_version += 1
     transaction.status = "posted"
     await session.flush()
+
+    if money_changed:
+        # Денежная правка до cutoff делает затронутую сверку требующей
+        # повторной проверки; правка заметки — нет (AR-20, RV04).
+        from fintracker.application.analytics.coverage import mark_stale_reconciliations
+
+        for leg in new_spec.cash_legs:
+            if leg.account_id is None:
+                continue
+            await mark_stale_reconciliations(
+                session,
+                workspace_id=workspace_id,
+                account_id=leg.account_id,
+                changed_date=min(new_spec.occurred_date, current.occurred_date),
+                money_changed=True,
+            )
 
     await uow.bump_revisions(workspace_id, data=True)
     await uow.emit(

@@ -9,6 +9,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import os
+import uuid
 from decimal import Decimal
 
 import pytest
@@ -184,15 +185,17 @@ async def test_server_resolves_date_and_money(
 
 async def test_extra_fields_and_bad_types_are_rejected() -> None:
     """AI-03: дополнительные поля запрещены, невалидный JSON не исполняется."""
-    with pytest.raises(Exception):
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
         ExtractionResponse.model_validate_json(
             json.dumps({"schema_version": "1.0", "intent": "record_transaction", "hack": 1})
         )
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         ExtractionResponse.model_validate_json(
             extraction_json(candidate={"amount_decimal": "DROP TABLE"})
         )
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         ExtractionResponse.model_validate_json(extraction_json(intent="выполнить_команду"))
 
 

@@ -413,7 +413,9 @@ async def test_a63_import_batch_limit(owner_session: AsyncSession) -> None:
     preview = await build_preview(
         owner_session, actor=fixture.actor, workbook=synthetic_workbook(), currency="RUB"
     )
-    with pytest.raises(Exception, match="разделите импорт"):
+    from fintracker.core.errors import ConflictError
+
+    with pytest.raises(ConflictError, match="разделите импорт"):
         await commit_import(
             owner_session,
             fixture.uow,

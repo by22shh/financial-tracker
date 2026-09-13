@@ -413,7 +413,10 @@ async def apply_note(
     mode: str = "replace",
     expected_version: int | None = None,
 ) -> list[Reply]:
-    """Изменить только заметку: деньги и пороговые события не меняются (FR-87)."""
+    """Изменить только заметку: деньги и пороговые события не меняются (FR-87).
+
+    Превышение длины не обрезается молча (LIM-04).
+    """
     workspace_id = actor.require_workspace()
     if note is not None and len(note) > settings.limits.max_note_chars:
         raise ValidationFailed(

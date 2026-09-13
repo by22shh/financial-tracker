@@ -410,7 +410,7 @@ async def test_a136_unknown_price_gives_card_without_effect(
             }
         )
     )
-    accepted, rejected = validate_cards(
+    accepted, _rejected = validate_cards(
         response,
         snapshot=metrics,
         protected_lines=set(),

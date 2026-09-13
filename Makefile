@@ -1,3 +1,4 @@
+# Команды передачи и эксплуатации (OPS-06).
 .PHONY: help up down migrate check lint types test test-pg run-api run-worker run-scheduler evidence
 
 VENV := .venv/bin

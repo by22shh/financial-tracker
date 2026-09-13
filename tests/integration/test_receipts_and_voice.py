@@ -173,7 +173,9 @@ def test_a32_instruction_inside_receipt_is_data() -> None:
 
 def test_receipt_schema_rejects_extra_fields() -> None:
     """AI-03: дополнительные поля в ответе чека запрещены."""
-    with pytest.raises(Exception):
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
         ReceiptResponse.model_validate(
             {
                 "schema_version": "1.0",
