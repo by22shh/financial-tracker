@@ -1457,10 +1457,12 @@
   title: "Нажать «Выбрать действие» в рекомендации"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
   verification:
+    - tests/acceptance/test_report_slices.py::test_a132_choosing_action_changes_nothing_financial
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A133
   title: "Исправлена трата, на которой основан ещё не принятый совет"
@@ -1513,10 +1515,12 @@
   title: "Владелец отметил действие выполненным, но история неполна"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
   verification:
+    - tests/acceptance/test_report_slices.py::test_a137_done_mark_does_not_claim_proven_savings
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A138
   title: "AI анализ не ответил, числовой снимок готов"
@@ -1534,10 +1538,13 @@
   title: "Недельный обзор совпал с подготовкой бюджета"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
+    - src/fintracker/application/delivery/dispatch.py
   verification:
+    - tests/integration/test_reminders.py::test_a139_coinciding_proactive_events_are_merged
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A140
   title: "P0 анализирует регулярные списания"

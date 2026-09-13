@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import uuid
+
 import pytest
 
 from fintracker.config import Settings
@@ -86,3 +88,136 @@ async def test_spender_slice_requires_linked_profile(bot: None, test_settings: S
     await user.press(user.button_data("Я потратил"))
     text = user.text()
     assert "Разрез:" in text or "не привязан" in text
+
+
+async def test_a132_choosing_action_changes_nothing_financial(
+    bot: None, test_settings: Settings
+) -> None:
+    """A132: «Выбрать действие» сохраняет намерение, но не меняет лимит и журнал."""
+    from sqlalchemy import select
+
+    from fintracker.application.identity.actor import get_active_workspace_id
+    from fintracker.db.models.intelligence import Recommendation
+    from fintracker.db.models.planning import BudgetVersion
+    from fintracker.db.session import RuntimeRole, session_scope
+
+    user = make_user(test_settings, 910010)
+    await create_budget(user, limits="Продукты 20000")
+    await _post(user, "продукты 1500")
+
+    async with session_scope(test_settings, RuntimeRole.OWNER) as session:
+        from fintracker.application.identity.actor import ensure_user
+
+        person = await ensure_user(session, telegram_user_id=910010)
+        workspace_id = await get_active_workspace_id(session, person.id)
+        assert workspace_id is not None
+        run_id = uuid.uuid4()
+        from fintracker.db.models.intelligence import AnalysisRun
+
+        session.add(
+            AnalysisRun(
+                id=run_id,
+                workspace_id=workspace_id,
+                run_kind="weekly_review",
+                logical_key=f"weekly:{run_id}",
+                status="succeeded",
+                profile_version="test",
+                prompt_version="test",
+            )
+        )
+        await session.flush()
+        session.add(
+            Recommendation(
+                workspace_id=workspace_id,
+                run_id=run_id,
+                direction="flexible_spend",
+                observation="Гибкие траты выше обычного",
+                action_kind="adjust_plan",
+                action_payload={},
+                metric_refs=[{"metric": "line_fact", "value_minor": 150_000}],
+                effect_unavailable_reason="Недостаточно данных",
+                revision_vector={},
+                status="proposed",
+            )
+        )
+        versions_before = len(
+            (
+                await session.execute(
+                    select(BudgetVersion).where(BudgetVersion.workspace_id == workspace_id)
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+    await user.press("rec:list")
+    assert "Гибкие траты выше обычного" in user.text()
+    await user.press(user.button_data("Выбрать действие"))
+    text = user.text()
+    assert "Намерение сохранено" in text
+    assert "не изменены" in text
+
+    async with session_scope(test_settings, RuntimeRole.OWNER) as session:
+        versions_after = len(
+            (
+                await session.execute(
+                    select(BudgetVersion).where(BudgetVersion.workspace_id == workspace_id)
+                )
+            )
+            .scalars()
+            .all()
+        )
+    assert versions_after == versions_before, "план не изменён выбором действия"
+
+    await user.send("/budget")
+    assert "20 000" in user.text().replace(" ", " ").replace(" ", " ")
+
+
+async def test_a137_done_mark_does_not_claim_proven_savings(
+    bot: None, test_settings: Settings
+) -> None:
+    """A137: отметка о выполнении не объявляет экономию доказанной."""
+    from fintracker.application.identity.actor import ensure_user, get_active_workspace_id
+    from fintracker.db.models.intelligence import AnalysisRun, Recommendation
+    from fintracker.db.session import RuntimeRole, session_scope
+
+    user = make_user(test_settings, 910011)
+    await create_budget(user)
+
+    async with session_scope(test_settings, RuntimeRole.OWNER) as session:
+        person = await ensure_user(session, telegram_user_id=910011)
+        workspace_id = await get_active_workspace_id(session, person.id)
+        assert workspace_id is not None
+        run_id = uuid.uuid4()
+        session.add(
+            AnalysisRun(
+                id=run_id,
+                workspace_id=workspace_id,
+                run_kind="weekly_review",
+                logical_key=f"weekly:{run_id}",
+                status="succeeded",
+                profile_version="test",
+                prompt_version="test",
+            )
+        )
+        await session.flush()
+        recommendation = Recommendation(
+            workspace_id=workspace_id,
+            run_id=run_id,
+            direction="known_recurring",
+            observation="Подписка списывается ежемесячно",
+            action_kind="check_tariff",
+            action_payload={},
+            metric_refs=[{"metric": "line_fact", "value_minor": 90_000}],
+            effect_unavailable_reason="Недостаточно данных",
+            revision_vector={},
+            status="proposed",
+        )
+        session.add(recommendation)
+        await session.flush()
+        code = recommendation.id.hex[:16]
+
+    await user.press(f"rec:done:{code}")
+    text = user.text()
+    assert "Отметка сохранена" in text
+    assert "не объявляется доказанной" in text

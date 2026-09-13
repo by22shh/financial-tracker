@@ -302,3 +302,98 @@ async def test_a63_import_sends_one_summary(
     assert text is not None
     assert "Импорт завершён" in text
     assert "не рассылаются" in text
+
+
+async def test_a139_coinciding_proactive_events_are_merged(
+    clean_db: None, test_settings: Settings, owner_session: AsyncSession
+) -> None:
+    """A139: обзор и подготовка бюджета дают одну объединённую доставку."""
+    from fintracker.application.delivery.dispatch import (
+        expand_event,
+        handle_deliver_notification,
+    )
+    from fintracker.application.platform import queue
+    from fintracker.db.models.platform import NotificationDelivery
+    from fintracker.infra.telegram.sender import RecordingSender, set_sender_override
+
+    fixture = await build_fixture(owner_session, telegram_user_id=5401)
+    period_end = fixture.period.end_exclusive - dt.timedelta(days=1)
+    await fixture.uow.emit(
+        workspace_id=fixture.workspace.id,
+        event_type="PlanReviewDue",
+        aggregate_type="budget_period",
+        aggregate_id=fixture.period.id,
+        payload={
+            "period_id": str(fixture.period.id),
+            "end_inclusive": period_end.isoformat(),
+            "schema_version": 1,
+        },
+    )
+    await fixture.uow.emit(
+        workspace_id=fixture.workspace.id,
+        event_type="BudgetPeriodOpened",
+        aggregate_type="budget_period",
+        aggregate_id=fixture.period.id,
+        payload={
+            "period_id": str(fixture.period.id),
+            "start_date": fixture.period.start_date.isoformat(),
+            "end_inclusive": period_end.isoformat(),
+        },
+    )
+    await owner_session.commit()
+
+    async with session_scope(
+        test_settings, RuntimeRole.OWNER, workspace_id=fixture.workspace.id
+    ) as session:
+        events = (await session.execute(select(OutboxEvent))).scalars().all()
+        for event in events:
+            await expand_event(session, test_settings, event)
+        review_event = next(event for event in events if event.event_type == "PlanReviewDue")
+        # Тихие часы не должны задерживать обе доставки в этой проверке.
+        await session.execute(
+            NotificationDelivery.__table__.update().values(
+                available_at=dt.datetime.now(dt.UTC) - dt.timedelta(minutes=1)
+            )
+        )
+
+    sender = RecordingSender()
+    set_sender_override(sender)
+    try:
+        async with session_scope(
+            test_settings, RuntimeRole.WORKER, workspace_id=fixture.workspace.id
+        ) as session:
+            await queue.enqueue(
+                session,
+                job_type="deliver_notification",
+                logical_key=f"deliver:{review_event.id}",
+                queue_class="interactive",
+                workspace_id=fixture.workspace.id,
+                payload={"event_id": str(review_event.id)},
+                correlation_id="a139",
+            )
+        jobs = await queue.claim_jobs(test_settings, queue_classes=("interactive",), limit=5)
+        target = next(job for job in jobs if job.job_type == "deliver_notification")
+        await handle_deliver_notification(test_settings, target)
+    finally:
+        set_sender_override(None)
+
+    assert len(sender.sent) == 1, "одна объединённая доставка вместо нескольких"
+    body = sender.sent[0]["text"]
+    assert "Сводка по бюджету" in body
+
+    async with session_scope(
+        test_settings, RuntimeRole.OWNER, workspace_id=fixture.workspace.id
+    ) as session:
+        rows = (
+            (
+                await session.execute(
+                    select(NotificationDelivery).where(
+                        NotificationDelivery.delivery_class == "review"
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+    assert {row.state for row in rows} == {"sent"}, "обе фоновые доставки закрыты одной отправкой"
+    assert len({row.telegram_message_id for row in rows}) == 1

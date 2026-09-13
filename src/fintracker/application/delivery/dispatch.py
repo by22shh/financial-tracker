@@ -428,6 +428,20 @@ async def handle_deliver_notification(settings: Settings, job: LeasedJob) -> Non
                 )
                 continue
 
+            merged_ids: list[uuid.UUID] = []
+            if delivery_class in PROACTIVE_CLASSES:
+                # Совпавшие по времени фоновые сообщения одному получателю
+                # объединяются в одну доставку (FR-53, A139).
+                text, buttons, merged_ids = await _merge_pending_digest(
+                    session,
+                    workspace=workspace,
+                    recipient_user_id=recipient_id,
+                    delivery_id=delivery_id,
+                    now=now,
+                    text=text,
+                    buttons=buttons,
+                )
+
         result = await sender.send_message(chat_id=telegram_user_id, text=text, buttons=buttons)
         async with session_scope(
             settings, RuntimeRole.WORKER, workspace_id=workspace_id
@@ -435,7 +449,11 @@ async def handle_deliver_notification(settings: Settings, job: LeasedJob) -> Non
             if result.ok:
                 await session.execute(
                     update(NotificationDelivery)
-                    .where(NotificationDelivery.id == delivery_id)
+                    .where(
+                        NotificationDelivery.id.in_([delivery_id, *merged_ids])
+                        if merged_ids
+                        else NotificationDelivery.id == delivery_id
+                    )
                     .values(state="sent", telegram_message_id=result.message_id)
                 )
             elif result.unknown:
@@ -465,3 +483,59 @@ async def handle_deliver_notification(settings: Settings, job: LeasedJob) -> Non
                         last_error=(result.error or "Ошибка отправки")[:300],
                     )
                 )
+
+
+async def _merge_pending_digest(
+    session: AsyncSession,
+    *,
+    workspace: Workspace,
+    recipient_user_id: uuid.UUID,
+    delivery_id: uuid.UUID,
+    now: dt.datetime,
+    text: str,
+    buttons: list[list[dict[str, str]]] | None,
+) -> tuple[str, list[list[dict[str, str]]] | None, list[uuid.UUID]]:
+    """Объединить совпавшие фоновые доставки в одну сводку (FR-53, A139).
+
+    Бюджеты в сводке разделяются явно; ответы автору и ошибки записи сюда
+    не попадают — это отдельные потоки.
+    """
+    from fintracker.application.delivery.render import render_event
+
+    others = (
+        await session.execute(
+            select(NotificationDelivery, OutboxEvent)
+            .join(OutboxEvent, OutboxEvent.id == NotificationDelivery.event_id)
+            .where(
+                NotificationDelivery.workspace_id == workspace.id,
+                NotificationDelivery.recipient_user_id == recipient_user_id,
+                NotificationDelivery.id != delivery_id,
+                NotificationDelivery.state == "pending",
+                NotificationDelivery.available_at <= now,
+                NotificationDelivery.delivery_class.in_(tuple(PROACTIVE_CLASSES)),
+            )
+            .order_by(NotificationDelivery.available_at)
+            .limit(4)
+        )
+    ).all()
+    if not others:
+        return text, buttons, []
+
+    parts = [text]
+    merged: list[uuid.UUID] = []
+    for delivery, event in others:
+        extra, _ = await render_event(
+            session,
+            workspace=workspace,
+            event_type=event.event_type,
+            payload=dict(event.payload),
+            recipient_user_id=recipient_user_id,
+        )
+        if extra is None:
+            continue
+        parts.append(extra)
+        merged.append(delivery.id)
+    if not merged:
+        return text, buttons, []
+    header = f"Сводка по бюджету «{workspace.name}»:"
+    return "\n\n".join([header, *parts]), buttons, merged
