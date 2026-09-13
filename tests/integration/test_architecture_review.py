@@ -14,6 +14,7 @@ from fintracker.application.ingestion.accept_update import accept_telegram_updat
 from fintracker.application.ledger.service import post_transaction
 from fintracker.config import Settings
 from fintracker.core.errors import NotFound
+from fintracker.core.money import Money
 from fintracker.db.models.ledger import Transaction
 from fintracker.db.models.platform import InboundEvent, Job, OutboxEvent
 from fintracker.db.session import RuntimeRole, get_sessionmaker, session_scope
@@ -307,3 +308,410 @@ async def test_ar13_review_gets_only_allowed_counter(
     assert status.pending_drafts == 1
     # Текст черновика в статус периода не попадает.
     assert "секретная" not in str(status)
+
+
+async def test_ar27_failed_deletion_is_retried(
+    clean_db: None, test_settings: Settings, owner_session: AsyncSession, tmp_path
+) -> None:
+    """AR-27: сбой удаления объекта не оставляет вложение навсегда."""
+    from fintracker.application.maintenance.retention import sweep_attachments
+    from fintracker.db.models.platform import Attachment
+
+    fixture = await build_fixture(owner_session, telegram_user_id=6020)
+    now = dt.datetime.now(dt.UTC)
+    attachment = Attachment(
+        workspace_id=fixture.workspace.id,
+        owner_user_id=fixture.user.id,
+        visibility="owner",
+        kind="photo",
+        content_type="image/jpeg",
+        size_bytes=1024,
+        checksum_sha256="0" * 64,
+        storage_key="photo/ar27",
+        state="ready",
+        delete_after=now - dt.timedelta(hours=1),
+    )
+    owner_session.add(attachment)
+    await owner_session.flush()
+
+    class FailingStorage:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def delete(self, key: str) -> None:
+            self.calls += 1
+            if self.calls == 1:
+                raise OSError("хранилище недоступно")
+
+        async def put(self, key: str, data: bytes):  # pragma: no cover - не используется
+            raise NotImplementedError
+
+        async def get(self, key: str):  # pragma: no cover - не используется
+            raise NotImplementedError
+
+    failing = FailingStorage()
+    import fintracker.application.maintenance.retention as retention_module
+    import fintracker.infra.storage as storage_module
+
+    original = storage_module.build_storage
+    storage_module.build_storage = lambda _settings: failing  # type: ignore[assignment]
+    try:
+        first = await sweep_attachments(owner_session, test_settings, now)
+        assert first == 0, "неуспешное удаление не объявляется выполненным"
+        row = (
+            await owner_session.execute(select(Attachment).where(Attachment.id == attachment.id))
+        ).scalar_one()
+        assert row.state == "deleting"
+
+        second = await sweep_attachments(owner_session, test_settings, now)
+        assert second == 1, "повтор доводит удаление до конца"
+        await owner_session.refresh(row)
+        assert row.state == "deleted"
+    finally:
+        storage_module.build_storage = original  # type: ignore[assignment]
+        assert retention_module is not None
+
+
+async def test_ar27_stale_staging_is_cleaned(
+    clean_db: None, test_settings: Settings, owner_session: AsyncSession
+) -> None:
+    """AR-27: загрузка без завершённой регистрации не остаётся навсегда."""
+    from sqlalchemy import update as sql_update
+
+    from fintracker.application.maintenance.retention import sweep_attachments
+    from fintracker.db.models.platform import Attachment
+
+    fixture = await build_fixture(owner_session, telegram_user_id=6021)
+    now = dt.datetime.now(dt.UTC)
+    attachment = Attachment(
+        workspace_id=fixture.workspace.id,
+        owner_user_id=fixture.user.id,
+        visibility="owner",
+        kind="photo",
+        content_type="image/jpeg",
+        size_bytes=2048,
+        checksum_sha256="1" * 64,
+        storage_key="photo/ar27-staging",
+        state="staging",
+        delete_after=now + dt.timedelta(days=30),
+    )
+    owner_session.add(attachment)
+    await owner_session.flush()
+    await owner_session.execute(
+        sql_update(Attachment)
+        .where(Attachment.id == attachment.id)
+        .values(created_at=now - dt.timedelta(hours=12))
+    )
+    await owner_session.flush()
+
+    removed = await sweep_attachments(owner_session, test_settings, now)
+    assert removed == 1
+    row = (
+        await owner_session.execute(select(Attachment).where(Attachment.id == attachment.id))
+    ).scalar_one()
+    await owner_session.refresh(row)
+    assert row.state == "deleted"
+
+
+async def test_ar26_report_snapshot_is_versioned(
+    clean_db: None, test_settings: Settings, owner_session: AsyncSession
+) -> None:
+    """AR-26: числовой снимок помечен версией данных и не меняется задним числом."""
+    from fintracker.application.analytics.reports import spending_report
+    from fintracker.db.models.access import Workspace
+
+    fixture = await build_fixture(owner_session, telegram_user_id=6030)
+    posted = await post_transaction(
+        owner_session,
+        fixture.uow,
+        actor=fixture.actor,
+        spec=expense_spec(fixture, amount=rub(1_000), category="Продукты"),
+        origin="form",
+    )
+    workspace = (
+        await owner_session.execute(select(Workspace).where(Workspace.id == fixture.workspace.id))
+    ).scalar_one()
+    before = await spending_report(
+        owner_session,
+        workspace=workspace,
+        date_from=DAY,
+        date_to_exclusive=DAY + dt.timedelta(days=1),
+    )
+
+    # Исправление между чтениями даёт новую версию снимка, а не молчаливую подмену.
+    from dataclasses import replace
+
+    from fintracker.application.ledger.service import load_current_spec, revise_transaction
+    from fintracker.core.money import Money
+
+    _, _, spec = await load_current_spec(
+        owner_session,
+        workspace_id=fixture.workspace.id,
+        transaction_id=posted.transaction_id,
+    )
+    new_amount = Money(80_000, "RUB")
+    await revise_transaction(
+        owner_session,
+        fixture.uow,
+        actor=fixture.actor,
+        transaction_id=posted.transaction_id,
+        new_spec=replace(
+            spec,
+            amount=new_amount,
+            allocations=(replace(spec.allocations[0], amount=new_amount),),
+            cash_legs=tuple(
+                replace(leg, signed=Money(-new_amount.minor, "RUB")) for leg in spec.cash_legs
+            ),
+        ),
+        expected_version=None,
+    )
+    await owner_session.refresh(workspace)
+    after = await spending_report(
+        owner_session,
+        workspace=workspace,
+        date_from=DAY,
+        date_to_exclusive=DAY + dt.timedelta(days=1),
+    )
+    assert before.meta.data_revision != after.meta.data_revision
+    assert before.total_minor == 100_000
+    assert after.total_minor == 80_000
+
+
+async def test_ar25_manual_accounting_works_without_plan_and_ai(
+    clean_db: None, test_settings: Settings, owner_session: AsyncSession
+) -> None:
+    """AR-25: без плана и AI учёт работает, лимит не становится нулём."""
+    from fintracker.application.planning.plan import LimitState, period_status
+
+    fixture = await build_fixture(owner_session, telegram_user_id=6032, limits={})
+    await post_transaction(
+        owner_session,
+        fixture.uow,
+        actor=fixture.actor,
+        spec=expense_spec(fixture, amount=rub(1_200), category="Продукты"),
+        origin="form",
+    )
+    status = await period_status(
+        owner_session,
+        workspace_id=fixture.workspace.id,
+        period_id=fixture.period.id,
+        currency="RUB",
+        today=DAY,
+    )
+    assert status.total_fact_minor == 120_000
+    assert status.total_limit_minor in (None, 0)
+    for line in status.lines:
+        assert line.limit_state is not LimitState.ZERO or line.assigned_limit_minor == 0
+        assert line.effective_limit_minor is None or line.effective_limit_minor >= 0
+
+
+async def test_ar21_reference_account_has_no_invented_balance(
+    clean_db: None, test_settings: Settings, owner_session: AsyncSession
+) -> None:
+    """AR-21: справочная карта не даёт выдуманного остатка и конвертации."""
+    from fintracker.application.catalog.directory import create_account
+    from fintracker.application.ledger.service import account_balance
+    from fintracker.core.errors import ValidationFailed
+    from fintracker.domain.ledger.model import (
+        AllocationRole,
+        AllocationSpec,
+        CashLegSpec,
+        CoverageMode,
+        TransactionSpec,
+        TransactionType,
+    )
+    from tests.integration.factories import TZ
+
+    fixture = await build_fixture(owner_session, telegram_user_id=6040)
+    reference = await create_account(
+        owner_session,
+        fixture.uow,
+        actor=fixture.actor,
+        name="Личная карта",
+        currency="RUB",
+        mode="reference",
+        account_type="card",
+    )
+    amount = rub(2_000)
+    await post_transaction(
+        owner_session,
+        fixture.uow,
+        actor=fixture.actor,
+        spec=TransactionSpec(
+            transaction_type=TransactionType.EXPENSE,
+            amount=amount,
+            occurred_date=DAY,
+            timezone=TZ,
+            allocations=(
+                AllocationSpec(
+                    role=AllocationRole.EXPENSE,
+                    amount=amount,
+                    category_id=fixture.categories["Продукты"],
+                ),
+            ),
+            cash_legs=(
+                CashLegSpec(
+                    signed=-amount,
+                    account_id=reference.id,
+                    coverage=CoverageMode.REFERENCE,
+                ),
+            ),
+        ),
+        origin="form",
+    )
+    assert (
+        await account_balance(
+            owner_session, workspace_id=fixture.workspace.id, account_id=reference.id
+        )
+        == 0
+    ), "справочный счёт не становится банковским балансом"
+
+    # Валюта чека вне справочника не конвертируется молча.
+    with pytest.raises(ValidationFailed):
+        await post_transaction(
+            owner_session,
+            fixture.uow,
+            actor=fixture.actor,
+            spec=TransactionSpec(
+                transaction_type=TransactionType.EXPENSE,
+                amount=amount,
+                occurred_date=DAY,
+                timezone=TZ,
+                allocations=(
+                    AllocationSpec(
+                        role=AllocationRole.EXPENSE,
+                        amount=amount,
+                        category_id=fixture.categories["Продукты"],
+                    ),
+                ),
+                cash_legs=(
+                    CashLegSpec(
+                        signed=-Money(amount.minor, "USD"),
+                        account_id=fixture.accounts["Карта"],
+                        coverage=CoverageMode.TRACKED,
+                    ),
+                ),
+            ),
+            origin="form",
+        )
+
+
+async def test_ar22_partial_settlement_keeps_single_remainder(
+    clean_db: None, test_settings: Settings, owner_session: AsyncSession
+) -> None:
+    """AR-22: остаток 400 учитывается один раз и переживает границу периода."""
+    from fintracker.application.commitments.schedules import (
+        change_occurrence,
+        create_schedule,
+        materialize_occurrences,
+        settle_occurrence,
+        upcoming_payments,
+    )
+    from fintracker.core.errors import ConflictError
+    from fintracker.db.models.commitments import Occurrence
+    from fintracker.domain.schedule import ScheduleKind, ScheduleRule
+
+    fixture = await build_fixture(owner_session, telegram_user_id=6041)
+    await create_schedule(
+        owner_session,
+        fixture.uow,
+        actor=fixture.actor,
+        name="Интернет",
+        direction="payment",
+        rule=ScheduleRule(
+            kind=ScheduleKind.MONTHLY,
+            anchor_date=dt.date(2026, 9, 12),
+            interval=1,
+            day_of_month=12,
+        ),
+        currency="RUB",
+        expected=Money(100_000, "RUB"),
+    )
+    await materialize_occurrences(
+        owner_session, workspace_id=fixture.workspace.id, until_date=dt.date(2026, 10, 31)
+    )
+    occurrence = (
+        (
+            await owner_session.execute(
+                select(Occurrence)
+                .where(Occurrence.workspace_id == fixture.workspace.id)
+                .order_by(Occurrence.due_date)
+            )
+        )
+        .scalars()
+        .first()
+    )
+    assert occurrence is not None
+
+    posted = await post_transaction(
+        owner_session,
+        fixture.uow,
+        actor=fixture.actor,
+        spec=expense_spec(fixture, amount=rub(600), category="Продукты"),
+        origin="form",
+    )
+    await settle_occurrence(
+        owner_session,
+        fixture.uow,
+        actor=fixture.actor,
+        occurrence_id=occurrence.id,
+        effect_id=posted.effect_id,
+        transaction_id=posted.transaction_id,
+        amount=rub(600),
+    )
+    await owner_session.refresh(occurrence)
+    assert occurrence.state == "partially_settled"
+    assert occurrence.expected_minor is not None
+    assert occurrence.expected_minor - occurrence.settled_minor == 40_000
+
+    # Переход периода не удваивает остаток и не создаёт второй экземпляр.
+    payments = await upcoming_payments(
+        owner_session,
+        workspace_id=fixture.workspace.id,
+        today=dt.date(2026, 10, 12),
+        horizon_days=1,
+        currency="RUB",
+    )
+    remainders = [item.remaining_minor for item in payments if item.occurrence_id == occurrence.id]
+    assert remainders in ([], [40_000])
+
+    # Переплата не переносится молча.
+    second = await post_transaction(
+        owner_session,
+        fixture.uow,
+        actor=fixture.actor,
+        spec=expense_spec(fixture, amount=rub(500), category="Продукты"),
+        origin="form",
+    )
+    with pytest.raises(ConflictError):
+        await settle_occurrence(
+            owner_session,
+            fixture.uow,
+            actor=fixture.actor,
+            occurrence_id=occurrence.id,
+            effect_id=second.effect_id,
+            transaction_id=second.transaction_id,
+            amount=rub(500),
+        )
+
+    # Исполненный экземпляр не переписывается правкой серии.
+    await settle_occurrence(
+        owner_session,
+        fixture.uow,
+        actor=fixture.actor,
+        occurrence_id=occurrence.id,
+        effect_id=second.effect_id,
+        transaction_id=second.transaction_id,
+        amount=rub(400),
+    )
+    await owner_session.refresh(occurrence)
+    assert occurrence.state == "settled"
+    with pytest.raises(ConflictError):
+        await change_occurrence(
+            owner_session,
+            fixture.uow,
+            actor=fixture.actor,
+            occurrence_id=occurrence.id,
+            action="postpone",
+            new_due_date=dt.date(2026, 10, 20),
+        )

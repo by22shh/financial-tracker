@@ -3056,10 +3056,13 @@
   title: "Случайные последовательности переводов, исправлений, отмен и восстановлений"
   source: docs/ARCHITECTURE_REVIEW.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
   verification:
+    - tests/integration/test_ar_money_sequences.py::test_ar16_random_sequences_keep_invariants
+    - tests/integration/test_ar_money_sequences.py::test_ar16_untracked_legs_do_not_create_balance
   evidence:
+    - .planning/evidence/latest.json
 
 - id: AR-17
   title: "Два возврата одновременно исчерпывают одну часть чека"
@@ -3109,19 +3112,23 @@
   title: "Личная карта reference, неизвестная валюта чека, заполненный бюджет и смена валюты"
   source: docs/ARCHITECTURE_REVIEW.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
   verification:
+    - tests/integration/test_architecture_review.py::test_ar21_reference_account_has_no_invented_balance
   evidence:
+    - .planning/evidence/latest.json
 
 - id: AR-22
   title: "Платёж1000 оплачен600, переход периода, доплата/переплата, правка серии"
   source: docs/ARCHITECTURE_REVIEW.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
   verification:
+    - tests/integration/test_architecture_review.py::test_ar22_partial_settlement_keeps_single_remainder
   evidence:
+    - .planning/evidence/latest.json
 
 - id: AR-23
   title: "Управляемое время: 10–9, 31 января, високосность, fixed_days и DST"
@@ -3148,28 +3155,37 @@
   title: "План отсутствует, AI недоступен, доход известен только за месяц, период14 дней"
   source: docs/ARCHITECTURE_REVIEW.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
   verification:
+    - tests/integration/test_architecture_review.py::test_ar25_manual_accounting_works_without_plan_and_ai
   evidence:
+    - .planning/evidence/latest.json
 
 - id: AR-26
   title: "Выгрузка/AI читают отчёт во время исправления; затем поздний ответ анализа"
   source: docs/ARCHITECTURE_REVIEW.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
   verification:
+    - tests/integration/test_architecture_review.py::test_ar26_report_snapshot_is_versioned
+    - tests/integration/test_recommendations.py::test_a133_correction_marks_recommendation_stale
   evidence:
+    - .planning/evidence/latest.json
 
 - id: AR-27
   title: "Upload удался, DB registration упал; удаление объекта упало; опасный/огромный файл"
   source: docs/ARCHITECTURE_REVIEW.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
+    - src/fintracker/application/maintenance/retention.py
   verification:
+    - tests/integration/test_architecture_review.py::test_ar27_failed_deletion_is_retried
+    - tests/integration/test_architecture_review.py::test_ar27_stale_staging_is_cleaned
   evidence:
+    - .planning/evidence/latest.json
 
 - id: AR-28
   title: "Один import повторён после сбоя, rollback с зависимым возвратом, слишком большой пакет"

@@ -71,32 +71,56 @@ async def expire_drafts(session: AsyncSession, now: dt.datetime) -> int:
     return len(result.scalars().all())
 
 
+# Незавершённая регистрация вложения не остаётся навсегда: файл уже загружен,
+# но строка так и не стала ready (AR-27).
+STAGING_MAX_AGE = dt.timedelta(hours=6)
+
+
 async def sweep_attachments(session: AsyncSession, settings: Settings, now: dt.datetime) -> int:
-    """Пометить вложения к удалению; файлы удаляет объектное хранилище."""
-    result = await session.execute(
+    """Довести удаление вложений до конца; повтор безопасен (ADR-11, AR-27).
+
+    Незавершённые попытки удаления и зависшие staging подхватываются
+    следующим проходом: сбой хранилища не оставляет файл навсегда.
+    """
+    await session.execute(
         update(Attachment)
         .where(Attachment.delete_after <= now, Attachment.state == "ready")
         .values(state="deleting")
-        .returning(Attachment.id)
     )
-    marked = result.scalars().all()
-    if not marked:
+    await session.execute(
+        update(Attachment)
+        .where(
+            Attachment.state == "staging",
+            Attachment.created_at <= now - STAGING_MAX_AGE,
+        )
+        .values(state="deleting")
+    )
+    pending = (
+        await session.execute(
+            select(Attachment.id, Attachment.storage_key).where(Attachment.state == "deleting")
+        )
+    ).all()
+    if not pending:
         return 0
     from fintracker.infra.storage import build_storage
 
     storage = build_storage(settings.storage)
-    keys = (
-        await session.execute(
-            select(Attachment.id, Attachment.storage_key).where(Attachment.id.in_(marked))
-        )
-    ).all()
-    for attachment_id, storage_key in keys:
-        # Удаление повторяется безопасно (ADR-11).
-        await storage.delete(storage_key)
+    removed = 0
+    for attachment_id, storage_key in pending:
+        try:
+            await storage.delete(storage_key)
+        except Exception as exc:  # сбой хранилища не прерывает весь проход
+            logger.warning(
+                "attachment_delete_failed",
+                attachment_id=str(attachment_id),
+                error=str(exc)[:200],
+            )
+            continue
         await session.execute(
             update(Attachment).where(Attachment.id == attachment_id).values(state="deleted")
         )
-    return len(marked)
+        removed += 1
+    return removed
 
 
 async def sweep_staging_attachments(session: AsyncSession, now: dt.datetime) -> int:

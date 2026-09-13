@@ -426,7 +426,11 @@ async def test_a136_unknown_price_gives_card_without_effect(
 async def test_a133_correction_marks_recommendation_stale(
     clean_db: None, ai_settings: Settings, owner_session: AsyncSession
 ) -> None:
-    """A133: исправление траты делает непринятое предложение устаревшим."""
+    """A133, AR-26: исправление делает непринятое предложение устаревшим.
+
+    Поздний ответ анализа на устаревшей основе не выполняется: карточка
+    получает статус stale, а не применяется молча.
+    """
     fixture = await _complete_fixture(owner_session)
     _, metrics = await build_snapshot_row(
         owner_session, workspace=fixture.workspace, period_id=fixture.period.id, today=TODAY
