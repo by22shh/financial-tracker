@@ -424,3 +424,134 @@ async def test_provider_unavailable_is_retryable(
     ) as session:
         attempt = ((await session.execute(select(ParseAttempt))).scalars().all())[0]
     assert attempt.result_status == "timeout"
+
+
+async def test_ar36_error_stages_are_separated(
+    clean_db: None, ai_settings: Settings, owner_session: AsyncSession
+) -> None:
+    """AR-36: ошибки этапов различимы — транспорт, схема и содержание."""
+    fixture = await build_fixture(owner_session, telegram_user_id=6200)
+    catalog = await load_catalog(
+        owner_session,
+        workspace_id=fixture.workspace.id,
+        currency="RUB",
+        timezone=TZ,
+    )
+    await owner_session.flush()
+
+    async def _call() -> None:
+        draft_id, draft_version = await make_draft(ai_settings, fixture)
+        await extract_with_model(
+            ai_settings,
+            actor=fixture.actor,
+            draft_id=draft_id,
+            draft_version=draft_version,
+            text="кофе 250",
+            catalog=catalog,
+            reference_date=DAY,
+        )
+
+    # 1. Сырая ошибка провайдера: этап транспорта, повтор разрешён.
+    set_provider_override(ScriptedAIProvider(fail_with=ProviderUnavailable("503 upstream")))
+    try:
+        with pytest.raises(ProviderUnavailable) as transport:
+            await _call()
+        assert transport.value.retryable is True
+    finally:
+        set_provider_override(None)
+
+    # 2. Нарушенная схема: этап контракта, а не содержания.
+    set_provider_override(ScriptedAIProvider(responses=['{"unexpected": true}'] * 3))
+    try:
+        with pytest.raises(ValidationFailed) as schema_error:
+            await _call()
+        assert "схем" in schema_error.value.message.lower() or "разбор" in (
+            schema_error.value.message.lower()
+        )
+    finally:
+        set_provider_override(None)
+
+    # 3. Схема верна, но содержание не из справочника: сервер не принимает
+    # чужой идентификатор и просит уточнение вместо записи.
+    foreign = extraction_json(candidate={"category_id": str(uuid.uuid4())})
+    set_provider_override(ScriptedAIProvider(responses=[foreign] * 3))
+    try:
+        draft_id, draft_version = await make_draft(ai_settings, fixture)
+        result = await extract_with_model(
+            ai_settings,
+            actor=fixture.actor,
+            draft_id=draft_id,
+            draft_version=draft_version,
+            text="кофе 250",
+            catalog=catalog,
+            reference_date=DAY,
+        )
+    finally:
+        set_provider_override(None)
+    assert result.candidates[0].category_id is None, "чужая категория не принимается"
+    assert result.question is not None, "до записи задаётся уточнение"
+
+
+async def test_ai07_model_proposes_but_does_not_change_plan(
+    clean_db: None, ai_settings: Settings, owner_session: AsyncSession
+) -> None:
+    """AI-07: изменение плана моделью возможно только как предложение."""
+    from fintracker.application.planning.plan import current_budget_version
+    from fintracker.db.models.intelligence import Recommendation
+
+    fixture = await build_fixture(
+        owner_session, telegram_user_id=6201, limits={"Продукты": 500_000}
+    )
+    before = await current_budget_version(
+        owner_session, workspace_id=fixture.workspace.id, period_id=fixture.period.id
+    )
+    assert before is not None
+    before_version = before.version
+
+    from fintracker.application.intelligence.analysis import run_analysis
+    from tests.integration.test_recommendations import (
+        TODAY,
+        _complete_fixture,
+        build_snapshot_row,
+        recommendation_json,
+    )
+
+    rich = await _complete_fixture(owner_session)
+    _, metrics = await build_snapshot_row(
+        owner_session, workspace=rich.workspace, period_id=rich.period.id, today=TODAY
+    )
+    provider = ScriptedAIProvider(
+        responses=[recommendation_json(card={"metric_refs": [str(metrics["metric_id"])]})]
+    )
+    set_provider_override(provider)
+    try:
+        outcome = await run_analysis(
+            ai_settings,
+            owner_session,
+            rich.uow,
+            workspace=rich.workspace,
+            run_kind="weekly_review",
+            logical_key="weekly:ai07",
+            today=TODAY,
+        )
+    finally:
+        set_provider_override(None)
+
+    assert outcome.recommendations, "модель выдала карточку предложения"
+    rows = (
+        (
+            await owner_session.execute(
+                select(Recommendation).where(Recommendation.workspace_id == rich.workspace.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert rows and all(row.status == "proposed" for row in rows), "предложение не применено само"
+    assert all(row.revision_vector for row in rows), "у предложения есть ожидаемая версия основы"
+
+    after = await current_budget_version(
+        owner_session, workspace_id=fixture.workspace.id, period_id=fixture.period.id
+    )
+    assert after is not None
+    assert after.version == before_version, "план не изменён без подтверждения участника"

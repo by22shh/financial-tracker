@@ -347,3 +347,67 @@ async def test_nfr08_concurrent_workspaces(clean_db: None, test_settings: Settin
             "requirement": "10 бюджетов по 5 участников",
         },
     )
+
+
+async def test_nfr02_nfr03_dialog_latency(clean_db: None, test_settings: Settings) -> None:
+    """NFR-02, NFR-03: ответ <= 2 с после приёма, текст -> карточка p95 <= 5 с."""
+    from tests.acceptance.conftest import make_user
+    from tests.acceptance.helpers import create_budget
+
+    user = make_user(test_settings, 960_001)
+    await create_budget(user, limits="Продукты 20000")
+
+    feedback: list[float] = []
+    card: list[float] = []
+    for index in range(20):
+        start = time.perf_counter()
+        await user.send(f"продукты {100 + index}")
+        card.append(time.perf_counter() - start)
+        start = time.perf_counter()
+        if user.has_button("Записать"):
+            await user.press(user.button_data("Записать"))
+        feedback.append(time.perf_counter() - start)
+
+    card_p95 = _percentile(card, 0.95)
+    feedback_p95 = _percentile(feedback, 0.95)
+    _record(
+        "nfr02_nfr03_dialog",
+        {
+            "card_p95_seconds": round(card_p95, 4),
+            "feedback_p95_seconds": round(feedback_p95, 4),
+            "requirement": "NFR-02 <= 2 s, NFR-03 p95 <= 5 s (детерминированный путь)",
+            "note": (
+                "Измерено на детерминированном разборе без внешнего провайдера; "
+                "задержка модели добавляется после подключения ключа (BL-01)."
+            ),
+        },
+    )
+    assert card_p95 <= 5.0, f"p95 карточки {card_p95:.3f} с превышает 5 с"
+    assert feedback_p95 <= 2.0, f"p95 подтверждения {feedback_p95:.3f} с превышает 2 с"
+
+
+def test_ar33_nfr10_restore_drill() -> None:
+    """AR-33, NFR-10: учение восстановления с измеренными RPO и RTO."""
+    import json as json_module
+    import subprocess
+
+    root = pathlib.Path(__file__).resolve().parents[2]
+    result = subprocess.run(
+        [str(root / ".venv" / "bin" / "python"), str(root / ".planning/tools/restore_drill.py")],
+        capture_output=True,
+        text=True,
+        cwd=root,
+        check=False,
+    )
+    if result.returncode == 2:
+        pytest.skip("Контейнер PostgreSQL недоступен для учения восстановления")
+    assert result.returncode == 0, result.stdout[-2000:] + result.stderr[-2000:]
+
+    payload = json_module.loads((EVIDENCE / "restore_drill.json").read_text(encoding="utf-8"))
+    assert payload["invariant_failures"] == {}, (
+        "финансовые инварианты нарушены после восстановления"
+    )
+    assert payload["row_counts_match"], "состав восстановленных данных не совпал"
+    assert payload["rpo_seconds_measured"] <= payload["rpo_limit_seconds"]
+    assert payload["rto_seconds_measured"] <= payload["rto_limit_seconds"]
+    assert payload["risk_tail"], "хвост риска должен быть указан явно"

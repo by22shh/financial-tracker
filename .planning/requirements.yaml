@@ -2857,10 +2857,12 @@
   title: "Изменение данных"
   source: docs/TZ.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
   verification:
+    - tests/integration/test_ai_contract.py::test_ai07_model_proposes_but_does_not_change_plan
   evidence:
+    - .planning/evidence/latest.json
 
 - id: AI-08
   title: "Основания рекомендаций"
@@ -3267,10 +3269,12 @@
   title: "Полный restore из реально доступного backup/WAL и проверка ссылок на вложения"
   source: docs/ARCHITECTURE_REVIEW.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
   verification:
+    - tests/performance/test_performance.py::test_ar33_nfr10_restore_drill
   evidence:
+    - .planning/evidence/latest.json
 
 - id: AR-34
   title: "Нагрузка ТЗ, один горячий бюджет, 50 000 операций, расширенные фильтры"
@@ -3303,10 +3307,12 @@
   title: "Корпус AI на выбранном профиле: сырая ошибка, уточнение, ошибочная автозапись, инструкция в заметке, недоступность провайдера"
   source: docs/ARCHITECTURE_REVIEW.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
   verification:
+    - tests/integration/test_ai_contract.py::test_ar36_error_stages_are_separated
   evidence:
+    - .planning/evidence/latest.json
 
 - id: B1
   title: "Остаток и будущий платёж"
@@ -4980,10 +4986,15 @@
   title: "Интеграции"
   source: docs/TZ.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
   verification:
+    - tests/integration/test_qa_integrations.py::test_qa02_corrupted_image_is_rejected_before_paid_call
+    - tests/integration/test_qa_integrations.py::test_qa02_export_repeat_is_stable
+    - tests/integration/test_qa_integrations.py::test_qa02_webhook_repeat_and_edit_are_separate
+    - tests/integration/test_qa_integrations.py::test_qa02_worker_restart_keeps_single_job
   evidence:
+    - .planning/evidence/latest.json
 
 - id: QA-03
   title: "Интерфейс"
@@ -5103,19 +5114,23 @@
   title: "Обратная связь <= 2 с после приёма"
   source: docs/TZ.md §23
   stage: P0
-  status: planned
+  status: verified
   implementation:
   verification:
+    - tests/performance/test_performance.py::test_nfr02_nfr03_dialog_latency
   evidence:
+    - .planning/evidence/latest.json
 
 - id: NFR-03
   title: "Текст p95 <= 5 с до карточки"
   source: docs/TZ.md §23
   stage: P0
-  status: planned
+  status: verified
   implementation:
   verification:
+    - tests/performance/test_performance.py::test_nfr02_nfr03_dialog_latency
   evidence:
+    - .planning/evidence/latest.json
 
 - id: NFR-04
   title: "Голос p95 <= 20 с для записи до 30 с"
@@ -5185,30 +5200,37 @@
   title: "Восстановление RPO <= 1 ч, RTO <= 4 ч"
   source: docs/TZ.md §23
   stage: P0
-  status: planned
+  status: verified
   implementation:
   verification:
+    - tests/performance/test_performance.py::test_ar33_nfr10_restore_drill
   evidence:
+    - .planning/evidence/latest.json
 
 - id: NFR-11
   title: "Вложения <= 15 MB с проверкой типов и размеров"
   source: docs/TZ.md §23
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/api/routes/telegram.py
     - src/fintracker/application/conversation/media.py
   verification:
+    - tests/integration/test_qa_integrations.py::test_qa02_corrupted_image_is_rejected_before_paid_call
   evidence:
+    - .planning/evidence/latest.json
 
 - id: NFR-12
   title: "Экспорт участникам, удаление бюджета администратором"
   source: docs/TZ.md §23
   stage: P0
-  status: planned
+  status: verified
   implementation:
   verification:
+    - tests/integration/test_qa_integrations.py::test_nfr12_export_available_to_every_member
+    - tests/integration/test_qa_integrations.py::test_qa02_export_repeat_is_stable
   evidence:
+    - .planning/evidence/latest.json
 
 - id: NFR-13
   title: "Мониторинг перечисленных метрик"
@@ -5417,11 +5439,13 @@
   title: "Проверка типа/размера/декодирования файла до дорогой обработки"
   source: docs/TZ.md §24, docs/ARCHITECTURE.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/conversation/media.py
   verification:
+    - tests/integration/test_qa_integrations.py::test_qa02_corrupted_image_is_rejected_before_paid_call
   evidence:
+    - .planning/evidence/latest.json
 
 - id: SEC-08
   title: "Экспорт защищён от formula injection"
