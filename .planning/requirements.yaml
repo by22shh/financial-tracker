@@ -2820,6 +2820,7 @@
   stage: P0
   status: implemented
   implementation:
+    - src/fintracker/application/conversation/clarify.py
     - src/fintracker/application/conversation/entry.py
     - src/fintracker/application/conversation/service.py
     - src/fintracker/domain/parsing/amounts.py
@@ -2879,28 +2880,35 @@
   title: "Одинаковый update 100 раз, включая конкурентную доставку"
   source: docs/ARCHITECTURE_REVIEW.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
   verification:
+    - tests/integration/test_architecture_review.py::test_ar01_concurrent_delivery_is_accepted_once
+    - tests/integration/test_architecture_review.py::test_ar01_same_update_hundred_times
   evidence:
+    - .planning/evidence/latest.json
 
 - id: AR-02
   title: "Убить API до commit inbox и после commit до HTTP ответа"
   source: docs/ARCHITECTURE_REVIEW.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
   verification:
+    - tests/integration/test_architecture_review.py::test_ar02_no_state_before_commit_and_no_second_job_after
   evidence:
+    - .planning/evidence/latest.json
 
 - id: AR-03
   title: "Убить worker после ledger commit до отправки ответа"
   source: docs/ARCHITECTURE_REVIEW.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
   verification:
+    - tests/integration/test_architecture_review.py::test_ar03_outbox_survives_worker_crash
   evidence:
+    - .planning/evidence/latest.json
 
 - id: AR-04
   title: "Аренда истекла, второй worker завершил, первый вернулся с AI результатом"
@@ -2929,10 +2937,17 @@
   title: "Два ожидающих вопроса, свободное «500», ответ на закрытую карточку"
   source: docs/ARCHITECTURE_REVIEW.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
+    - src/fintracker/application/conversation/clarify.py
+    - src/fintracker/application/conversation/entry.py
+    - src/fintracker/application/conversation/sections.py
   verification:
+    - tests/acceptance/test_clarifications.py::test_answer_to_closed_question_does_not_touch_other_draft
+    - tests/acceptance/test_clarifications.py::test_bare_amount_answers_the_single_open_question
+    - tests/acceptance/test_clarifications.py::test_two_open_questions_require_explicit_choice
   evidence:
+    - .planning/evidence/latest.json
 
 - id: AR-07
   title: "Две правки одного расхода с одной expected_version"
@@ -3007,19 +3022,24 @@
   title: "Member запрашивает чужой черновик/голос и общий чек; worker системного обзора читает черновики"
   source: docs/ARCHITECTURE_REVIEW.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
   verification:
+    - tests/integration/test_architecture_review.py::test_ar13_private_material_is_not_shared
+    - tests/integration/test_architecture_review.py::test_ar13_review_gets_only_allowed_counter
   evidence:
+    - .planning/evidence/latest.json
 
 - id: AR-14
   title: "Выход/rejoin, старая кнопка, cached idempotency result и старая ссылка экспорта"
   source: docs/ARCHITECTURE_REVIEW.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
   verification:
+    - tests/integration/test_architecture_review.py::test_ar14_old_generation_does_not_revive
   evidence:
+    - .planning/evidence/latest.json
 
 - id: AR-15
   title: "Исходный остаток 10000, расход1000→800, заметка, void, restore"

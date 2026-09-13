@@ -198,6 +198,12 @@ async def dispatch_callback(
                 rest=rest,
                 user_id=user_id,
             )
+        case "clr":
+            from fintracker.application.conversation.clarify import clarify_action
+
+            return await clarify_action(
+                settings, actor=actor, workspace=workspace, action=argument, rest=rest
+            )
         case "pay":
             from fintracker.application.conversation.payments_flow import payment_action
 

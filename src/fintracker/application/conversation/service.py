@@ -307,6 +307,14 @@ async def _handle_free_text(
         )
         return [Reply(text=f"Бюджет «{workspace.name}» удалён.")]
 
+    from fintracker.application.conversation.clarify import try_answer_open_question
+
+    answered = await try_answer_open_question(
+        settings, actor=actor, workspace=workspace, message=message
+    )
+    if answered is not None:
+        return answered
+
     from fintracker.application.conversation.corrections import try_handle_correction
 
     corrected = await try_handle_correction(

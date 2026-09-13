@@ -488,3 +488,51 @@ def draft_summary(candidates: Sequence[CandidateFields], currency: str) -> str:
         if candidate.note:
             lines.append(f"   Комментарий: {candidate.note}")
     return "\n".join(lines)
+
+
+async def draft_reply(
+    settings: Settings, *, actor: ActorContext, workspace: Workspace, draft_id: uuid.UUID
+) -> list[Reply]:
+    """Карточка черновика после ответа на уточняющий вопрос (R07, AR-06)."""
+    from fintracker.application.conversation.keyboards import confirm_candidate
+
+    workspace_id = actor.require_workspace()
+    async with session_scope(
+        settings, RuntimeRole.API, user_id=actor.user_id, workspace_id=workspace_id
+    ) as session:
+        draft, candidates = await load_draft(
+            session, workspace_id=workspace_id, draft_id=draft_id, owner_id=actor.user_id
+        )
+        state = draft.state
+        fields = [CandidateFields.from_payload(dict(row.fields)) for row in candidates]
+        open_question = None
+        if state == "needs_clarification":
+            from fintracker.db.models.platform import Clarification
+
+            open_question = (
+                await session.execute(
+                    select(Clarification.question)
+                    .where(
+                        Clarification.workspace_id == workspace_id,
+                        Clarification.draft_id == draft_id,
+                        Clarification.state == "open",
+                    )
+                    .order_by(Clarification.created_at)
+                    .limit(1)
+                )
+            ).scalar_one_or_none()
+
+    summary = draft_summary(fields, workspace.currency)
+    if open_question:
+        return [
+            Reply(
+                text=f"{open_question}\n\nЧто уже распознано:\n{summary}",
+                buttons=confirm_candidate(draft_id),
+            )
+        ]
+    return [
+        Reply(
+            text=f"Проверьте запись перед сохранением:\n{summary}",
+            buttons=confirm_candidate(draft_id),
+        )
+    ]

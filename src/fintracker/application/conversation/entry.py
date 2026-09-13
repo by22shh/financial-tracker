@@ -26,7 +26,7 @@ from fintracker.core.errors import ConflictError, NotFound, ValidationFailed
 from fintracker.core.money import Money
 from fintracker.db.models.access import Beneficiary
 from fintracker.db.models.catalog import Category
-from fintracker.db.models.platform import Candidate, Draft
+from fintracker.db.models.platform import Candidate, Clarification, Draft
 from fintracker.db.uow import UnitOfWork
 from fintracker.domain.ledger.model import (
     AllocationRole,
@@ -477,6 +477,26 @@ async def create_draft_with_candidates(
         session.add(row)
         rows.append(row)
     await session.flush()
+
+    # Открытый вопрос сохраняется отдельной записью: свободный ответ не
+    # попадает в чужой вопрос наугад (AR-06, R07).
+    if extraction.question:
+        for row, fields in zip(rows, extraction.candidates, strict=False):
+            for ambiguity in fields.ambiguities:
+                session.add(
+                    Clarification(
+                        workspace_id=workspace_id,
+                        draft_id=draft.id,
+                        candidate_id=row.id,
+                        field=str(ambiguity.get("field") or "unknown"),
+                        question=extraction.question[:500],
+                        options=list(ambiguity.get("options") or []),
+                        expected_version=row.version,
+                        state="open",
+                        expires_at=now + dt.timedelta(days=settings.limits.draft_ttl_days),
+                    )
+                )
+        await session.flush()
     return draft, rows
 
 
