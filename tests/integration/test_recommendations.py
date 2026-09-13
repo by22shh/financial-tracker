@@ -513,3 +513,110 @@ def test_fallback_summary_marks_incomplete_coverage() -> None:
     summary = fallback_summary(snapshot, "RUB")
     assert "Полнота учёта не подтверждена" in summary
     assert "Учтённые расходы: 5 000,00 ₽" in summary
+
+
+async def test_a131_alternative_effect_names_conditions_and_horizon(
+    clean_db: None, ai_settings: Settings, owner_session: AsyncSession
+) -> None:
+    """A131: условный эффект замены снабжён горизонтом и основанием."""
+    fixture = await _complete_fixture(owner_session)
+    _, metrics = await build_snapshot_row(
+        owner_session, workspace=fixture.workspace, period_id=fixture.period.id, today=TODAY
+    )
+    card = {
+        "metric_refs": [str(metrics["metric_id"])],
+        "observation": "Две доставки по 900 ₽ за неделю",
+        "estimated_effect_decimal": "1100.00",
+        "effect_formula": "2 × (900 − 350) ₽ за оставшиеся недели периода",
+        "conditions": ["Сохраняется прежняя частота", "Альтернатива доступна по 350 ₽"],
+    }
+    provider = ScriptedAIProvider(responses=[recommendation_json(card=card)])
+    set_provider_override(provider)
+    try:
+        outcome = await run_analysis(
+            ai_settings,
+            owner_session,
+            fixture.uow,
+            workspace=fixture.workspace,
+            run_kind="weekly_review",
+            logical_key="weekly:a131",
+            today=TODAY,
+        )
+    finally:
+        set_provider_override(None)
+
+    assert len(outcome.recommendations) == 1
+    row = (
+        await owner_session.execute(
+            select(Recommendation).where(Recommendation.workspace_id == fixture.workspace.id)
+        )
+    ).scalar_one()
+    assert row.estimated_effect_minor == 110_000, "эффект переведён в minor units сервером"
+    assert row.effect_formula, "расчёт эффекта указан"
+    assert row.conditions, "условия расчёта перечислены"
+    assert row.horizon_period_id == fixture.period.id, "горизонт указан"
+
+
+async def test_a140_unknown_subscription_is_not_claimed_detected(
+    clean_db: None, ai_settings: Settings, owner_session: AsyncSession
+) -> None:
+    """A140: P0 опирается на подтверждённые расписания, подписка не «обнаружена»."""
+    from fintracker.application.commitments.schedules import (
+        create_schedule,
+        materialize_occurrences,
+        upcoming_payments,
+    )
+    from fintracker.core.money import Money
+    from fintracker.domain.schedule import ScheduleKind, ScheduleRule
+
+    fixture = await _complete_fixture(owner_session)
+    await create_schedule(
+        owner_session,
+        fixture.uow,
+        actor=fixture.actor,
+        name="Интернет",
+        direction="payment",
+        rule=ScheduleRule(
+            kind=ScheduleKind.MONTHLY,
+            anchor_date=dt.date(2026, 9, 20),
+            interval=1,
+            day_of_month=20,
+        ),
+        currency="RUB",
+        expected=Money(90_000, "RUB"),
+    )
+    await materialize_occurrences(
+        owner_session, workspace_id=fixture.workspace.id, until_date=dt.date(2026, 10, 31)
+    )
+    confirmed = await upcoming_payments(
+        owner_session,
+        workspace_id=fixture.workspace.id,
+        today=TODAY,
+        horizon_days=40,
+        currency="RUB",
+    )
+    assert {item.schedule_name for item in confirmed} == {"Интернет"}
+    confirmed_count = len(confirmed)
+
+    # Повторяющиеся траты без расписания не превращаются в обязательство.
+    for offset in range(3):
+        await post_transaction(
+            owner_session,
+            fixture.uow,
+            actor=fixture.actor,
+            spec=expense_spec(
+                fixture,
+                amount=rub(500),
+                category="Рестораны",
+                occurred=TODAY - dt.timedelta(days=offset * 7),
+            ),
+            origin="form",
+        )
+    still = await upcoming_payments(
+        owner_session,
+        workspace_id=fixture.workspace.id,
+        today=TODAY,
+        horizon_days=40,
+        currency="RUB",
+    )
+    assert len(still) == confirmed_count, "неизвестная подписка не считается обнаруженной"

@@ -1056,10 +1056,12 @@
   title: "Изменение цели в мастере плана"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
   verification:
+    - tests/integration/test_collaboration_scenarios.py::test_a92_goal_change_recalculates_funding
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A93
   title: "AI генерация обзора недоступна"
@@ -1484,10 +1486,12 @@
   title: "Сценарий: заменить две доставки по 900 ₽ альтернативой по 350 ₽"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
   verification:
+    - tests/integration/test_recommendations.py::test_a131_alternative_effect_names_conditions_and_horizon
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A132
   title: "Нажать «Выбрать действие» в рекомендации"
@@ -1586,10 +1590,12 @@
   title: "P0 анализирует регулярные списания"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
   verification:
+    - tests/integration/test_recommendations.py::test_a140_unknown_subscription_is_not_claimed_detected
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A141
   title: "Новый пользователь нажал `/start`"
@@ -1818,10 +1824,12 @@
   title: "Новая трата ночью для U2, но не для U3"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
   verification:
+    - tests/integration/test_reminders.py::test_a161_quiet_hours_are_personal_for_each_recipient
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A162
   title: "U2 создал категорию и изменил лимит"
@@ -1850,10 +1858,12 @@
   title: "Два участника одновременно меняют одну запись или принимают один проект плана"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
   verification:
+    - tests/integration/test_collaboration_scenarios.py::test_a164_concurrent_edit_gives_one_revision
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A165
   title: "U1 переключил активный бюджет во время распознавания чека"
@@ -2105,10 +2115,12 @@
   title: "Два участника одновременно редактируют заметку"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
   verification:
+    - tests/integration/test_collaboration_scenarios.py::test_a187_concurrent_note_edit_keeps_first_text
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A188
   title: "«Кофе 250. Комментарий: в следующий раз выбрать вариант за 150»"
@@ -2161,10 +2173,12 @@
   title: "Позднее добавить заметку «Купила Софа», поле «Кто потратил» сейчас Ниджат"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
   verification:
+    - tests/integration/test_collaboration_scenarios.py::test_a192_note_does_not_silently_change_spender
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A193
   title: "Фильтры: Софа совершила, U1 записал, Продукты, комментарий про поездку, две совпадающие метки"
@@ -2226,10 +2240,12 @@
   title: "В комментарии сохранена инструкция отправить журнал или удалить бюджет"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
   verification:
+    - tests/integration/test_collaboration_scenarios.py::test_a198_instruction_in_note_stays_data
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A199
   title: "В одном сообщении две траты, пояснение относится только ко второй"
@@ -2593,10 +2609,12 @@
   title: "Экспортировать многомесячный период и изменить правило после закрытия исторического"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
   verification:
+    - tests/integration/test_collaboration_scenarios.py::test_a230_export_covers_multi_month_period
   evidence:
+    - .planning/evidence/latest.json
 
 - id: ADR-01
   title: "Модульный монолит; API, worker и scheduler из одного артефакта"
@@ -2972,6 +2990,7 @@
     - src/fintracker/application/intelligence/prompts.py
   verification:
     - tests/integration/test_ai_contract.py::test_ai09_instruction_in_data_is_not_executed
+    - tests/integration/test_collaboration_scenarios.py::test_a198_instruction_in_note_stays_data
   evidence:
     - .planning/evidence/latest.json
 

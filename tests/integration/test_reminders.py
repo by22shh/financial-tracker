@@ -397,3 +397,92 @@ async def test_a139_coinciding_proactive_events_are_merged(
         )
     assert {row.state for row in rows} == {"sent"}, "обе фоновые доставки закрыты одной отправкой"
     assert len({row.telegram_message_id for row in rows}) == 1
+
+
+async def test_a161_quiet_hours_are_personal_for_each_recipient(
+    clean_db: None, test_settings: Settings, owner_session: AsyncSession
+) -> None:
+    """A161: автор получает ответ сразу, у остальных действуют личные режимы."""
+    import uuid as _uuid
+
+    from fintracker.application.delivery.dispatch import expand_event
+    from fintracker.application.ledger.service import post_transaction
+    from fintracker.core.context import MembershipStatus, Role
+    from fintracker.core.ids import new_generation
+    from fintracker.db.models.access import Membership, NotificationPreference, User
+    from fintracker.db.models.platform import NotificationDelivery
+    from tests.integration.test_money_scenarios import expense_spec, rub
+
+    fixture = await build_fixture(owner_session, telegram_user_id=5501)
+    quiet_user = User(id=_uuid.uuid4(), telegram_user_id=5502)
+    open_user = User(id=_uuid.uuid4(), telegram_user_id=5503)
+    owner_session.add_all([quiet_user, open_user])
+    await owner_session.flush()
+    for user in (quiet_user, open_user):
+        owner_session.add(
+            Membership(
+                workspace_id=fixture.workspace.id,
+                user_id=user.id,
+                role=Role.MEMBER.value,
+                status=MembershipStatus.ACTIVE.value,
+                generation=new_generation(),
+            )
+        )
+    owner_session.add(
+        NotificationPreference(
+            user_id=quiet_user.id,
+            workspace_id=fixture.workspace.id,
+            settings={},
+            quiet_hours_start=0,
+            quiet_hours_end=23,
+            timezone="Asia/Novosibirsk",
+        )
+    )
+    owner_session.add(
+        NotificationPreference(
+            user_id=open_user.id,
+            workspace_id=fixture.workspace.id,
+            settings={},
+            quiet_hours_start=3,
+            quiet_hours_end=4,
+            timezone="Asia/Novosibirsk",
+        )
+    )
+    await owner_session.flush()
+
+    await fixture.uow.emit(
+        workspace_id=fixture.workspace.id,
+        event_type="ThresholdCrossed",
+        aggregate_type="budget_line",
+        aggregate_id=fixture.period.id,
+        payload={"text": "Лимит статьи превышен", "threshold_type": "over"},
+        actor_user_id=fixture.user.id,
+    )
+    await post_transaction(
+        owner_session,
+        fixture.uow,
+        actor=fixture.actor,
+        spec=expense_spec(fixture, amount=rub(300), category="Продукты"),
+        origin="telegram_text",
+    )
+    await owner_session.commit()
+
+    async with session_scope(
+        test_settings, RuntimeRole.OWNER, workspace_id=fixture.workspace.id
+    ) as session:
+        events = (await session.execute(select(OutboxEvent))).scalars().all()
+        for event in events:
+            await expand_event(session, test_settings, event)
+        rows = (await session.execute(select(NotificationDelivery))).scalars().all()
+
+    now = dt.datetime.now(dt.UTC)
+    author_cards = [
+        row
+        for row in rows
+        if row.recipient_user_id == fixture.user.id and row.delivery_class == "author_card"
+    ]
+    assert author_cards and all(row.available_at <= now for row in author_cards), "автору сразу"
+
+    thresholds = {row.recipient_user_id: row for row in rows if row.delivery_class == "threshold"}
+    assert thresholds[quiet_user.id].available_at > now, "тихие часы участника соблюдены"
+    assert thresholds[open_user.id].available_at <= now, "у другого участника свой режим"
