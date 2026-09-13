@@ -100,6 +100,13 @@ _PURCHASE_VERBS = re.compile(
 )
 
 
+def _note_belongs_to_new_record(text: str, match: re.Match[str]) -> bool:
+    """Пояснение относится к трате из этого же сообщения, а не к прошлой записи."""
+    if match.group().strip().lower().startswith("добавь"):
+        return False
+    return bool(re.search(r"\d", text[: match.start()]))
+
+
 @dataclass(frozen=True, slots=True)
 class IntentGuess:
     intent: Intent
@@ -117,8 +124,13 @@ def classify_intent(text: str) -> IntentGuess:
         return IntentGuess(Intent.UNKNOWN, None)
     for intent, pattern in _PATTERNS:
         match = pattern.search(stripped)
-        if match:
-            return IntentGuess(intent, match.group())
+        if not match:
+            continue
+        if intent is Intent.ADD_NOTE and _note_belongs_to_new_record(stripped, match):
+            # «Кофе 250. Комментарий: …» — одна новая трата с пояснением, а не
+            # заметка к уже записанной операции (A188).
+            break
+        return IntentGuess(intent, match.group())
     if re.search(r"\d", stripped):
         return IntentGuess(Intent.RECORD_TRANSACTION, None)
     verb = _PURCHASE_VERBS.search(stripped)

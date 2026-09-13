@@ -17,6 +17,7 @@ async def create_budget(
     income: str = "100000",
     categories: str = DEFAULT_CATEGORIES,
     limits: str | None = None,
+    repeat: str = "календарный месяц",
     repeat_template: bool = True,
     accept_deficit: bool = False,
 ) -> str:
@@ -27,8 +28,8 @@ async def create_budget(
     await user.send(currency)
     await user.send(timezone)
     await user.send(period)
-    # Первый вариант повторения — календарный месяц при согласованных датах.
-    await user.press(user.button_data("календарный месяц"))
+    # Правило повторения выбирается явно: даты не исправляются молча (FR-90).
+    await user.press(user.button_data(repeat))
     await user.press("wiz:inc:exact")
     await user.send(income)
     await user.send(categories)

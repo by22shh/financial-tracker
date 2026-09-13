@@ -118,6 +118,31 @@ async def answer_question(
         ]
 
     calendar_month = "календарн" in lowered
+    if not calendar_month and "месяц" in lowered:
+        # Недельный цикл нельзя называть месяцем: разрез уточняется (A229, FR-60).
+        async with session_scope(
+            settings, RuntimeRole.API, user_id=actor.user_id, workspace_id=workspace_id
+        ) as session:
+            current = await period_for_date(session, workspace_id=workspace_id, day=today)
+        length_days = (current.end_exclusive - current.start_date).days
+        if length_days < 28:
+            return [
+                Reply(
+                    text=(
+                        "Ваш бюджетный период короче месяца: "
+                        f"{current.start_date.isoformat()} — "
+                        f"{(current.end_exclusive - dt.timedelta(days=1)).isoformat()}.\n"
+                        "Показать календарный месяц или текущий период?"
+                    ),
+                    buttons=(
+                        (
+                            Button("Календарный месяц", callback("rep", "calendar")),
+                            Button("Текущий период", callback("rep", "period")),
+                        ),
+                    ),
+                )
+            ]
+
     async with session_scope(
         settings, RuntimeRole.API, user_id=actor.user_id, workspace_id=workspace_id
     ) as session:
@@ -146,6 +171,77 @@ async def answer_question(
                 (
                     Button("Детализация", callback("menu", "history")),
                     Button("Календарный месяц", callback("rep", "calendar")),
+                ),
+            ),
+        )
+    ]
+
+
+async def report_slice(
+    settings: Settings, *, actor: ActorContext, workspace: Workspace, slice_name: str
+) -> list[Reply]:
+    """Разрез отчёта, выбранный кнопкой уточнения (FR-58, FR-60, A229)."""
+    workspace_id = actor.require_workspace()
+    today = dt.datetime.now(ZoneInfo(workspace.timezone)).date()
+    from fintracker.application.analytics.reports import FilterSpec
+
+    filters = FilterSpec()
+    method_note = "текущий бюджетный период"
+    async with session_scope(
+        settings, RuntimeRole.API, user_id=actor.user_id, workspace_id=workspace_id
+    ) as session:
+        period = await period_for_date(session, workspace_id=workspace_id, day=today)
+        date_from = period.start_date
+        date_to_exclusive = period.end_exclusive
+        match slice_name:
+            case "calendar":
+                date_from = today.replace(day=1)
+                date_to_exclusive = (date_from + dt.timedelta(days=32)).replace(day=1)
+                method_note = "календарный месяц"
+            case "actor":
+                filters = FilterSpec(actor_user_ids=(actor.user_id,))
+                method_note = "записи, которые добавили вы"
+            case "spender":
+                if actor.person_id is None:
+                    return [
+                        Reply(
+                            text=(
+                                "Ваш личный профиль в этом бюджете не привязан, "
+                                "поэтому разрез «кто потратил» пока недоступен."
+                            ),
+                            buttons=((Button("Участники", callback("menu", "members")),),),
+                        )
+                    ]
+                filters = FilterSpec(spender_person_ids=(actor.person_id,))
+                method_note = "покупки, совершённые вами"
+            case "beneficiary":
+                if actor.beneficiary_id is None:
+                    return [
+                        Reply(
+                            text=(
+                                "Получатель для вас в этом бюджете не задан, "
+                                "поэтому разрез «для меня» пока недоступен."
+                            ),
+                            buttons=((Button("Участники", callback("menu", "members")),),),
+                        )
+                    ]
+                filters = FilterSpec(beneficiary_ids=(actor.beneficiary_id,))
+                method_note = "расходы, предназначенные вам"
+        report = await spending_report(
+            session,
+            workspace=workspace,
+            date_from=date_from,
+            date_to_exclusive=date_to_exclusive,
+            filters=filters,
+            coverage="incomplete",
+        )
+    return [
+        Reply(
+            text=f"Разрез: {method_note}\n{format_report(report)}",
+            buttons=(
+                (
+                    Button("Детализация", callback("menu", "history")),
+                    Button("← Меню", callback("menu", "main")),
                 ),
             ),
         )

@@ -198,6 +198,12 @@ async def dispatch_callback(
                 rest=rest,
                 user_id=user_id,
             )
+        case "rep":
+            from fintracker.application.conversation.analytics_flow import report_slice
+
+            return await report_slice(
+                settings, actor=actor, workspace=workspace, slice_name=argument
+            )
         case "hist":
             from fintracker.application.conversation.history_flow import history_action
 

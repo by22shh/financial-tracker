@@ -167,9 +167,37 @@ def test_date_before_anchor_has_no_sequence() -> None:
     assert policy.sequence_for_date(dt.date(2026, 9, 30)) is None
 
 
-def test_add_calendar_months_clamps_only_result() -> None:
+def test_a52_month_clamp_does_not_drift(  # A52
+) -> None:
+    """A52: день 31 в феврале сокращается, а в марте снова 31-е."""
     assert add_calendar_months(dt.date(2027, 1, 31), 1) == dt.date(2027, 2, 28)
     assert add_calendar_months(dt.date(2027, 1, 31), 2) == dt.date(2027, 3, 31)
+    # Сокращение не становится постоянным сдвигом на 28-е.
+    assert add_calendar_months(dt.date(2027, 1, 31), 3) == dt.date(2027, 4, 30)
+    assert add_calendar_months(dt.date(2027, 1, 31), 4) == dt.date(2027, 5, 31)
+
+    policy = PeriodPolicy.monthly(dt.date(2027, 1, 31), TZ)
+    boundaries = [policy.period(index).start for index in range(5)]
+    assert boundaries == [
+        dt.date(2027, 1, 31),
+        dt.date(2027, 2, 28),
+        dt.date(2027, 3, 31),
+        dt.date(2027, 4, 30),
+        dt.date(2027, 5, 31),
+    ]
+    # Ни один день не пропущен и не повторён на стыке коротких месяцев.
+    for index in range(4):
+        assert policy.period(index).end_exclusive == boundaries[index + 1]
+
+
+def test_a51_timezone_change_keeps_confirmed_date() -> None:
+    """A51: смена пояса бюджета не сдвигает уже подтверждённую локальную дату."""
+    recorded = dt.date(2026, 9, 12)
+    novosibirsk = PeriodPolicy.monthly(dt.date(2026, 9, 10), TZ)
+    moscow = PeriodPolicy.monthly(dt.date(2026, 9, 10), "Europe/Moscow")
+    # Дата операции хранится как локальная дата события и не пересчитывается.
+    assert novosibirsk.sequence_for_date(recorded) == moscow.sequence_for_date(recorded)
+    assert novosibirsk.period(0).start == moscow.period(0).start
 
 
 @given(
