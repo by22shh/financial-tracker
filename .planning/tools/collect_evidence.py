@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import os
 import pathlib
 import subprocess
 import sys
@@ -28,9 +29,10 @@ def file_digest(path: pathlib.Path) -> str | None:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def run(command: list[str]) -> tuple[int, str]:
+def run(command: list[str], extra_env: dict[str, str] | None = None) -> tuple[int, str]:
+    environment = {**os.environ, **(extra_env or {})}
     result = subprocess.run(  # noqa: S603
-        command, capture_output=True, text=True, cwd=ROOT, check=False
+        command, capture_output=True, text=True, cwd=ROOT, check=False, env=environment
     )
     return result.returncode, (result.stdout + result.stderr)
 
@@ -77,9 +79,12 @@ def main() -> int:
         "python": sys.version.split()[0],
         "checks": {},
     }
+    # Измерения запускаются вместе с остальными: статус verified привязан к
+    # фактическому исходу узла, а пропуск исходом passed не является (R-12).
+    environments = {"tests": {"FINTRACKER_PERF": "1"}}
     failures = 0
     for name, command in checks.items():
-        code, output = run(command)
+        code, output = run(command, environments.get(name))
         tail = "\n".join(output.splitlines()[-40:])
         report["checks"][name] = {  # type: ignore[index]
             "command": " ".join(command),

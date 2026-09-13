@@ -1,0 +1,23 @@
+{
+  "built_at": "2026-09-13T17:26:06.781945+00:00",
+  "image": "fintracker:local",
+  "image_id": "sha256:1da2b1e48efc60668e4ff384ff42372e3da4d5ac84fe46326d40a30057cd6483",
+  "size": "387MB",
+  "base": "python:3.13-slim",
+  "entrypoint": "fintracker",
+  "commands": [
+    "api",
+    "worker",
+    "scheduler",
+    "check",
+    "poll",
+    "set-webhook"
+  ],
+  "runs_as": "fintracker (uid 10001), не root",
+  "checked": {
+    "build": "docker build -t fintracker:local .",
+    "cli": "docker run --rm fintracker:local --help → список команд",
+    "readiness": "docker run ... fintracker:local check → {\"ready\": true, \"database\": true, \"schema_current\": true, \"schema_revision\": \"0010_input\"}"
+  },
+  "note": "Проверено против локальной PostgreSQL 17 из docker-compose. Публикация в реестр и облачный запуск не выполнялись: среда размещения не выбрана (BL-04)."
+}

@@ -35,5 +35,17 @@ def test_ops06_handover_kit_is_complete() -> None:
         json.loads(path.read_text(encoding="utf-8"))
 
     makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
-    for target in ("up:", "migrate:", "check:", "evidence:"):
+    for target in ("up:", "migrate:", "check:", "evidence:", "trace:", "image:"):
         assert target in makefile, f"в Makefile нет цели {target}"
+
+    # Единый артефакт на api/worker/scheduler передаётся вместе с кодом (ADR-01).
+    dockerfile = ROOT / "Dockerfile"
+    assert dockerfile.exists(), "Dockerfile приложения передан"
+    body = dockerfile.read_text(encoding="utf-8")
+    assert 'ENTRYPOINT ["fintracker"]' in body, "образ запускает единую команду"
+    assert "USER fintracker" in body, "приложение работает не от root"
+
+    # Заявления о внешних адаптерах должны совпадать с кодом (BL-04).
+    storage = (ROOT / "src/fintracker/infra/storage.py").read_text(encoding="utf-8")
+    if 'settings.backend == "s3"' not in storage:
+        assert "S3-совместимого адаптера хранилища и журнала доступа нет" in report

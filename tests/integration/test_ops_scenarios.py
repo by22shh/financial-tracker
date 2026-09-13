@@ -28,37 +28,54 @@ DAY = dt.date(2026, 9, 12)
 async def test_a96_transaction_survives_worker_crash_after_commit(
     clean_db: None, test_settings: Settings, owner_session: AsyncSession
 ) -> None:
-    """A96: операция находится после сбоя, повтор не удваивает её."""
-    fixture = await build_fixture(owner_session, telegram_user_id=6300)
-    posted = await post_transaction(
-        owner_session,
-        fixture.uow,
-        actor=fixture.actor,
-        spec=expense_spec(fixture, amount=rub(1_100), category="Продукты"),
-        origin="telegram_text",
-    )
-    await owner_session.commit()
+    """A96: операция переживает сбой исполнителя, повтор не удваивает её.
 
-    # «Сбой» после commit: повторная обработка того же исходного кандидата.
-    async with session_scope(
-        test_settings, RuntimeRole.OWNER, workspace_id=fixture.workspace.id
-    ) as session:
-        found = (
-            await session.execute(
-                select(Transaction).where(Transaction.id == posted.transaction_id)
-            )
-        ).scalar_one()
-        assert found.status == "posted"
-        total = (
-            (
-                await session.execute(
-                    select(Transaction).where(Transaction.workspace_id == fixture.workspace.id)
+    Сбой внедряется в отправку ответа уже после фиксации денег, затем то же
+    событие обрабатывается заново штатным обработчиком: проверяется реальный
+    путь повтора, а не только чтение сохранённой строки.
+    """
+    from fintracker.application.ingestion.process_event import handle_process_inbound_event
+    from fintracker.infra.telegram.sender import RecordingSender, set_sender_override
+    from tests.integration.test_deep_audit import incoming, leased, prepared
+
+    fixture = await prepared(owner_session)
+    job = await leased(test_settings, incoming(fixture, "продукты 1100"))
+
+    class CrashSender:
+        async def send_message(self, **kwargs):  # type: ignore[no-untyped-def]
+            raise RuntimeError("A96 сбой исполнителя после фиксации денег")
+
+    async def posted_transactions() -> list[Transaction]:
+        async with session_scope(
+            test_settings, RuntimeRole.OWNER, workspace_id=fixture.workspace.id
+        ) as session:
+            return list(
+                (
+                    await session.execute(
+                        select(Transaction).where(Transaction.workspace_id == fixture.workspace.id)
+                    )
                 )
+                .scalars()
+                .all()
             )
-            .scalars()
-            .all()
-        )
-    assert len(total) == 1, "повтор не создаёт вторую операцию"
+
+    set_sender_override(CrashSender())
+    try:
+        with pytest.raises(RuntimeError, match="A96"):
+            await handle_process_inbound_event(test_settings, job)
+        after_crash = await posted_transactions()
+        assert len(after_crash) == 1, "зафиксированная операция потеряна при сбое"
+        assert after_crash[0].status == "posted"
+
+        # Повтор той же задачи после перезапуска исполнителя.
+        set_sender_override(RecordingSender())
+        await handle_process_inbound_event(test_settings, job)
+    finally:
+        set_sender_override(None)
+
+    after_retry = await posted_transactions()
+    assert len(after_retry) == 1, "повтор создал вторую операцию"
+    assert after_retry[0].id == after_crash[0].id
 
 
 async def test_a97_failure_before_commit_leaves_no_partial_state(
@@ -168,7 +185,7 @@ async def test_a110_deleted_workspace_is_not_restored_into_access(
 
 
 def test_a111_restore_evidence_is_recorded() -> None:
-    """A111, AR-33: итоги и ревизии согласованы, RPO/RTO измерены."""
+    """A111, AR-33: итоги и ревизии согласованы, RTO измерен, RPO не заявлен."""
     import pathlib
 
     evidence = (
@@ -182,8 +199,12 @@ def test_a111_restore_evidence_is_recorded() -> None:
     payload = json.loads(evidence.read_text(encoding="utf-8"))
     assert payload["invariant_failures"] == {}
     assert payload["row_counts_match"] is True
-    assert payload["rpo_seconds_measured"] <= payload["rpo_limit_seconds"]
+    # Снимок восстановлен целиком и только до точки дампа.
+    assert payload["snapshot_is_consistent"] is True
     assert payload["rto_seconds_measured"] <= payload["rto_limit_seconds"]
+    # RPO по NFR-10 учением без архива WAL не доказывается и так и заявлен.
+    assert payload["rpo_demonstrated"] is False
+    assert "not_measured" in payload["rpo_method"]
 
 
 async def test_a112_logs_do_not_contain_secrets(clean_db: None, test_settings: Settings) -> None:

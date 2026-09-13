@@ -7,6 +7,7 @@ Liveness показывает состояние процесса; readiness —
 
 from __future__ import annotations
 
+import pathlib
 from dataclasses import dataclass
 from typing import Any
 
@@ -43,12 +44,25 @@ class ReadinessReport:
         }
 
 
+def migrations_path() -> str:
+    """Каталог миграций внутри установленного пакета (OPS-04).
+
+    Каталог берётся от модуля, а не от текущего рабочего каталога: в образе
+    приложения исходного дерева нет, и readiness иначе не знала бы требуемую
+    ревизию схемы.
+    """
+    import fintracker.db as db_package
+
+    return str(pathlib.Path(db_package.__file__).resolve().parent / "migrations")
+
+
 def expected_schema_revision() -> str:
     """Ревизия схемы, требуемая этим кодом (OPS-04)."""
     from alembic.config import Config
     from alembic.script import ScriptDirectory
 
-    config = Config("alembic.ini")
+    config = Config()
+    config.set_main_option("script_location", migrations_path())
     script = ScriptDirectory.from_config(config)
     head = script.get_current_head()
     return head or ""

@@ -1,6 +1,7 @@
 # STATE — текущее состояние работы
 
-Обновлено: после срезов S00–S18 (журнал, обзоры, напоминания, устойчивость).
+Обновлено: после внешнего аудита 13 сентября 2026 и повторной проверки
+исправлений (AUD-01…AUD-18, R-01…R-12).
 
 ## Среда
 
@@ -11,7 +12,7 @@
 | Роли БД | `fintracker_owner` (миграции), `fintracker_api`, `fintracker_worker` (NOBYPASSRLS) |
 | Зависимости | aiogram 3.31, FastAPI 0.115.14, Pydantic 2.13.5, SQLAlchemy 2.0.52, psycopg 3.3.5, Alembic 1.20, httpx 0.28.1, openpyxl 3.1.5, structlog 25.5 |
 | Проверки | ruff 0.15.22, mypy 1.20.2 (strict), pytest 8.4.2, hypothesis 6.168 |
-| Миграции | 0001 initial → 0002 RLS → 0003 bootstrap → 0004 admin trigger → 0005 invite lookup → 0006 порядок добавления операций |
+| Миграции | 0001 initial → 0002 RLS → 0003 bootstrap → 0004 admin trigger → 0005 invite lookup → 0006 порядок операций → 0007 индексы → 0008 чтение схемы → 0009 служебные функции обслуживания → 0010 идентичность ввода и файлы |
 
 ## Сделано и проверено
 
@@ -30,6 +31,22 @@
 | Импорт и экспорт | проверено | `test_import_export.py` |
 | AI-контракт и квоты | проверено | `test_ai_contract.py`, `test_recommendations.py` |
 
+## Аудит и повторная проверка
+
+| Набор | Результат | Где |
+|---|---|---|
+| Диагностики первого аудита (21) | все проходят | `.planning/audits/2026-09-13/run_reproductions.py --commit HEAD` |
+| Диагностики повторной проверки (36 = 21 + 15) | все проходят | `.planning/audits/2026-09-13-recheck-a63cxl89/run_recheck.py` |
+| Те же инварианты в штатном наборе | `tests/integration/test_deep_audit.py`, `test_audit_regressions.py`, `test_audit_access_money.py`, `test_recheck_regressions.py` | без изоляций и подмен |
+
+Ключевые исправления: атомарная идентичность пользовательского ввода
+(`drafts.source_message_key`), проверка права исполнителя в транзакции записи
+(`core/fencing.py`), полный жизненный цикл возврата, перепроверка получателя
+отложенной доставки, replay состояния удаления и сверка доступа при старте,
+исход rejected у SecurityChange, периодический анализ по календарю бюджета с
+вызовом модели вне транзакции, маршрут таблиц в импорт, удаление файлов
+вместе с данными бюджета, привязка `verified` к фактическому прогону.
+
 ## В работе
 
 - Измерение производительности (NFR-01, NFR-03, NFR-06, NFR-07, NFR-08, AR-34):
@@ -37,6 +54,11 @@
 - Учение по восстановлению (AR-33, NFR-10): `.planning/tools/restore_drill.py`.
 - Остаток P0: AI-04, AI-07, ADR-16, QA-02, QA-04, часть сценариев A.
 - P1: FR-43, FR-44, FR-48, FR-68, FORM-04.
+- Эталонный набор ТЗ §25.1 собран частично: 36 размеченных текстов и 19
+  защитных входов вместо 250/100/100/50. Голос и чеки требуют BL-02 и BL-01.
+  Текущее покрытие и разрыв записаны в `.planning/evidence/extraction_accuracy.json`.
+- S3-совместимого адаптера хранилища и журнала доступа нет: рабочий backend —
+  `filesystem`, `s3` явно отказывает (BL-04).
 
 ## Блокеры
 
@@ -51,6 +73,7 @@ make up        # PostgreSQL 17 + роли
 make migrate   # миграции
 make check     # формат, линтер, типы, проверки
 make evidence  # собрать доказательства в .planning/evidence/
-FINTRACKER_PERF=1 .venv/bin/pytest tests/performance -q   # измерение NFR
-.venv/bin/python .planning/tools/restore_drill.py         # учение восстановления
+FINTRACKER_PERF=1 .venv/bin/pytest tests/performance -q   # измерение NFR и учение восстановления
+.venv/bin/python .planning/tools/check_traceability.py    # verified по фактическому прогону
+docker build -t fintracker:local .                        # единый артефакт api/worker/scheduler
 ```

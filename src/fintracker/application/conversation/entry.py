@@ -406,6 +406,12 @@ async def extract_from_text(
         for candidate in candidates:
             candidate.ambiguities.append({"field": "note", "reason": "scope_unclear"})
 
+    if guess.intent is Intent.FUTURE_PLAN:
+        # Планируемая покупка не проводится автоматически: она подтверждается
+        # отдельно или становится напоминанием (A55, AI-05, FR-12).
+        for candidate in candidates:
+            candidate.ambiguities.append({"field": "occurred_date", "reason": "future_plan"})
+
     question = None
     if any(candidate.ambiguities for candidate in candidates):
         question = first_question(candidates)

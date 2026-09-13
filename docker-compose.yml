@@ -36,6 +36,8 @@ services:
       timeout: 3s
       retries: 20
 
+  # Хранилище для будущего S3-совместимого адаптера. Приложение к нему пока
+  # не обращается: рабочий backend — filesystem (BL-04).
   minio:
     image: minio/minio:RELEASE.2024-11-07T00-52-20Z
     container_name: fintracker_minio

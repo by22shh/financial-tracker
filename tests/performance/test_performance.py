@@ -386,8 +386,8 @@ async def test_nfr02_nfr03_dialog_latency(clean_db: None, test_settings: Setting
     assert feedback_p95 <= 2.0, f"p95 подтверждения {feedback_p95:.3f} с превышает 2 с"
 
 
-def test_ar33_nfr10_restore_drill() -> None:
-    """AR-33, NFR-10: учение восстановления с измеренными RPO и RTO."""
+def test_ar33_nfr10_restore_drill(pg_database: None) -> None:
+    """AR-33, NFR-10: учение восстановления с измеренным RTO и честным RPO."""
     import json as json_module
     import subprocess
 
@@ -400,7 +400,7 @@ def test_ar33_nfr10_restore_drill() -> None:
         check=False,
     )
     if result.returncode == 2:
-        pytest.skip("Контейнер PostgreSQL недоступен для учения восстановления")
+        pytest.skip(f"Среда учения недоступна: {result.stdout.strip()[-200:]}")
     assert result.returncode == 0, result.stdout[-2000:] + result.stderr[-2000:]
 
     payload = json_module.loads((EVIDENCE / "restore_drill.json").read_text(encoding="utf-8"))
@@ -408,6 +408,8 @@ def test_ar33_nfr10_restore_drill() -> None:
         "финансовые инварианты нарушены после восстановления"
     )
     assert payload["row_counts_match"], "состав восстановленных данных не совпал"
-    assert payload["rpo_seconds_measured"] <= payload["rpo_limit_seconds"]
+    assert payload["snapshot_is_consistent"], "восстановлен неполный или лишний снимок"
     assert payload["rto_seconds_measured"] <= payload["rto_limit_seconds"]
+    # Учение без архива WAL не доказывает RPO: отчёт обязан это заявлять.
+    assert payload["rpo_demonstrated"] is False
     assert payload["risk_tail"], "хвост риска должен быть указан явно"

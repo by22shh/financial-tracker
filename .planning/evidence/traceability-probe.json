@@ -1,0 +1,17 @@
+{
+  "checked_at": "2026-09-13T17:03:46.691190+00:00",
+  "probe": "У A01 в реестре временно заменены ссылка на pytest-узел и файл доказательства на несуществующие; затем реестр восстановлен.",
+  "before_fix": {
+    "source": "оба аудита: .planning/audits/2026-09-13/traceability-probe.json",
+    "exit_code": 0,
+    "verdict": "фиктивные ссылки принимались"
+  },
+  "after_fix": {
+    "exit_code": 1,
+    "problems": [
+      "A01: узел не собран в прогоне: tests/acceptance/test_first_cycle.py::test_probe_does_not_exist",
+      "A01: доказательство отсутствует: .planning/evidence/probe-does-not-exist.json"
+    ]
+  },
+  "note": "Статус verified теперь требует: существующий файл проверки, собранный pytest-узел в сохранённом прогоне того же commit, исход passed и существующий файл доказательства (R-12, AUD-17)."
+}

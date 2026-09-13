@@ -53,7 +53,11 @@ VALID_STATUSES = {
 KIND_BY_PREFIX = (
     ("tests/unit/", "domain"),
     ("tests/acceptance/", "acceptance"),
+    ("tests/quality/", "ai_corpus"),
+    ("tests/performance/", "ops_measurement"),
     ("tests/integration/test_release_and_runtime", "ops"),
+    ("tests/integration/test_ops_scenarios", "ops"),
+    ("tests/integration/test_handover", "ops"),
     ("tests/integration/test_ai_contract", "ai"),
     ("tests/integration/test_recommendations", "ai"),
     ("tests/integration/", "integration"),
@@ -116,10 +120,10 @@ def load_outcomes(report_path: pathlib.Path) -> dict[str, str]:
     outcomes: dict[str, str] = {}
     tree = ET.parse(report_path)  # noqa: S314 - локальный отчёт собственного прогона
     for case in tree.iter("testcase"):
-        file_name = case.get("file") or ""
         name = case.get("name") or ""
-        classname = case.get("classname") or ""
-        node = f"{file_name}::{name}" if file_name else f"{classname}::{name}"
+        # pytest пишет модуль точками; узел реестра — путь к файлу.
+        file_name = case.get("file") or (case.get("classname") or "").replace(".", "/") + ".py"
+        node = f"{file_name}::{name}"
         outcome = "passed"
         for child in case:
             if child.tag in {"failure", "error"}:

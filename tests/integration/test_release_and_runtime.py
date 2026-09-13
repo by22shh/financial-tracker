@@ -193,3 +193,26 @@ async def test_ops05_downgrade_and_upgrade_are_reversible(
     from fintracker.runtime.health import expected_schema_revision
 
     assert revision == expected_schema_revision()
+
+
+def test_ops04_expected_revision_resolves_outside_repository() -> None:
+    """OPS-04: требуемая ревизия схемы известна и без исходного дерева.
+
+    В образе приложения нет ни `alembic.ini`, ни каталога `src`: readiness
+    обязана определять требуемую ревизию по установленному пакету, иначе она
+    всегда отрицательна при работающей базе.
+    """
+    import os
+    import tempfile
+
+    from fintracker.runtime.health import expected_schema_revision, migrations_path
+
+    assert pathlib.Path(migrations_path(), "versions").is_dir()
+    previous = os.getcwd()
+    with tempfile.TemporaryDirectory() as directory:
+        os.chdir(directory)
+        try:
+            revision = expected_schema_revision()
+        finally:
+            os.chdir(previous)
+    assert revision, "требуемая ревизия схемы не определена вне каталога проекта"

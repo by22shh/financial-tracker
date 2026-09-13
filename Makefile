@@ -1,5 +1,5 @@
 # Команды передачи и эксплуатации (OPS-06).
-.PHONY: help up down migrate check lint types test test-pg run-api run-worker run-scheduler evidence
+.PHONY: help up down migrate check lint types test test-pg run-api run-worker run-scheduler evidence image trace
 
 VENV := .venv/bin
 
@@ -42,6 +42,12 @@ check: lint types test ## Полный набор проверок
 
 evidence: ## Собрать доказательства проверок
 	$(VENV)/python .planning/tools/collect_evidence.py
+
+trace: ## Проверить прослеживаемость по фактическому прогону
+	$(VENV)/python .planning/tools/check_traceability.py
+
+image: ## Собрать единый артефакт api/worker/scheduler
+	docker build -t fintracker:local .
 
 run-api: ## Запустить API
 	$(VENV)/fintracker api
