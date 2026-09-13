@@ -15,7 +15,7 @@ from fintracker.application.ingestion.process_event import handle_process_inboun
 from fintracker.application.platform import queue
 from fintracker.db.models.access import Membership, UserBudgetContext
 from fintracker.db.models.ledger import Transaction, TransactionRevision
-from fintracker.db.models.platform import Job
+from fintracker.db.models.platform import InboundEvent, Job
 from fintracker.db.session import RuntimeRole, session_scope
 from fintracker.infra.ai.openai_client import ScriptedAIProvider, set_provider_override
 from fintracker.infra.telegram.sender import RecordingSender, set_sender_override
@@ -137,15 +137,21 @@ async def test_audit_failed_immediate_reply_remains_retryable(owner_session, tes
     sender = RecordingSender(fail_for_chats={f.user.telegram_user_id})
     set_sender_override(sender)
     try:
-        # Инвариант AUD-11: недоставленный ответ не теряется. Повтор идёт
-        # отдельной долговечной задачей и не запускает бизнес-команду заново,
-        # поэтому событие остаётся processed (рекомендация самого аудита).
+        # Инвариант AUD-11: недоставленный ответ не теряется. Событие не
+        # признаётся обработанным, а повтор идёт отдельной долговечной задачей
+        # доставки и не запускает бизнес-команду заново.
         await handle_process_inbound_event(test_settings, job)
         async with session_scope(test_settings, RuntimeRole.OWNER) as s:
+            state = await s.scalar(
+                select(InboundEvent.state).where(InboundEvent.id == job.subject_id)
+            )
             pending = (
                 await s.scalars(select(Job.state).where(Job.job_type == "deliver_reply"))
             ).all()
-        assert pending and all(state in {"queued", "retry_wait"} for state in pending), (
+        assert state != "processed", (
+            "Failed reply was acknowledged as processed and will never be retried"
+        )
+        assert pending and all(item in {"queued", "retry_wait"} for item in pending), (
             "Failed reply must stay retryable as an independent delivery job"
         )
     finally:

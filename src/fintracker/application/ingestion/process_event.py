@@ -24,7 +24,7 @@ from fintracker.application.conversation.types import (
 from fintracker.application.platform import queue
 from fintracker.application.platform.queue import LeasedJob
 from fintracker.config import Settings
-from fintracker.core.errors import DomainError, NotFound
+from fintracker.core.errors import DomainError, NotFound, TemporarilyUnavailable
 from fintracker.core.logging import get_logger
 from fintracker.db.models.platform import InboundEvent, InboundPayload
 from fintracker.db.session import RuntimeRole, session_scope
@@ -247,8 +247,10 @@ async def _enqueue_reply(
 async def _send_now(settings: Settings, *, chat_id: int, replies: list[Reply]) -> bool:
     """Немедленный ответ автору (FR-53).
 
-    Возвращает True, если все сообщения доставлены: тогда долговечная задача
-    доставки закрывается и второго сообщения не появляется.
+    Возвращает True, когда доставка завершена: тогда событие признаётся
+    обработанным, а долговечная задача доставки закрывается. False означает
+    восстановимый сбой: событие остаётся недоставленным и повторяется только
+    доставкой, без повторной финансовой команды (AUD-02, AUD-11).
     """
     sender = build_sender(settings)
     delivered = True
@@ -258,30 +260,47 @@ async def _send_now(settings: Settings, *, chat_id: int, replies: list[Reply]) -
         result = await sender.send_message(
             chat_id=chat_id, text=reply.text, buttons=reply.keyboard()
         )
-        if not result.ok:
-            if result.blocked:
-                # Блокировка бота получателем не лечится повтором (A66).
-                continue
-            delivered = False
-            logger.warning("reply_immediate_failed", chat_id=chat_id, error=result.error)
+        if result.ok or result.blocked:
+            # Блокировка бота получателем не лечится повтором (A66).
+            continue
+        if result.unknown:
+            # Неопределённый ответ не повторяется: сообщение могло дойти (A100).
+            logger.warning("reply_delivery_unknown", chat_id=chat_id, error=result.error)
+            continue
+        delivered = False
+        logger.warning("reply_immediate_failed", chat_id=chat_id, error=result.error)
     return delivered
 
 
-async def _close_reply_job(settings: Settings, job_id: uuid.UUID) -> None:
+async def _settle_delivery(
+    settings: Settings, *, event_id: uuid.UUID, reply_job_id: uuid.UUID | None
+) -> None:
+    """Признать событие обработанным после доставки ответа (AUD-11).
+
+    Событие переходит в processed только здесь: пока ответ не доставлен, оно
+    остаётся routed и остаётся видимым как незавершённое.
+    """
     from fintracker.db.models.platform import Job
 
     async with session_scope(settings, RuntimeRole.WORKER) as session:
         await session.execute(
-            update(Job)
-            .where(Job.id == job_id, Job.state.in_(("queued", "retry_wait")))
-            .values(state="succeeded", lease_token=None, lease_until=None)
+            update(InboundEvent)
+            .where(InboundEvent.id == event_id, InboundEvent.state.notin_(("ignored", "failed")))
+            .values(state="processed")
         )
+        if reply_job_id is not None:
+            await session.execute(
+                update(Job)
+                .where(Job.id == reply_job_id, Job.state.in_(("queued", "retry_wait", "running")))
+                .values(state="succeeded", lease_token=None, lease_until=None)
+            )
 
 
 async def handle_deliver_reply(settings: Settings, job: LeasedJob) -> None:
-    """Отправить подготовленный ответ автору с повтором при сбое (AUD-11)."""
-    from fintracker.core.errors import TemporarilyUnavailable
+    """Отправить подготовленный ответ автору с повтором при сбое (AUD-11).
 
+    Задача не повторяет бизнес-команду: она отправляет уже сохранённый текст.
+    """
     chat_id = int(job.payload["chat_id"])
     messages = list(job.payload.get("messages") or [])
     sender = build_sender(settings)
@@ -290,17 +309,17 @@ async def handle_deliver_reply(settings: Settings, job: LeasedJob) -> None:
             chat_id=chat_id, text=str(item["text"]), buttons=item.get("buttons")
         )
         if result.ok or result.blocked:
-            # Блокировка бота получателем не лечится повтором (A66).
             continue
         if result.unknown:
-            # Неопределённый ответ не повторяется автоматически: сообщение
-            # могло дойти. Денежная часть уже зафиксирована отдельно (A100).
             logger.warning("reply_delivery_unknown", job_id=str(job.id), error=result.error)
             continue
         raise TemporarilyUnavailable(
             f"Доставка ответа не удалась: {result.error}",
             retry_after=float(result.retry_after or 0) or None,
         )
+    event_id = job.payload.get("inbound_event_id")
+    if event_id is not None:
+        await _settle_delivery(settings, event_id=uuid.UUID(str(event_id)), reply_job_id=None)
 
 
 async def handle_process_inbound_event(settings: Settings, job: LeasedJob) -> None:
@@ -339,27 +358,16 @@ async def handle_process_inbound_event(settings: Settings, job: LeasedJob) -> No
     if not context.is_private_chat:
         # Приватные финансовые ответы не отправляются в групповой чат (AUD-12).
         logger.info("inbound_group_chat", event_id=str(event_id))
-        if context.chat_id is not None:
-            async with session_scope(settings, RuntimeRole.WORKER) as session:
-                await session.execute(
-                    update(InboundEvent)
-                    .where(InboundEvent.id == event_id)
-                    .values(state="processed")
-                )
-                hint_job = await _enqueue_reply(
-                    session,
-                    job=job,
-                    event_id=event_id,
-                    chat_id=context.chat_id,
-                    replies=[Reply(text=GROUP_HINT)],
-                )
-            delivered = await _send_now(
-                settings, chat_id=context.chat_id, replies=[Reply(text=GROUP_HINT)]
-            )
-            if delivered and hint_job is not None:
-                await _close_reply_job(settings, hint_job)
+        if context.chat_id is None:
+            await _mark_state(settings, event_id, "processed")
             return
-        await _mark_state(settings, event_id, "processed")
+        hint = [Reply(text=GROUP_HINT)]
+        async with session_scope(settings, RuntimeRole.WORKER) as session:
+            hint_job = await _enqueue_reply(
+                session, job=job, event_id=event_id, chat_id=context.chat_id, replies=hint
+            )
+        if await _send_now(settings, chat_id=context.chat_id, replies=hint):
+            await _settle_delivery(settings, event_id=event_id, reply_job_id=hint_job)
         return
 
     async with session_scope(settings, RuntimeRole.WORKER) as session:
@@ -382,12 +390,9 @@ async def handle_process_inbound_event(settings: Settings, job: LeasedJob) -> No
         if not await queue.lease_is_valid(session, job):
             logger.warning("lease_expired_skip_result", job_id=str(job.id))
             return
-        # Признание события обработанным, раскрытие outbox и долговечная
-        # доставка ответа фиксируются одной транзакцией: сбой отправки уже не
-        # может привести к повторной финансовой команде (AUD-02, AUD-11).
-        await session.execute(
-            update(InboundEvent).where(InboundEvent.id == event_id).values(state="processed")
-        )
+        # Раскрытие outbox и долговечная доставка ответа фиксируются одной
+        # транзакцией. Событие ещё не processed: признание обработанным
+        # наступает только после доставки ответа (AUD-11).
         await queue.enqueue(
             session,
             job_type="expand_outbox",
@@ -406,11 +411,15 @@ async def handle_process_inbound_event(settings: Settings, job: LeasedJob) -> No
                 replies=replies,
             )
 
-    if context.chat_id is not None and replies:
-        # Ответ автору показывается сразу; при сбое остаётся долговечная задача.
-        delivered = await _send_now(settings, chat_id=context.chat_id, replies=replies)
-        if delivered and reply_job is not None:
-            await _close_reply_job(settings, reply_job)
+    if context.chat_id is None or not replies:
+        await _settle_delivery(settings, event_id=event_id, reply_job_id=None)
+    elif await _send_now(settings, chat_id=context.chat_id, replies=replies):
+        # Ответ показан сразу: долговечная задача больше не нужна.
+        await _settle_delivery(settings, event_id=event_id, reply_job_id=reply_job)
+    else:
+        # Ответ не доставлен: событие остаётся незавершённым, а повтор идёт
+        # отдельной задачей доставки без повторной финансовой команды.
+        logger.warning("reply_deferred_to_delivery_job", event_id=str(event_id))
     logger.info(
         "inbound_processed",
         event_id=str(event_id),
