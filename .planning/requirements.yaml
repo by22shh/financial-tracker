@@ -3483,13 +3483,11 @@
   title: "Полный restore из реально доступного backup/WAL и проверка ссылок на вложения"
   source: docs/ARCHITECTURE_REVIEW.md
   stage: P0
-  status: verified
+  status: blocked
+  blocker: "BL-04: учение восстанавливает локальный дамп с проверкой инвариантов, restore из WAL/PITR требует выбранной среды"
   implementation:
   verification:
-    - tests/integration/test_ops_scenarios.py::test_a111_restore_evidence_is_recorded
-    - tests/performance/test_performance.py::test_ar33_nfr10_restore_drill
   evidence:
-    - .planning/evidence/latest.json
 
 - id: AR-34
   title: "Нагрузка ТЗ, один горячий бюджет, 50 000 операций, расширенные фильтры"
@@ -5864,13 +5862,12 @@
   title: "Восстановление RPO <= 1 ч, RTO <= 4 ч"
   source: docs/TZ.md §23
   stage: P0
-  status: verified
+  status: blocked
+  blocker: "BL-04: RTO измерен учением, RPO без непрерывного архива WAL и управляемой PostgreSQL не доказывается"
   implementation:
     - src/fintracker/db/migrations/versions/0007_money_join_indexes.py
   verification:
-    - tests/performance/test_performance.py::test_ar33_nfr10_restore_drill
   evidence:
-    - .planning/evidence/latest.json
 
 - id: NFR-11
   title: "Вложения <= 15 MB с проверкой типов и размеров"

@@ -1,41 +1,41 @@
 {
   "nfr06_report": {
-    "p95_seconds": 0.3402,
-    "median_seconds": 0.2326,
-    "fill_seconds": 35.63,
+    "p95_seconds": 0.3702,
+    "median_seconds": 0.2316,
+    "fill_seconds": 35.45,
     "requirement": "p95 <= 2 s на 50 000 операций",
-    "measured_at": "2026-09-13T16:55:31.222737+00:00",
+    "measured_at": "2026-09-13T17:32:08.739543+00:00",
     "volume": 50000
   },
   "nfr06_journal_filters": {
-    "p95_seconds": 0.2789,
+    "p95_seconds": 0.3627,
     "requirement": "p95 <= 2 s",
-    "measured_at": "2026-09-13T16:57:26.660687+00:00",
+    "measured_at": "2026-09-13T17:32:46.908312+00:00",
     "volume": 50000
   },
   "nfr01_intake": {
-    "p95_seconds": 0.0091,
+    "p95_seconds": 0.0109,
     "steady_rate_per_second": 5,
     "burst_rate_per_second": 20,
     "events": 250,
     "requirement": "p95 <= 1 s до долговечного сохранения",
-    "measured_at": "2026-09-13T16:57:57.265275+00:00",
+    "measured_at": "2026-09-13T17:33:17.843044+00:00",
     "volume": 50000
   },
   "nfr08_concurrency": {
     "workspaces": 10,
     "members_per_workspace": 5,
-    "total_seconds": 7.82,
+    "total_seconds": 7.71,
     "requirement": "10 бюджетов по 5 участников",
-    "measured_at": "2026-09-13T16:58:05.180133+00:00",
+    "measured_at": "2026-09-13T17:33:25.648100+00:00",
     "volume": 50000
   },
   "nfr02_nfr03_dialog": {
-    "card_p95_seconds": 0.0334,
-    "feedback_p95_seconds": 0.0745,
+    "card_p95_seconds": 0.0297,
+    "feedback_p95_seconds": 0.0655,
     "requirement": "NFR-02 <= 2 s, NFR-03 p95 <= 5 s (детерминированный путь)",
     "note": "Измерено на детерминированном разборе без внешнего провайдера; задержка модели добавляется после подключения ключа (BL-01).",
-    "measured_at": "2026-09-13T16:58:07.074919+00:00",
+    "measured_at": "2026-09-13T17:33:27.463100+00:00",
     "volume": 50000
   }
 }
