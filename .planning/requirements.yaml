@@ -621,6 +621,7 @@
   status: verified
   implementation:
   verification:
+    - tests/quality/test_extraction_accuracy.py::test_ai04_guarded_inputs_are_not_recorded
     - tests/unit/test_parsing.py::test_future_date_is_marked
   evidence:
     - .planning/evidence/latest.json
@@ -2484,10 +2485,14 @@
   title: "Однодневный период и стандартный обзор перед началом"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
+    - src/fintracker/application/planning/rollover.py
   verification:
+    - tests/integration/test_plan_review.py::test_a228_single_day_period_has_no_separate_review_job
+    - tests/integration/test_plan_review.py::test_form10_lead_days_by_period_length
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A229
   title: "При недельном цикле спросить «за месяц», затем явно выбрать календарный месяц"
@@ -2743,8 +2748,10 @@
   title: "Изменять архитектуру по измеренному ограничению"
   source: docs/ARCHITECTURE.md
   stage: P0
-  status: planned
+  status: implemented
   implementation:
+    - src/fintracker/db/migrations/versions/0007_money_join_indexes.py
+    - src/fintracker/db/models/ledger.py
   verification:
   evidence:
 
@@ -2809,24 +2816,31 @@
   title: "Измеренная точность"
   source: docs/TZ.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
   verification:
+    - tests/quality/test_extraction_accuracy.py::test_ai04_autopost_ignores_model_self_confidence
+    - tests/quality/test_extraction_accuracy.py::test_ai04_guarded_inputs_are_not_recorded
+    - tests/quality/test_extraction_accuracy.py::test_ai04_measured_accuracy_by_field
   evidence:
+    - .planning/evidence/latest.json
 
 - id: AI-05
   title: "Отказ от догадки"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/conversation/clarify.py
     - src/fintracker/application/conversation/entry.py
     - src/fintracker/application/conversation/service.py
     - src/fintracker/domain/parsing/amounts.py
+    - src/fintracker/domain/parsing/dates.py
     - src/fintracker/domain/parsing/intent.py
   verification:
+    - tests/quality/test_extraction_accuracy.py::test_ai04_guarded_inputs_are_not_recorded
   evidence:
+    - .planning/evidence/latest.json
 
 - id: AI-06
   title: "Ограниченный план запроса"
@@ -3078,10 +3092,12 @@
   title: "Возврат покупки из цели и отмена/изменение связанной исходной покупки"
   source: docs/ARCHITECTURE_REVIEW.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
   verification:
+    - tests/integration/test_architecture_review.py::test_ar18_goal_reserve_changes_only_by_chosen_action
   evidence:
+    - .planning/evidence/latest.json
 
 - id: AR-19
   title: "Смешанный чек 1000 Продукты/Софа +400 Дом/Ниджат, несколько tags"
@@ -3134,10 +3150,14 @@
   title: "Управляемое время: 10–9, 31 января, високосность, fixed_days и DST"
   source: docs/ARCHITECTURE_REVIEW.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
   verification:
+    - tests/unit/test_calendar.py::test_a211_fixed_week_across_dst_shift
+    - tests/unit/test_calendar.py::test_a48_a49_period_boundary_at_local_midnight
+    - tests/unit/test_calendar.py::test_a52_month_clamp_does_not_drift
   evidence:
+    - .planning/evidence/latest.json
 
 - id: AR-24
   title: "Несколько scheduler, простой на несколько периодов и конкурентная смена политики"
@@ -3256,19 +3276,28 @@
   title: "Нагрузка ТЗ, один горячий бюджет, 50 000 операций, расширенные фильтры"
   source: docs/ARCHITECTURE_REVIEW.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
+    - src/fintracker/application/analytics/reports.py
+    - src/fintracker/db/migrations/versions/0007_money_join_indexes.py
   verification:
+    - tests/performance/test_performance.py::test_nfr01_nfr07_intake_rate
+    - tests/performance/test_performance.py::test_nfr06_filtered_journal_on_large_volume
+    - tests/performance/test_performance.py::test_nfr06_report_on_large_journal
+    - tests/performance/test_performance.py::test_nfr08_concurrent_workspaces
   evidence:
+    - .planning/evidence/latest.json
 
 - id: AR-35
   title: "Выпуск с jobs предыдущего формата, миграция со старого снимка и откат приложения"
   source: docs/ARCHITECTURE_REVIEW.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
   verification:
+    - tests/integration/test_architecture_review.py::test_ar35_unknown_job_payload_is_rejected_explicitly
   evidence:
+    - .planning/evidence/latest.json
 
 - id: AR-36
   title: "Корпус AI на выбранном профиле: сырая ошибка, уточнение, ошибочная автозапись, инструкция в заметке, недоступность провайдера"
@@ -3891,13 +3920,15 @@
   title: "Намерение"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/conversation/corrections.py
     - src/fintracker/application/conversation/service.py
     - src/fintracker/domain/parsing/intent.py
   verification:
+    - tests/quality/test_extraction_accuracy.py::test_ai04_guarded_inputs_are_not_recorded
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-13
   title: "Голосовой ввод"
@@ -3982,6 +4013,7 @@
   verification:
     - tests/acceptance/test_settings_and_rules.py::test_input_preferences_toggle
     - tests/integration/test_rules_and_preferences.py::test_input_preferences_are_per_member
+    - tests/quality/test_extraction_accuracy.py::test_ai04_autopost_ignores_model_self_confidence
   evidence:
     - .planning/evidence/latest.json
 
@@ -4148,8 +4180,9 @@
   title: "Исторические долги"
   source: docs/TZ.md
   stage: P0
-  status: planned
+  status: implemented
   implementation:
+    - src/fintracker/application/analytics/reports.py
   verification:
   evidence:
 
@@ -4383,6 +4416,7 @@
     - src/fintracker/application/conversation/sections.py
     - src/fintracker/application/delivery/render.py
     - src/fintracker/application/delivery/thresholds.py
+    - src/fintracker/application/planning/rollover.py
     - src/fintracker/db/models/platform.py
   verification:
   evidence:
@@ -5058,10 +5092,12 @@
   title: "Приём события p95 <= 1 с до долговечного сохранения"
   source: docs/TZ.md §23
   stage: P0
-  status: planned
+  status: verified
   implementation:
   verification:
+    - tests/performance/test_performance.py::test_nfr01_nfr07_intake_rate
   evidence:
+    - .planning/evidence/latest.json
 
 - id: NFR-02
   title: "Обратная связь <= 2 с после приёма"
@@ -5103,28 +5139,38 @@
   title: "Числовой отчёт p95 <= 2 с на 50 000 операций"
   source: docs/TZ.md §23
   stage: P0
-  status: planned
+  status: verified
   implementation:
+    - src/fintracker/application/analytics/reports.py
+    - src/fintracker/db/migrations/versions/0007_money_join_indexes.py
+    - src/fintracker/db/models/ledger.py
   verification:
+    - tests/performance/test_performance.py::test_nfr06_filtered_journal_on_large_volume
+    - tests/performance/test_performance.py::test_nfr06_report_on_large_journal
   evidence:
+    - .planning/evidence/latest.json
 
 - id: NFR-07
   title: "Нагрузка 5/с 10 мин и всплеск 20/с без потерь и дублей"
   source: docs/TZ.md §23
   stage: P0
-  status: planned
+  status: verified
   implementation:
   verification:
+    - tests/performance/test_performance.py::test_nfr01_nfr07_intake_rate
   evidence:
+    - .planning/evidence/latest.json
 
 - id: NFR-08
   title: "Совместность 10 бюджетов по 5 участников"
   source: docs/TZ.md §23
   stage: P0
-  status: planned
+  status: verified
   implementation:
   verification:
+    - tests/performance/test_performance.py::test_nfr08_concurrent_workspaces
   evidence:
+    - .planning/evidence/latest.json
 
 - id: NFR-09
   title: "Доступность собственного API 99,5% в месяц"
@@ -5455,10 +5501,12 @@
   title: "Взнос в фонд = округление вверх недостающей суммы"
   source: docs/TZ.md §10–11, §9.1.1
   stage: P0
-  status: planned
+  status: verified
   implementation:
   verification:
+    - tests/integration/test_plan_review.py::test_form05_contribution_is_rounded_up
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FORM-06
   title: "Календарный повтор от исходного anchor с ограничением месяца"
@@ -5504,10 +5552,14 @@
   title: "Опережение обзора плана min(3, длительность-1)"
   source: docs/TZ.md §10–11, §9.1.1
   stage: P0
-  status: planned
+  status: verified
   implementation:
+    - src/fintracker/application/planning/rollover.py
   verification:
+    - tests/integration/test_plan_review.py::test_form10_lead_days_by_period_length
+    - tests/integration/test_plan_review.py::test_form10_review_date_stays_inside_period
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FORM-11
   title: "Порог раннего риска max(500 ₽, 10% лимита)"

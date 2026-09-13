@@ -147,9 +147,13 @@ def _extract_note(text: str) -> tuple[str, str | None]:
 
 
 def _split_segments(text: str) -> list[str]:
-    """Разделить сообщение на кандидатов по запятым и союзу «и»."""
-    parts = re.split(r"[,;]\s*|\s+и\s+(?=[А-Яа-яA-Za-z])", text)
-    return [part.strip() for part in parts if part.strip()]
+    """Разделить сообщение на кандидатов по запятым и союзу «и».
+
+    Запятая внутри числа является десятичным разделителем и границей
+    кандидата не считается: «1 200,50» — одна сумма, а не две (FR-10).
+    """
+    parts = re.split(r"(?<!\d)[,;]\s*|[,;](?!\d)\s*|\s+и\s+(?=[А-Яа-яA-Za-z])", text)
+    return [part.strip() for part in parts if part and part.strip()]
 
 
 async def _match_category(
@@ -339,9 +343,15 @@ async def extract_from_text(
         if not amounts:
             continue
         amount = amounts[0]
-        parsed_date = resolve_date_expression(segment, reference=reference_date)
+        # Фрагменты, уже распознанные как суммы, не читаются как дата (AI-05).
+        recognised = tuple(item.raw for item in amounts)
+        parsed_date = resolve_date_expression(
+            segment, reference=reference_date, ignore_raw=recognised
+        )
         if parsed_date is None:
-            parsed_date = resolve_date_expression(body, reference=reference_date)
+            parsed_date = resolve_date_expression(
+                body, reference=reference_date, ignore_raw=recognised
+            )
         occurred = parsed_date.value if parsed_date else reference_date
         currency = amount.currency or detect_currency(body) or workspace_currency
         fields = CandidateFields(

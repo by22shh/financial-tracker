@@ -159,6 +159,11 @@ async def _bulk_transactions(session: AsyncSession, fixture: Fixture, count: int
         await session.execute(insert(FinancialEffect), effects)
         await session.flush()
         created += size
+    # Статистика планировщика: в рабочей системе её поддерживает autovacuum,
+    # в измерении она обновляется явно, иначе план строится вслепую (AR-34).
+    from sqlalchemy import text as sql_text
+
+    await session.execute(sql_text("ANALYZE transactions, transaction_revisions, allocations"))
 
 
 async def test_nfr06_report_on_large_journal(owner_session: AsyncSession) -> None:

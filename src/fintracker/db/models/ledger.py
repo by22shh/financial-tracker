@@ -193,6 +193,12 @@ class TransactionRevision(Base):
             ondelete="RESTRICT",
         ),
         Index("ix_transaction_revisions_txn", "workspace_id", "transaction_id", "revision"),
+        Index(
+            "ix_transaction_revisions_occurred",
+            "workspace_id",
+            "occurred_date",
+            "transaction_id",
+        ),
     )
 
 
@@ -255,6 +261,9 @@ class Allocation(Base):
             "revision",
         ),
         Index("ix_allocations_stable_line", "workspace_id", "stable_line_id"),
+        # Ключ соединения по ревизии: без него триггеры инвариантов и отчёты
+        # сканируют таблицу целиком (ADR-16, NFR-06).
+        Index("ix_allocations_revision", "workspace_id", "transaction_id", "revision"),
     )
 
 
@@ -300,6 +309,7 @@ class CashLeg(Base):
             name="fk_cash_legs_account",
             ondelete="RESTRICT",
         ),
+        Index("ix_cash_legs_revision", "workspace_id", "transaction_id", "revision"),
     )
 
 
@@ -325,6 +335,12 @@ class FinancialEffect(Base):
     __table_args__ = (
         UniqueConstraint("workspace_id", "id"),
         UniqueConstraint("workspace_id", "transaction_id", "source_revision"),
+        Index(
+            "ix_financial_effects_transaction",
+            "workspace_id",
+            "transaction_id",
+            "source_revision",
+        ),
         # У операции не более одного активного эффекта.
         Index(
             "uq_financial_effects_active",
@@ -385,6 +401,7 @@ class AccountEntry(Base):
             ondelete="RESTRICT",
         ),
         Index("ix_account_entries_balance", "workspace_id", "account_id", "effective_date", "id"),
+        Index("ix_account_entries_effect", "workspace_id", "effect_id"),
     )
 
 

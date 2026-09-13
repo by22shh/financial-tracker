@@ -77,9 +77,16 @@ class ParsedDate:
     precision: str = "day"
 
 
-def resolve_date_expression(text: str, *, reference: dt.date) -> ParsedDate | None:
-    """Разрешить дату относительно даты исходного события."""
+def resolve_date_expression(
+    text: str, *, reference: dt.date, ignore_raw: tuple[str, ...] = ()
+) -> ParsedDate | None:
+    """Разрешить дату относительно даты исходного события.
+
+    ``ignore_raw`` содержит фрагменты, уже распознанные как суммы: «3.5» в
+    «кофе 3.5 USD» является ценой, а не третьим мая (AI-05).
+    """
     lowered = text.lower()
+    skipped = tuple(item.strip().lower() for item in ignore_raw if item.strip())
 
     for word, offset in RELATIVE_WORDS.items():
         if re.search(rf"(?<![а-яё]){word}(?![а-яё])", lowered):
@@ -106,7 +113,14 @@ def resolve_date_expression(text: str, *, reference: dt.date) -> ParsedDate | No
             value=candidate, expression=named.group(), is_future=candidate > reference
         )
 
-    numeric = _NUMERIC_DATE.search(lowered)
+    numeric = next(
+        (
+            match
+            for match in _NUMERIC_DATE.finditer(lowered)
+            if not any(match.group() in item for item in skipped)
+        ),
+        None,
+    )
     if numeric:
         day = int(numeric.group("day"))
         month = int(numeric.group("month"))
