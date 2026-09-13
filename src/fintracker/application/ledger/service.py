@@ -689,6 +689,10 @@ async def void_transaction(
     transaction.current_revision = revision_number
     transaction.status = "voided"
     transaction.entity_version += 1
+    # Связи отменённой операции перестают занимать лимит возврата (AUD-09).
+    await _sync_links_with_status(
+        session, workspace_id=workspace_id, transaction_id=transaction_id, active=False
+    )
     await session.flush()
 
     await uow.bump_revisions(workspace_id, data=True)
@@ -755,3 +759,30 @@ async def account_balance(
         )
     ).scalar_one()
     return int(value)
+
+
+async def _sync_links_with_status(
+    session: AsyncSession,
+    *,
+    workspace_id: uuid.UUID,
+    transaction_id: uuid.UUID,
+    active: bool,
+) -> None:
+    """Согласовать состояние связей с состоянием операции (FR-29, AUD-09).
+
+    Отменённый возврат не занимает возвращаемую сумму исходной покупки;
+    восстановление возвращает связь в действующее состояние.
+    """
+    from sqlalchemy import update as sql_update
+
+    # Операция может быть как источником связи, так и её целью: отменяется
+    # вклад именно этой операции.
+    await session.execute(
+        sql_update(TransactionLink)
+        .where(
+            TransactionLink.workspace_id == workspace_id,
+            TransactionLink.target_transaction_id == transaction_id,
+        )
+        .values(status="active" if active else "cancelled")
+    )
+    await session.flush()

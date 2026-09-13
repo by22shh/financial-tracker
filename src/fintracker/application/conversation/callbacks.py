@@ -216,6 +216,22 @@ async def dispatch_callback(
             return await report_slice(
                 settings, actor=actor, workspace=workspace, slice_name=argument
             )
+        case "exp":
+            from fintracker.application.conversation.io_flow import export_action
+
+            return await export_action(
+                settings,
+                actor=actor,
+                workspace=workspace,
+                fmt=argument,
+                chat_id=message.chat_id,
+            )
+        case "imp":
+            from fintracker.application.conversation.io_flow import import_action
+
+            return await import_action(
+                settings, actor=actor, workspace=workspace, action=argument, rest=rest
+            )
         case "hist":
             from fintracker.application.conversation.history_flow import history_action
 
@@ -655,7 +671,7 @@ async def _invite_action(
         settings, RuntimeRole.API, user_id=actor.user_id, workspace_id=workspace_id
     ) as session:
         uow = UnitOfWork(session=session, correlation_id=actor.correlation_id)
-        await uow.lock_workspace(workspace_id)
+        await uow.lock_workspace(workspace_id, actor=actor)
         invite = await issue_invite(
             session,
             uow,

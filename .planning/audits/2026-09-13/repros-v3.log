@@ -1,0 +1,53 @@
+FFF.FFF                                                                  [100%]
+=================================== FAILURES ===================================
+______________ test_bad_delete_confirmation_does_not_fence_budget ______________
+tests/integration/test_deep_audit_v3.py:31: in test_bad_delete_confirmation_does_not_fence_budget
+    assert fence is None,"User typo leaves committed security_fence and permanently blocks writes"
+E   AssertionError: User typo leaves committed security_fence and permanently blocks writes
+E   assert UUID('15e24916-780a-4c28-b86d-e7365184ea0f') is None
+_________________ test_void_refund_restores_refundable_amount __________________
+tests/integration/test_deep_audit_v3.py:42: in test_void_refund_restores_refundable_amount
+    assert sum(p.refundable_minor for p in remaining)==100000,"Voided refund still consumes refund allowance via active TransactionLink"
+E   AssertionError: Voided refund still consumes refund allowance via active TransactionLink
+E   assert 0 == 100000
+E    +  where 0 = sum(<generator object test_void_refund_restores_refundable_amount.<locals>.<genexpr> at 0x1097da5c0>)
+_____________ test_runtime_retention_clears_expired_private_draft ______________
+tests/integration/test_deep_audit_v3.py:56: in test_runtime_retention_clears_expired_private_draft
+    assert row.raw_text is None and row.state=="expired",f"Expired draft survives: {row.state}, raw retained={bool(row.raw_text)}"
+E   AssertionError: Expired draft survives: ready, raw retained=True
+E   assert ('AUDIT PRIVATE SOURCE' is None)
+E    +  where 'AUDIT PRIVATE SOURCE' = <fintracker.db.models.platform.Draft object at 0x109cddd10>.raw_text
+_______________ test_completed_revoke_survives_restored_old_acl ________________
+tests/integration/test_deep_audit_v3.py:92: in test_completed_revoke_survives_restored_old_acl
+    assert not accessible,f"Restored old membership is active despite committed revoke; pending={pending}"
+E   AssertionError: Restored old membership is active despite committed revoke; pending=[]
+E   assert not True
+----------------------------- Captured stdout call -----------------------------
+2026-09-13 19:44:47 [info     ] security_change_completed      acl_revision=2 kind=member_remove operation_id=9bbd99df-64fe-4633-b680-2c359e73190b
+_________ test_deleted_budget_financial_data_is_purged_after_deadline __________
+tests/integration/test_deep_audit_v3.py:104: in test_deleted_budget_financial_data_is_purged_after_deadline
+    assert await tx_count(test_settings,f)==0,"Deleted workspace retains financial data beyond 24h; no purge handler"
+E   AssertionError: Deleted workspace retains financial data beyond 24h; no purge handler
+E   assert 1 == 0
+----------------------------- Captured stdout call -----------------------------
+2026-09-13 19:44:47 [info     ] security_change_completed      acl_revision=2 kind=workspace_delete operation_id=2091949b-9e10-43ea-8414-02cd01c81428
+2026-09-13 19:44:47 [info     ] workspace_deleted              workspace_id=c5bcd3fe-9b4b-4e4a-8484-a198c2360b48
+_______________ test_invite_secret_is_not_retained_in_global_job _______________
+tests/integration/test_deep_audit_v3.py:114: in test_invite_secret_is_not_retained_in_global_job
+    assert not job.payload.get("invite_code"),"Raw invitation secret is stored in a global table readable without workspace context"
+E   AssertionError: Raw invitation secret is stored in a global table readable without workspace context
+E   assert not 'ABCDEFGHJJKJ'
+E    +  where 'ABCDEFGHJJKJ' = <built-in method get of dict object at 0x10a07f500>('invite_code')
+E    +    where <built-in method get of dict object at 0x10a07f500> = {'inbound_event_id': 'ef615958-e8a8-4cfb-9c51-43bad1105d76', 'invite_code': 'ABCDEFGHJJKJ', 'schema_version': 1}.get
+E    +      where {'inbound_event_id': 'ef615958-e8a8-4cfb-9c51-43bad1105d76', 'invite_code': 'ABCDEFGHJJKJ', 'schema_version': 1} = <fintracker.db.models.platform.Job object at 0x10a0b56d0>.payload
+----------------------------- Captured stdout call -----------------------------
+2026-09-13 19:44:48 [info     ] inbound_accepted               correlation_id=32817b30e2b54234a9642e4aa76d1ab6 event_type=message has_workspace=True update_id=101
+- generated xml file: /Users/Bayramov_N/Desktop/Other/financial-tracker/.planning/audits/2026-09-13/repros-v3-junit.xml -
+=========================== short test summary info ============================
+FAILED tests/integration/test_deep_audit_v3.py::test_bad_delete_confirmation_does_not_fence_budget
+FAILED tests/integration/test_deep_audit_v3.py::test_void_refund_restores_refundable_amount
+FAILED tests/integration/test_deep_audit_v3.py::test_runtime_retention_clears_expired_private_draft
+FAILED tests/integration/test_deep_audit_v3.py::test_completed_revoke_survives_restored_old_acl
+FAILED tests/integration/test_deep_audit_v3.py::test_deleted_budget_financial_data_is_purged_after_deadline
+FAILED tests/integration/test_deep_audit_v3.py::test_invite_secret_is_not_retained_in_global_job
+6 failed, 1 passed in 3.28s

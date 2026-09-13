@@ -289,7 +289,7 @@ async def apply_amount_correction(
         settings, RuntimeRole.API, user_id=actor.user_id, workspace_id=workspace_id
     ) as session:
         uow = UnitOfWork(session=session, correlation_id=actor.correlation_id)
-        await uow.lock_workspace(workspace_id)
+        await uow.lock_workspace(workspace_id, actor=actor)
         _, _, spec = await load_current_spec(
             session, workspace_id=workspace_id, transaction_id=transaction_id
         )
@@ -374,7 +374,7 @@ async def apply_void(
         settings, RuntimeRole.API, user_id=actor.user_id, workspace_id=workspace_id
     ) as session:
         uow = UnitOfWork(session=session, correlation_id=actor.correlation_id)
-        await uow.lock_workspace(workspace_id)
+        await uow.lock_workspace(workspace_id, actor=actor)
         await void_transaction(
             session,
             uow,
@@ -409,7 +409,7 @@ async def apply_restore(
         settings, RuntimeRole.API, user_id=actor.user_id, workspace_id=workspace_id
     ) as session:
         uow = UnitOfWork(session=session, correlation_id=actor.correlation_id)
-        await uow.lock_workspace(workspace_id)
+        await uow.lock_workspace(workspace_id, actor=actor)
         await restore_transaction(session, uow, actor=actor, transaction_id=transaction_id)
     from fintracker.application.conversation.sections import transaction_card_reply
 
@@ -442,7 +442,7 @@ async def apply_note(
         settings, RuntimeRole.API, user_id=actor.user_id, workspace_id=workspace_id
     ) as session:
         uow = UnitOfWork(session=session, correlation_id=actor.correlation_id)
-        await uow.lock_workspace(workspace_id)
+        await uow.lock_workspace(workspace_id, actor=actor)
         _, revision, spec = await load_current_spec(
             session, workspace_id=workspace_id, transaction_id=transaction_id
         )
@@ -593,7 +593,7 @@ async def apply_category_correction(
         settings, RuntimeRole.API, user_id=actor.user_id, workspace_id=workspace_id
     ) as session:
         uow = UnitOfWork(session=session, correlation_id=actor.correlation_id)
-        await uow.lock_workspace(workspace_id)
+        await uow.lock_workspace(workspace_id, actor=actor)
         _, revision, spec = await load_current_spec(
             session, workspace_id=workspace_id, transaction_id=transaction_id
         )
@@ -751,7 +751,7 @@ async def create_category_and_move(
         settings, RuntimeRole.API, user_id=actor.user_id, workspace_id=workspace_id
     ) as session:
         uow = UnitOfWork(session=session, correlation_id=actor.correlation_id)
-        await uow.lock_workspace(workspace_id)
+        await uow.lock_workspace(workspace_id, actor=actor)
         view = await create_category(session, uow, actor=actor, name=name)
         category_id = view.id
     return await apply_category_correction(

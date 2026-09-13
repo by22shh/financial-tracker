@@ -564,6 +564,14 @@ async def delete_workspace(
     очереди; коды отзываются; участникам уходит только служебное извещение.
     """
 
+    async def check(session: AsyncSession, uow: UnitOfWork, workspace: Workspace) -> dict[str, str]:
+        """Заведомо отклоняемые условия проверяются до установки fence (AUD-05)."""
+        if workspace.admin_user_id != admin_user_id:
+            raise PermissionDenied("Удалить бюджет может только администратор")
+        if confirmation_name.strip().casefold() != workspace.name.strip().casefold():
+            raise ValidationFailed("Для подтверждения введите точное название бюджета")
+        return {}
+
     async def apply(session: AsyncSession, uow: UnitOfWork, workspace: Workspace) -> dict[str, str]:
         if workspace.admin_user_id != admin_user_id:
             raise PermissionDenied("Удалить бюджет может только администратор")
@@ -643,6 +651,7 @@ async def delete_workspace(
         initiated_by=admin_user_id,
         acting_user_id=admin_user_id,
         apply=apply,
+        precheck=check,
         correlation_id=correlation_id,
         allow_states=(WorkspaceState.ACTIVE.value,),
     )

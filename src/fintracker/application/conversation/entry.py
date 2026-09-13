@@ -445,6 +445,33 @@ def first_question(candidates: list[CandidateFields]) -> str | None:
     return None
 
 
+async def find_message_draft(
+    session: AsyncSession,
+    *,
+    workspace_id: uuid.UUID,
+    owner_user_id: uuid.UUID,
+    logical_message_id: uuid.UUID,
+) -> Draft | None:
+    """Черновик, уже созданный для этого входящего события (AUD-02).
+
+    Повтор задачи после сбоя ответа должен находить прежний результат, а не
+    создавать вторую запись.
+    """
+    return (
+        await session.execute(
+            select(Draft)
+            .where(
+                Draft.workspace_id == workspace_id,
+                Draft.owner_user_id == owner_user_id,
+                Draft.logical_message_id == logical_message_id,
+                Draft.state != "cancelled",
+            )
+            .order_by(Draft.created_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+
+
 async def create_draft_with_candidates(
     session: AsyncSession,
     *,
@@ -546,30 +573,41 @@ def build_spec(
             ),
         )
 
-    return TransactionSpec(
-        transaction_type=TransactionType.EXPENSE,
-        amount=amount,
-        occurred_date=fields.occurred_date,
-        timezone=timezone,
-        description=fields.description,
-        merchant=fields.merchant,
-        note=fields.note,
-        spender_person_id=fields.spender_person_id,
-        allocations=(
-            AllocationSpec(
-                role=AllocationRole.EXPENSE,
-                amount=amount,
-                category_id=fields.category_id,
-                beneficiary_id=fields.beneficiary_id,
+    if kind == "expense":
+        return TransactionSpec(
+            transaction_type=TransactionType.EXPENSE,
+            amount=amount,
+            occurred_date=fields.occurred_date,
+            timezone=timezone,
+            description=fields.description,
+            merchant=fields.merchant,
+            note=fields.note,
+            spender_person_id=fields.spender_person_id,
+            allocations=(
+                AllocationSpec(
+                    role=AllocationRole.EXPENSE,
+                    amount=amount,
+                    category_id=fields.category_id,
+                    beneficiary_id=fields.beneficiary_id,
+                ),
             ),
-        ),
-        cash_legs=(
-            CashLegSpec(
-                signed=-amount,
-                account_id=fields.account_id,
-                coverage=CoverageMode.REFERENCE if fields.account_id else CoverageMode.UNKNOWN,
+            cash_legs=(
+                CashLegSpec(
+                    signed=-amount,
+                    account_id=fields.account_id,
+                    coverage=(
+                        CoverageMode.REFERENCE if fields.account_id else CoverageMode.UNKNOWN
+                    ),
+                ),
             ),
-        ),
+        )
+
+    # Перевод, заём, возврат и смешанная оплата имеют собственные команды и
+    # обязательные реквизиты: подтверждение не превращает их в расход (AUD-08).
+    raise ValidationFailed(
+        f"Тип операции «{kind}» подтверждается отдельной командой: "
+        "уточните счета и стороны операции",
+        details={"kind": kind},
     )
 
 

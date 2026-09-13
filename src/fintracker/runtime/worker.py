@@ -49,7 +49,10 @@ def build_registry() -> JobHandlerRegistry:
         handle_deliver_notification,
         handle_expand_outbox,
     )
-    from fintracker.application.ingestion.process_event import handle_process_inbound_event
+    from fintracker.application.ingestion.process_event import (
+        handle_deliver_reply,
+        handle_process_inbound_event,
+    )
     from fintracker.application.maintenance.retention import handle_retention_sweep
     from fintracker.application.planning.rollover import (
         handle_open_next_period,
@@ -64,6 +67,7 @@ def build_registry() -> JobHandlerRegistry:
     registry.register("retention_sweep", handle_retention_sweep)
     registry.register("payment_reminders", handle_payment_reminders)
     registry.register("plan_review", handle_plan_review)
+    registry.register("deliver_reply", handle_deliver_reply)
     return registry
 
 
@@ -82,7 +86,11 @@ async def _run_with_lease(
         await handler(settings, job)
     except DomainError as exc:
         state = await queue.fail(
-            settings, job, error=f"{exc.code.value}: {exc.message}", permanent=not exc.retryable
+            settings,
+            job,
+            error=f"{exc.code.value}: {exc.message}",
+            permanent=not exc.retryable,
+            retry_after=exc.retry_after,
         )
         logger.warning("job_failed", job_type=job.job_type, state=state, code=exc.code.value)
         return

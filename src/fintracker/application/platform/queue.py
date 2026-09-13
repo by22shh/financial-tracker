@@ -14,7 +14,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Any
 
-from sqlalchemy import or_, select, text, update
+from sqlalchemy import func, or_, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fintracker.config import Settings
@@ -189,15 +189,26 @@ async def renew_lease(settings: Settings, job: LeasedJob) -> bool:
 
 
 async def lease_is_valid(session: AsyncSession, job: LeasedJob) -> bool:
-    """Проверка действующего token перед сохранением результата (ADR-05)."""
+    """Действующая аренда: тот же token, состояние running и не истёкший срок.
+
+    Срок проверяется по времени базы в той же транзакции, где фиксируется
+    результат: истёкшая аренда недействительна и до перехвата другим
+    исполнителем (ADR-05, AUD-03).
+    """
     row = (
         await session.execute(
-            select(Job.lease_token, Job.state).where(Job.id == job.id).with_for_update()
+            select(Job.lease_token, Job.state, Job.lease_until, func.now())
+            .where(Job.id == job.id)
+            .with_for_update()
         )
     ).one_or_none()
     if row is None:
         return False
-    return bool(row.lease_token == job.lease_token and row.state == "running")
+    if row.lease_token != job.lease_token or row.state != "running":
+        return False
+    lease_until = row[2]
+    now = row[3]
+    return bool(lease_until is not None and lease_until > now)
 
 
 async def complete(settings: Settings, job: LeasedJob) -> bool:

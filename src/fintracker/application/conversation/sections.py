@@ -33,7 +33,7 @@ from fintracker.application.planning.periods import period_for_date
 from fintracker.application.planning.plan import line_key, period_status
 from fintracker.config import Settings
 from fintracker.core.context import ActorContext, Role
-from fintracker.core.errors import NotFound
+from fintracker.core.errors import NotFound, ValidationFailed
 from fintracker.core.money import Money
 from fintracker.db.models.access import Beneficiary, Person, Workspace
 from fintracker.db.models.ledger import Allocation, Transaction, TransactionRevision
@@ -408,22 +408,41 @@ async def confirm_draft(
         settings, RuntimeRole.API, user_id=actor.user_id, workspace_id=workspace_id
     ) as session:
         uow = UnitOfWork(session=session, correlation_id=actor.correlation_id)
-        await uow.lock_workspace(workspace_id)
+        await uow.lock_workspace(workspace_id, actor=actor)
         draft, candidates = await load_draft(
             session, workspace_id=workspace_id, draft_id=draft_id, owner_id=actor.user_id
         )
         if draft.state in {"cancelled", "expired"}:
             raise NotFound("Черновик больше не активен")
-        posted = await post_draft(
-            session,
-            uow,
-            actor=actor,
-            draft=draft,
-            candidates=candidates,
-            timezone=workspace.timezone,
-            workspace_currency=workspace.currency,
-            origin=origin,
-        )
+        try:
+            posted = await post_draft(
+                session,
+                uow,
+                actor=actor,
+                draft=draft,
+                candidates=candidates,
+                timezone=workspace.timezone,
+                workspace_currency=workspace.currency,
+                origin=origin,
+            )
+        except ValidationFailed as exc:
+            # Неполный или неподдержанный здесь тип остаётся черновиком с
+            # уточнением: подтверждение не обходит проверки (AUD-08).
+            draft.state = "needs_clarification"
+            draft.version += 1
+            draft.failure_reason = exc.message[:200]
+            await session.flush()
+            return [
+                Reply(
+                    text=f"{exc.message}\nЗапись не проведена, черновик сохранён.",
+                    buttons=(
+                        (
+                            Button("Ручной ввод", callback("menu", "add")),
+                            Button("Отменить", callback("dr", "cancel", short(draft_id))),
+                        ),
+                    ),
+                )
+            ]
         if posted:
             # Пороговые события пересчитываются под той же блокировкой (FR-52).
             from fintracker.application.delivery.thresholds import evaluate_thresholds
@@ -551,3 +570,31 @@ async def draft_reply(
             buttons=confirm_candidate(draft_id),
         )
     ]
+
+
+async def posted_draft_reply(
+    settings: Settings, *, actor: ActorContext, workspace: Workspace, draft_id: uuid.UUID
+) -> list[Reply]:
+    """Карточка уже проведённой записи этого сообщения (AUD-02).
+
+    Повтор обработки того же события показывает прежний результат и не
+    создаёт вторую финансовую запись.
+    """
+    workspace_id = actor.require_workspace()
+    async with session_scope(
+        settings, RuntimeRole.API, user_id=actor.user_id, workspace_id=workspace_id
+    ) as session:
+        _, candidates = await load_draft(
+            session, workspace_id=workspace_id, draft_id=draft_id, owner_id=actor.user_id
+        )
+        posted = [row.posted_transaction_id for row in candidates if row.posted_transaction_id]
+    if not posted:
+        return await draft_reply(settings, actor=actor, workspace=workspace, draft_id=draft_id)
+    replies: list[Reply] = []
+    for transaction_id in posted:
+        replies.extend(
+            await transaction_card_reply(
+                settings, actor=actor, workspace=workspace, transaction_id=transaction_id
+            )
+        )
+    return replies

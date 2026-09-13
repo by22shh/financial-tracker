@@ -84,8 +84,11 @@ async def test_invite_secret_never_stored_in_payload(
     assert "ABCD2345EFGH" not in serialized
     assert "<invite-code-redacted>" in serialized
     assert stored.payload["invite_present"] is True
-    # Код нужен обработчику, но хранится только в защищённом payload задачи.
-    assert job.payload["invite_code"] == "ABCD2345EFGH"
+    # Открытый код не сохраняется нигде: обработчику передаётся только
+    # проверочное значение (SEC-04, AUD-16).
+    assert "invite_code" not in job.payload
+    assert "ABCD2345EFGH" not in str(job.payload)
+    assert job.payload["invite_digest"]
 
 
 async def test_a158_one_event_creates_personal_deliveries(

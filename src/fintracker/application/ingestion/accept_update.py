@@ -16,7 +16,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -97,6 +97,27 @@ def sanitize_payload(update: dict[str, Any]) -> tuple[dict[str, Any], str | None
     return sanitized, invite_code
 
 
+def _chat_type(kind: str, body: dict[str, Any]) -> str | None:
+    """Тип чата события: приватные ответы допустимы только в личном (SEC-05)."""
+    if kind == "callback_query":
+        chat = (body.get("message") or {}).get("chat") or {}
+    else:
+        chat = body.get("chat") or {}
+    value = chat.get("type")
+    return str(value) if isinstance(value, str) else None
+
+
+def invite_lookup_digest(settings: Settings, raw_code: str) -> str:
+    """Проверочное значение кода приглашения (SEC-04)."""
+    from fintracker.core.ids import invite_digest
+
+    return invite_digest(
+        normalize_invite_code(raw_code),
+        settings.secrets.invite_hmac_key.get_secret_value(),
+        key_version=settings.secrets.invite_hmac_key_version,
+    )
+
+
 def _extract_identity(kind: str, body: dict[str, Any]) -> tuple[int | None, int | None, int | None]:
     """Telegram ID отправителя, chat_id и message_id."""
     if kind == "callback_query":
@@ -147,11 +168,12 @@ async def accept_telegram_update(
     telegram_user_id: int | None = None
     chat_id: int | None = None
     message_id: int | None = None
-    edit_version = 1 if kind == "edited_message" else 0
     media_group_id: str | None = None
+    chat_type: str | None = None
     if body is not None:
         telegram_user_id, chat_id, message_id = _extract_identity(kind, body)
         media_group_id = body.get("media_group_id")
+        chat_type = _chat_type(kind, body)
 
     async with session_scope(settings, RuntimeRole.API) as session:
         user_id: uuid.UUID | None = None
@@ -179,6 +201,21 @@ async def accept_telegram_update(
             await set_rls_context(session, user_id=user_id, workspace_id=workspace_id)
 
         event_id = uuid.uuid4()
+        # Номер правки считается по уже принятым версиям этого сообщения:
+        # вторая и последующие правки не конфликтуют между собой (AUD-10).
+        edit_version = 0
+        if kind == "edited_message" and chat_id is not None and message_id is not None:
+            highest = (
+                await session.execute(
+                    select(func.max(LogicalMessage.edit_version)).where(
+                        LogicalMessage.bot_id == bot_id,
+                        LogicalMessage.chat_id == chat_id,
+                        LogicalMessage.message_id == message_id,
+                    )
+                )
+            ).scalar_one_or_none()
+            edit_version = int(highest or 0) + 1
+
         insert_event = (
             pg_insert(InboundEvent)
             .values(
@@ -187,6 +224,7 @@ async def accept_telegram_update(
                 update_id=update_id,
                 chat_id=chat_id,
                 message_id=message_id,
+                chat_type=chat_type,
                 edit_version=edit_version,
                 media_group_id=media_group_id,
                 event_type=kind if kind != "message" else f"message.{_message_kind(body or {})}",
@@ -230,8 +268,10 @@ async def accept_telegram_update(
             )
         )
         if chat_id is not None and message_id is not None and kind != "callback_query":
-            session.add(
-                LogicalMessage(
+            # Повтор того же update не создаёт вторую логическую версию.
+            await session.execute(
+                pg_insert(LogicalMessage)
+                .values(
                     bot_id=bot_id,
                     chat_id=chat_id,
                     message_id=message_id,
@@ -240,6 +280,14 @@ async def accept_telegram_update(
                     workspace_id=workspace_id,
                     owner_user_id=user_id,
                     kind=_message_kind(body or {}),
+                )
+                .on_conflict_do_nothing(
+                    index_elements=[
+                        LogicalMessage.bot_id,
+                        LogicalMessage.chat_id,
+                        LogicalMessage.message_id,
+                        LogicalMessage.edit_version,
+                    ]
                 )
             )
 
@@ -253,7 +301,10 @@ async def accept_telegram_update(
             logical_key=f"inbound:{bot_id}:{update_id}",
             payload={
                 "inbound_event_id": str(inserted_id),
-                "invite_code": invite_code,
+                # Хранится проверочное значение, открытый код не сохраняется.
+                "invite_digest": invite_lookup_digest(settings, invite_code)
+                if invite_code
+                else None,
                 "schema_version": 1,
             },
             max_attempts=settings.limits.job_max_attempts,

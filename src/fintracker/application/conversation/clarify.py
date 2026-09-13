@@ -141,7 +141,7 @@ async def answer_amount(
         settings, RuntimeRole.API, user_id=actor.user_id, workspace_id=workspace_id
     ) as session:
         uow = UnitOfWork(session=session, correlation_id=actor.correlation_id)
-        await uow.lock_workspace(workspace_id)
+        await uow.lock_workspace(workspace_id, actor=actor)
         row = (
             await session.execute(
                 select(Clarification).where(

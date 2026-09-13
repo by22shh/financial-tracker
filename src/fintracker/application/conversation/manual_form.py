@@ -83,7 +83,7 @@ async def submit_manual_form(
         settings, RuntimeRole.API, user_id=actor.user_id, workspace_id=workspace_id
     ) as session:
         uow = UnitOfWork(session=session, correlation_id=actor.correlation_id)
-        await uow.lock_workspace(workspace_id)
+        await uow.lock_workspace(workspace_id, actor=actor)
         category_id = None
         if len(parts) > 1 and parts[1]:
             wanted = normalize_name(parts[1])

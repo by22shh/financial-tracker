@@ -36,6 +36,10 @@ class TelegramSender(Protocol):
         self, *, chat_id: int, text: str, buttons: list[list[dict[str, str]]] | None = None
     ) -> SendResult: ...
 
+    async def send_document(
+        self, *, chat_id: int, filename: str, content: bytes, caption: str | None = None
+    ) -> SendResult: ...
+
 
 def split_message(text: str, limit: int = MAX_MESSAGE_CHARS) -> list[str]:
     """Длинные ответы разбиваются с сохранением строк (раздел 19.4)."""
@@ -122,12 +126,40 @@ class HttpTelegramSender:
                 last = SendResult(ok=True, message_id=body["result"]["message_id"])
         return last
 
+    async def send_document(
+        self, *, chat_id: int, filename: str, content: bytes, caption: str | None = None
+    ) -> SendResult:
+        """Выдать файл выгрузки получателю (FR-67, CMD-29)."""
+        await self._limiter.acquire(chat_id)
+        data: dict[str, Any] = {"chat_id": str(chat_id)}
+        if caption:
+            data["caption"] = caption[:1024]
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            try:
+                response = await client.post(
+                    f"https://api.telegram.org/bot{self._token}/sendDocument",
+                    data=data,
+                    files={"document": (filename, content)},
+                )
+            except (httpx.TimeoutException, httpx.TransportError) as exc:
+                return SendResult(ok=False, unknown=True, error=f"{type(exc).__name__}")
+            if response.status_code == 429:
+                retry_after = float(response.json().get("parameters", {}).get("retry_after", 1))
+                return SendResult(ok=False, error="rate_limited", retry_after=retry_after)
+            body = response.json()
+            if not body.get("ok"):
+                description = str(body.get("description", ""))
+                blocked = "bot was blocked" in description or "user is deactivated" in description
+                return SendResult(ok=False, error=description[:300], blocked=blocked)
+            return SendResult(ok=True, message_id=body["result"]["message_id"])
+
 
 @dataclass
 class RecordingSender:
     """Контролируемый отправитель для проверок без реального Telegram."""
 
     sent: list[dict[str, Any]] = field(default_factory=list)
+    documents: list[dict[str, Any]] = field(default_factory=list)
     fail_for_chats: set[int] = field(default_factory=set)
     blocked_chats: set[int] = field(default_factory=set)
     unknown_chats: set[int] = field(default_factory=set)
@@ -143,6 +175,19 @@ class RecordingSender:
         if chat_id in self.fail_for_chats:
             return SendResult(ok=False, error="temporary failure", retry_after=1)
         self.sent.append({"chat_id": chat_id, "text": text, "buttons": buttons})
+        self._next_id += 1
+        return SendResult(ok=True, message_id=self._next_id)
+
+    async def send_document(
+        self, *, chat_id: int, filename: str, content: bytes, caption: str | None = None
+    ) -> SendResult:
+        if chat_id in self.blocked_chats:
+            return SendResult(ok=False, blocked=True, error="bot was blocked by the user")
+        if chat_id in self.fail_for_chats:
+            return SendResult(ok=False, error="temporary failure", retry_after=1)
+        self.documents.append(
+            {"chat_id": chat_id, "filename": filename, "size": len(content), "caption": caption}
+        )
         self._next_id += 1
         return SendResult(ok=True, message_id=self._next_id)
 

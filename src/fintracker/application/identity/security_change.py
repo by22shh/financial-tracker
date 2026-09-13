@@ -105,17 +105,40 @@ async def run_security_change(
     allow_states: tuple[str, ...] = (WorkspaceState.ACTIVE.value,),
     security_log: SecurityLog | None = None,
     acting_user_id: uuid.UUID | None = None,
+    precheck: ApplyFn | None = None,
 ) -> SecurityChangeResult:
     """Выполнить изменение доступа по протоколу ADR-14.
 
-    ``apply`` вызывается на шаге 3 под блокировкой бюджета и обязана быть
-    чисто транзакционной: без сетевых вызовов и ожидания пользователя.
+    ``precheck`` выполняется до установки fence и отклоняет заведомо неверный
+    запрос: опечатка в подтверждении не оставляет бюджет заблокированным
+    (AUD-05). ``apply`` вызывается на шаге 3 под блокировкой бюджета и обязана
+    быть чисто транзакционной: без сетевых вызовов и ожидания пользователя.
     """
     if kind not in SECURITY_CHANGE_KINDS:
         raise ValueError(f"Неизвестный вид изменения доступа: {kind}")
     journal = security_log or build_security_log(settings.security_log)
     operation = operation_id or uuid.uuid4()
     rls_user = acting_user_id or initiated_by
+
+    if precheck is not None:
+        # Проверка заведомо отклоняемых условий до fence; та же проверка
+        # повторяется под блокировкой на шаге 3.
+        async with session_scope(
+            settings,
+            RuntimeRole.API,
+            user_id=rls_user,
+            workspace_id=workspace_id,
+            statement_class=StatementClass.COMMAND,
+        ) as session:
+            probe = UnitOfWork(session=session, correlation_id=correlation_id)
+            locked = await probe.lock_workspace(
+                workspace_id, allow_states=allow_states, allow_fenced=True
+            )
+            workspace_row = (
+                await session.execute(select(Workspace).where(Workspace.id == workspace_id))
+            ).scalar_one()
+            await precheck(session, probe, workspace_row)
+            assert locked is not None
 
     # --- Шаг 1: fence в короткой транзакции -------------------------------
     async with session_scope(
@@ -284,19 +307,65 @@ def _utcnow() -> Any:
 async def resume_or_quarantine(
     settings: Settings, workspace_id: uuid.UUID, *, security_log: SecurityLog | None = None
 ) -> list[str]:
-    """prepared без доказанного commit означает карантин бюджета (AR-31, AR-32).
+    """Сверить восстановленный доступ с независимым журналом (AR-31, AR-32, AUD-06).
 
-    Используется при восстановлении: доступ не открывается по устаревшему
-    списку, неопределённые состояния остаются в карантине.
+    Правила восстановления:
+
+    * prepared без доказанного commit — неопределённое состояние: карантин;
+    * журнал новее восстановленных строк — применяется последняя доказанная
+      версия доступа, бюджет остаётся в карантине до проверки человеком;
+    * доказанной последней версии нет — доступ не открывается.
     """
     journal = security_log or build_security_log(settings.security_log)
     pending = await journal.pending_operations(workspace_id)
-    if pending:
-        async with session_scope(settings, RuntimeRole.OWNER, workspace_id=workspace_id) as session:
+    last = await journal.last_committed(workspace_id)
+
+    async with session_scope(settings, RuntimeRole.OWNER, workspace_id=workspace_id) as session:
+        workspace = (
             await session.execute(
-                update(Workspace).where(Workspace.id == workspace_id).values(quarantined=True)
+                select(Workspace).where(Workspace.id == workspace_id).with_for_update()
             )
+        ).scalar_one_or_none()
+        if workspace is None:
+            return pending
+
+        quarantine = bool(pending)
+        if last is not None and workspace.acl_revision < last.proposed_acl_revision:
+            # База отстала от журнала: применяется доказанная версия доступа.
+            await _apply_proven_access(session, workspace=workspace, record=last)
+            quarantine = True
+            logger.warning(
+                "restored_acl_replayed",
+                workspace_id=str(workspace_id),
+                database_revision=workspace.acl_revision,
+                journal_revision=last.proposed_acl_revision,
+            )
+        if quarantine:
+            workspace.quarantined = True
     return pending
+
+
+async def _apply_proven_access(session: AsyncSession, *, workspace: Workspace, record: Any) -> None:
+    """Восстановить членства и версию ACL по доказанной записи журнала."""
+    snapshot = record.snapshot
+    for item in snapshot.members:
+        await session.execute(
+            update(Membership)
+            .where(
+                Membership.workspace_id == workspace.id,
+                Membership.user_id == uuid.UUID(str(item["user_id"])),
+            )
+            .values(
+                status=item["status"],
+                role=item["role"],
+                generation=uuid.UUID(str(item["generation"])),
+                rejoin_blocked=str(item.get("rejoin_blocked", "False")) == "True",
+            )
+        )
+    workspace.acl_revision = max(workspace.acl_revision, record.proposed_acl_revision)
+    if snapshot.admin_user_id:
+        workspace.admin_user_id = uuid.UUID(str(snapshot.admin_user_id))
+    await session.flush()
 
 
 async def deactivate_membership(

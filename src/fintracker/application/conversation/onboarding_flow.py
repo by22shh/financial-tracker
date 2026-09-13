@@ -92,14 +92,25 @@ async def start_join_flow(settings: Settings, *, user_id: uuid.UUID) -> list[Rep
 
 
 async def submit_join_code(
-    settings: Settings, *, user_id: uuid.UUID, raw_code: str, message: IncomingMessage
+    settings: Settings,
+    *,
+    user_id: uuid.UUID,
+    message: IncomingMessage,
+    raw_code: str | None = None,
+    code_digest: str | None = None,
 ) -> list[Reply]:
-    """Показать бюджет до подтверждения, затем присоединить (FR-78)."""
+    """Показать бюджет до подтверждения, затем присоединить (FR-78).
+
+    Отложенная обработка получает проверочное значение кода: открытый секрет
+    не сохраняется в технических таблицах (SEC-04).
+    """
     async with session_scope(settings, RuntimeRole.API, user_id=user_id) as session:
         user = (await session.execute(select(User).where(User.id == user_id))).scalar_one()
         session.expunge(user)
     try:
-        preview = await preview_invite(settings, raw_code=raw_code, user=user)
+        preview = await preview_invite(
+            settings, user=user, raw_code=raw_code, code_digest=code_digest
+        )
     except DomainError as exc:
         return [Reply(text=exc.message)]
 
@@ -120,8 +131,9 @@ async def submit_join_code(
 
     result = await accept_invite(
         settings,
-        raw_code=raw_code,
         user=user,
+        raw_code=raw_code,
+        code_digest=code_digest,
         correlation_id=message.correlation_id or uuid.uuid4().hex,
     )
     async with session_scope(

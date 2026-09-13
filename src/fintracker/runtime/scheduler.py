@@ -11,13 +11,12 @@ import contextlib
 import datetime as dt
 import signal
 
-from sqlalchemy import select
+from sqlalchemy import text
 
 from fintracker.application.platform import queue
 from fintracker.config import Settings
 from fintracker.core.context import WorkspaceState
 from fintracker.core.logging import get_logger
-from fintracker.db.models.access import Workspace
 from fintracker.db.session import RuntimeRole, session_scope
 
 logger = get_logger("runtime.scheduler")
@@ -29,14 +28,16 @@ async def schedule_tick(settings: Settings) -> int:
     """Поставить задачи открытия периодов и обслуживания."""
     scheduled = 0
     async with session_scope(settings, RuntimeRole.WORKER) as session:
-        workspaces = (
+        # У фонового процесса нет пользовательского контекста RLS, поэтому
+        # список обслуживаемых бюджетов даёт узкая служебная функция без
+        # финансовых данных (ADR-06, AUD-01).
+        rows = (
             await session.execute(
-                select(Workspace.id, Workspace.timezone).where(
-                    Workspace.state == WorkspaceState.ACTIVE.value,
-                    Workspace.quarantined.is_(False),
-                )
+                text("SELECT id, timezone, quarantined FROM maintenance_workspaces(:states)"),
+                {"states": [WorkspaceState.ACTIVE.value]},
             )
         ).all()
+    workspaces = [(row[0], row[1]) for row in rows if not row[2]]
     for workspace_id, timezone in workspaces:
         from zoneinfo import ZoneInfo
 

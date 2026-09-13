@@ -20,7 +20,6 @@ from fintracker.config import Settings
 from fintracker.core.logging import get_logger
 from fintracker.db.models.platform import (
     Attachment,
-    Draft,
     ExportFile,
     InboundPayload,
     NotificationDelivery,
@@ -40,35 +39,20 @@ async def sweep_inbound_payloads(session: AsyncSession, now: dt.datetime) -> int
     return len(result.scalars().all())
 
 
-async def sweep_draft_sources(session: AsyncSession, now: dt.datetime) -> int:
-    """Очистить исходный текст и транскрипт завершённых черновиков.
+async def sweep_private_drafts(session: AsyncSession, now: dt.datetime) -> tuple[int, int]:
+    """Истечение черновиков и очистка исходного текста по сроку (RET-02, RET-03).
 
-    Структурированная подтверждённая операция и выбранная заметка остаются.
+    Черновик виден только владельцу в его бюджете, поэтому у фонового процесса
+    нет подходящего контекста RLS: обслуживание выполняет узкая служебная
+    функция с фиксированным поведением (ADR-06, AUD-01).
     """
-    result = await session.execute(
-        update(Draft)
-        .where(
-            Draft.delete_raw_after <= now,
-            (Draft.raw_text.is_not(None)) | (Draft.transcript.is_not(None)),
+    row = (
+        await session.execute(
+            text("SELECT expired, cleared FROM maintenance_expire_drafts(:now)"),
+            {"now": now},
         )
-        .values(raw_text=None, transcript=None)
-        .returning(Draft.id)
-    )
-    return len(result.scalars().all())
-
-
-async def expire_drafts(session: AsyncSession, now: dt.datetime) -> int:
-    """Срок не превращает черновик в подтверждённый расход (FR-20)."""
-    result = await session.execute(
-        update(Draft)
-        .where(
-            Draft.expires_at <= now,
-            Draft.state.in_(("received", "processing", "needs_clarification", "ready")),
-        )
-        .values(state="expired")
-        .returning(Draft.id)
-    )
-    return len(result.scalars().all())
+    ).one()
+    return int(row[0]), int(row[1])
 
 
 # Незавершённая регистрация вложения не остаётся навсегда: файл уже загружен,
@@ -165,14 +149,56 @@ async def handle_retention_sweep(settings: Settings, job: LeasedJob) -> None:
     """Периодическая очистка по срокам хранения."""
     async with session_scope(settings, RuntimeRole.WORKER) as session:
         now = (await session.execute(text("SELECT now()"))).scalar_one()
+        expired, cleared = await sweep_private_drafts(session, now)
         stats = {
             "inbound_payloads": await sweep_inbound_payloads(session, now),
-            "draft_sources": await sweep_draft_sources(session, now),
-            "expired_drafts": await expire_drafts(session, now),
+            "draft_sources": cleared,
+            "expired_drafts": expired,
             "staging_attachments": await sweep_staging_attachments(session, now),
             "exports": await sweep_exports(session, now),
             "stale_deliveries": await sweep_stale_deliveries(session, now),
         }
         stats["attachments"] = await sweep_attachments(session, settings, now)
+        stats["purged_workspaces"] = await purge_deleted_workspaces(session, now)
     if any(stats.values()):
         logger.info("retention_sweep", **stats)
+
+
+async def purge_deleted_workspaces(session: AsyncSession, now: dt.datetime) -> int:
+    """Очистить финансовые данные удалённых бюджетов по сроку (ТЗ §24, AUD-15).
+
+    Удаление выполняется узкой служебной функцией: обычная runtime роль не
+    получает права произвольного удаления журнала (SEC-02). Запись об удалении
+    сохраняется как tombstone для безопасного восстановления.
+    """
+    from fintracker.db.models.access import BudgetDeletionRecord
+
+    due = (
+        (
+            await session.execute(
+                select(BudgetDeletionRecord).where(
+                    BudgetDeletionRecord.purge_after <= now,
+                    BudgetDeletionRecord.purged_at.is_(None),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    purged = 0
+    for record in due:
+        removed = (
+            await session.execute(
+                text("SELECT purge_workspace_data(:workspace)"),
+                {"workspace": record.workspace_id},
+            )
+        ).scalar_one()
+        record.purged_at = now
+        record.purged_rows = int(removed)
+        purged += 1
+        logger.info(
+            "workspace_purged",
+            workspace_id=str(record.workspace_id),
+            removed_rows=int(removed),
+        )
+    return purged

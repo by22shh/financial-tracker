@@ -210,14 +210,32 @@ async def _record_attempt(
     )
 
 
-async def preview_invite(settings: Settings, *, raw_code: str, user: User) -> InvitePreview:
-    """Проверить код и показать название без финансовых данных (FR-78, A153)."""
-    normalized = normalize_invite_code(raw_code)
-    digest = invite_digest(
-        normalized,
+def digest_for(settings: Settings, raw_code: str) -> str:
+    """Проверочное значение кода: открытый секрет не сохраняется (SEC-04)."""
+    return invite_digest(
+        normalize_invite_code(raw_code),
         settings.secrets.invite_hmac_key.get_secret_value(),
         key_version=settings.secrets.invite_hmac_key_version,
     )
+
+
+async def preview_invite(
+    settings: Settings,
+    *,
+    user: User,
+    raw_code: str | None = None,
+    code_digest: str | None = None,
+) -> InvitePreview:
+    """Проверить код и показать название без финансовых данных (FR-78, A153).
+
+    Принимается либо введённый участником код, либо его проверочное значение:
+    обработка отложенного события не требует хранить открытый секрет (SEC-04).
+    """
+    if code_digest is None:
+        if raw_code is None:
+            raise ValidationFailed("Не указан код приглашения")
+        code_digest = digest_for(settings, raw_code)
+    digest = code_digest
     async with session_scope(settings, RuntimeRole.API, user_id=user.id) as session:
         await _check_attempt_limit(session, settings, telegram_user_id=user.telegram_user_id)
         # Код проверяется до того, как известен бюджет, поэтому используется
@@ -286,18 +304,22 @@ class JoinResult:
 
 
 async def accept_invite(
-    settings: Settings, *, raw_code: str, user: User, correlation_id: str
+    settings: Settings,
+    *,
+    user: User,
+    correlation_id: str,
+    raw_code: str | None = None,
+    code_digest: str | None = None,
 ) -> JoinResult:
     """Вступить по коду: членство и квота меняются атомарно (FR-78, A154, A155)."""
     from fintracker.application.identity.security_change import run_security_change
 
-    preview = await preview_invite(settings, raw_code=raw_code, user=user)
-    normalized = normalize_invite_code(raw_code)
-    digest = invite_digest(
-        normalized,
-        settings.secrets.invite_hmac_key.get_secret_value(),
-        key_version=settings.secrets.invite_hmac_key_version,
-    )
+    if code_digest is None:
+        if raw_code is None:
+            raise ValidationFailed("Не указан код приглашения")
+        code_digest = digest_for(settings, raw_code)
+    preview = await preview_invite(settings, user=user, code_digest=code_digest)
+    digest = code_digest
     if preview.already_member:
         # Повтор не создаёт второе членство и не расходует квоту (A155).
         async with session_scope(

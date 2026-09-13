@@ -15,7 +15,7 @@ from typing import Any
 from sqlalchemy import select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from fintracker.core.context import WorkspaceState
+from fintracker.core.context import ActorContext, WorkspaceState
 from fintracker.core.errors import (
     NotFound,
     PermissionDenied,
@@ -69,8 +69,15 @@ class UnitOfWork:
         *,
         allow_states: tuple[str, ...] = (WorkspaceState.ACTIVE.value,),
         allow_fenced: bool = False,
+        actor: ActorContext | None = None,
+        require_admin: bool = False,
     ) -> LockedWorkspace:
-        """SELECT FOR UPDATE строки бюджета — первый шаг любой команды."""
+        """SELECT FOR UPDATE строки бюджета — первый шаг любой команды.
+
+        При переданном ``actor`` под той же блокировкой перепроверяются
+        членство, его поколение и роль: результат долгой операции не проходит
+        со устаревшим контекстом доступа (ADR-06, AUD-04).
+        """
         try:
             row = (
                 await self.session.execute(
@@ -93,6 +100,8 @@ class UnitOfWork:
             )
         if row.quarantined and not allow_fenced:
             raise TemporarilyUnavailable("Бюджет находится в карантине после восстановления")
+        if actor is not None:
+            await self.check_actor(actor, require_admin=require_admin)
         return LockedWorkspace(
             id=row.id,
             name=row.name,
@@ -111,6 +120,35 @@ class UnitOfWork:
             security_fence=row.security_fence,
             quarantined=row.quarantined,
         )
+
+    async def check_actor(self, actor: ActorContext, *, require_admin: bool = False) -> None:
+        """Перепроверить актуальные членство, поколение и роль (ADR-06, AUD-04).
+
+        Отзыв доступа во время выполнения команды отменяет её результат: доступ
+        подтверждается заново под блокировкой бюджета, а не только при входе.
+        """
+        from fintracker.core.context import MembershipStatus, Role
+        from fintracker.db.models.access import Membership
+
+        workspace_id = actor.require_workspace()
+        row = (
+            await self.session.execute(
+                select(
+                    Membership.status,
+                    Membership.generation,
+                    Membership.role,
+                ).where(
+                    Membership.workspace_id == workspace_id,
+                    Membership.user_id == actor.user_id,
+                )
+            )
+        ).one_or_none()
+        if row is None or row[0] != MembershipStatus.ACTIVE.value:
+            raise PermissionDenied("Доступ к бюджету прекращён")
+        if actor.membership_generation is not None and row[1] != actor.membership_generation:
+            raise PermissionDenied("Доступ выдан заново: повторите действие")
+        if require_admin and row[2] != Role.ADMIN.value:
+            raise PermissionDenied("Действие доступно только администратору бюджета")
 
     @staticmethod
     def check_expected_version(actual: int, expected: int | None, *, label: str) -> None:

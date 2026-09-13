@@ -389,6 +389,8 @@ class BudgetDeletionRecord(Base):
         JSONB, nullable=False, server_default=text("'[]'::jsonb")
     )
     purged_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Число удалённых строк фиксируется для доказательства завершённой очистки.
+    purged_rows: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
 
     __table_args__ = (
         CheckConstraint("state IN ('pending','purging','purged')", name="state_allowed"),

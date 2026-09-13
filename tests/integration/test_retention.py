@@ -12,11 +12,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fintracker.application.ingestion.accept_update import accept_telegram_update
 from fintracker.application.ledger.service import post_transaction
 from fintracker.application.maintenance.retention import (
-    expire_drafts,
     sweep_attachments,
-    sweep_draft_sources,
     sweep_exports,
     sweep_inbound_payloads,
+    sweep_private_drafts,
     sweep_staging_attachments,
     sweep_stale_deliveries,
 )
@@ -97,7 +96,7 @@ async def test_ret08_draft_sources_cleared_but_transaction_remains(
     owner_session.add(draft)
     await owner_session.flush()
 
-    cleared = await sweep_draft_sources(owner_session, NOW)
+    _, cleared = await sweep_private_drafts(owner_session, NOW)
     assert cleared == 1
     await owner_session.refresh(draft)
     assert draft.raw_text is None
@@ -131,7 +130,7 @@ async def test_expired_draft_never_becomes_posted(
     owner_session.add(draft)
     await owner_session.flush()
 
-    expired = await expire_drafts(owner_session, NOW)
+    expired, _ = await sweep_private_drafts(owner_session, NOW)
     assert expired == 1
     await owner_session.refresh(draft)
     assert draft.state == "expired"

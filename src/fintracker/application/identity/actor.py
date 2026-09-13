@@ -18,7 +18,7 @@ from fintracker.core.context import (
     Role,
     WorkspaceState,
 )
-from fintracker.core.errors import NotFound, PermissionDenied
+from fintracker.core.errors import NotFound, PermissionDenied, TemporarilyUnavailable
 from fintracker.db.models.access import Membership, User, UserBudgetContext, Workspace
 from fintracker.db.session import set_rls_context
 
@@ -101,6 +101,7 @@ async def resolve_actor(
     correlation_id: str = "",
     require_admin: bool = False,
     allow_states: tuple[str, ...] = (WorkspaceState.ACTIVE.value,),
+    allow_quarantined: bool = False,
 ) -> ActorContext:
     """Проверить активное членство и собрать контекст действия (ADR-06).
 
@@ -121,6 +122,13 @@ async def resolve_actor(
         raise NotFound("Бюджет недоступен")
     if membership.status != MembershipStatus.ACTIVE.value:
         raise NotFound("Бюджет недоступен")
+    if workspace.quarantined and not allow_quarantined:
+        # Карантин закрывает и чтение: до сверки доступа финансовая история,
+        # отчёты и выдача файлов недоступны (ADR-14, AUD-18).
+        raise TemporarilyUnavailable(
+            "Бюджет в карантине после восстановления: доступ закрыт до проверки "
+            "прав администратором."
+        )
     if require_admin and membership.role != Role.ADMIN.value:
         raise PermissionDenied("Действие доступно только администратору бюджета")
     return ActorContext(

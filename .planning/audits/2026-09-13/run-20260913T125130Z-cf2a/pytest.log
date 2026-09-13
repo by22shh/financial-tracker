@@ -1,0 +1,272 @@
+FFFFFFFFFFFFFFFFF.FFF                                                    [100%]
+=================================== FAILURES ===================================
+___________________ test_actual_worker_routes_accepted_start ___________________
+tests/integration/test_deep_audit_v2.py:43: in test_actual_worker_routes_accepted_start
+    assert sender.sent and state=="processed",f"No reply, state={state}; supported Update lost"
+E   AssertionError: No reply, state=ignored; supported Update lost
+E   assert ([])
+E    +  where [] = RecordingSender(sent=[], fail_for_chats=set(), blocked_chats=set(), unknown_chats=set(), _next_id=1).sent
+----------------------------- Captured stdout call -----------------------------
+2026-09-13 19:51:33 [info     ] inbound_accepted               correlation_id=80b483b2d88e48d2a4f13b326e3b6498 event_type=message has_workspace=True update_id=101
+________________ test_actual_scheduler_discovers_active_budgets ________________
+tests/integration/test_deep_audit_v2.py:53: in test_actual_scheduler_discovers_active_budgets
+    assert "open_next_period" in jobs and "payment_reminders" in jobs,f"Active workspace jobs: {jobs}"
+E   AssertionError: Active workspace jobs: []
+E   assert ('open_next_period' in [])
+______ test_ai_latency_within_provider_timeout_does_not_kill_transaction _______
+/var/folders/gp/36jzrv8s3nv8hhml14b9k9740000gq/T/fintracker-audit-repro-_ojrbfgo/.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py:1969: in _exec_single_context
+    self.dialect.do_execute(
+/var/folders/gp/36jzrv8s3nv8hhml14b9k9740000gq/T/fintracker-audit-repro-_ojrbfgo/.venv/lib/python3.13/site-packages/sqlalchemy/engine/default.py:952: in do_execute
+    cursor.execute(statement, parameters)
+/var/folders/gp/36jzrv8s3nv8hhml14b9k9740000gq/T/fintracker-audit-repro-_ojrbfgo/.venv/lib/python3.13/site-packages/sqlalchemy/dialects/postgresql/psycopg.py:642: in execute
+    result = self.await_(self._cursor.execute(query, params, **kw))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/var/folders/gp/36jzrv8s3nv8hhml14b9k9740000gq/T/fintracker-audit-repro-_ojrbfgo/.venv/lib/python3.13/site-packages/sqlalchemy/util/_concurrency_py3k.py:132: in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/var/folders/gp/36jzrv8s3nv8hhml14b9k9740000gq/T/fintracker-audit-repro-_ojrbfgo/.venv/lib/python3.13/site-packages/sqlalchemy/util/_concurrency_py3k.py:196: in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+/var/folders/gp/36jzrv8s3nv8hhml14b9k9740000gq/T/fintracker-audit-repro-_ojrbfgo/.venv/lib/python3.13/site-packages/psycopg/cursor_async.py:117: in execute
+    raise ex.with_traceback(None)
+E   psycopg.errors.IdleInTransactionSessionTimeout: terminating connection due to idle-in-transaction timeout
+
+The above exception was the direct cause of the following exception:
+tests/integration/test_deep_audit_v2.py:66: in test_ai_latency_within_provider_timeout_does_not_kill_transaction
+    replies=await record_free_text(configured,actor=f.actor,workspace=f.workspace,
+/var/folders/gp/36jzrv8s3nv8hhml14b9k9740000gq/T/fintracker-audit-repro-_ojrbfgo/src/fintracker/application/conversation/service.py:408: in record_free_text
+    draft, candidates = await create_draft_with_candidates(
+/var/folders/gp/36jzrv8s3nv8hhml14b9k9740000gq/T/fintracker-audit-repro-_ojrbfgo/src/fintracker/application/conversation/entry.py:475: in create_draft_with_candidates
+    await session.flush()
+/var/folders/gp/36jzrv8s3nv8hhml14b9k9740000gq/T/fintracker-audit-repro-_ojrbfgo/.venv/lib/python3.13/site-packages/sqlalchemy/ext/asyncio/session.py:786: in flush
+    await greenlet_spawn(self.sync_session.flush, objects=objects)
+/var/folders/gp/36jzrv8s3nv8hhml14b9k9740000gq/T/fintracker-audit-repro-_ojrbfgo/.venv/lib/python3.13/site-packages/sqlalchemy/util/_concurrency_py3k.py:203: in greenlet_spawn
+    result = context.switch(value)
+             ^^^^^^^^^^^^^^^^^^^^^
+/var/folders/gp/36jzrv8s3nv8hhml14b9k9740000gq/T/fintracker-audit-repro-_ojrbfgo/.venv/lib/python3.13/site-packages/sqlalchemy/orm/session.py:4353: in flush
+    self._flush(objects)
+/var/folders/gp/36jzrv8s3nv8hhml14b9k9740000gq/T/fintracker-audit-repro-_ojrbfgo/.venv/lib/python3.13/site-packages/sqlalchemy/orm/session.py:4488: in _flush
+    with util.safe_reraise():
+         ^^^^^^^^^^^^^^^^^^^
+/var/folders/gp/36jzrv8s3nv8hhml14b9k9740000gq/T/fintracker-audit-repro-_ojrbfgo/.venv/lib/python3.13/site-packages/sqlalchemy/util/langhelpers.py:122: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+/var/folders/gp/36jzrv8s3nv8hhml14b9k9740000gq/T/fintracker-audit-repro-_ojrbfgo/.venv/lib/python3.13/site-packages/sqlalchemy/orm/session.py:4449: in _flush
+    flush_context.execute()
+/var/folders/gp/36jzrv8s3nv8hhml14b9k9740000gq/T/fintracker-audit-repro-_ojrbfgo/.venv/lib/python3.13/site-packages/sqlalchemy/orm/unitofwork.py:465: in execute
+    rec.execute(self)
+/var/folders/gp/36jzrv8s3nv8hhml14b9k9740000gq/T/fintracker-audit-repro-_ojrbfgo/.venv/lib/python3.13/site-packages/sqlalchemy/orm/unitofwork.py:641: in execute
+    util.preloaded.orm_persistence.save_obj(
+/var/folders/gp/36jzrv8s3nv8hhml14b9k9740000gq/T/fintracker-audit-repro-_ojrbfgo/.venv/lib/python3.13/site-packages/sqlalchemy/orm/persistence.py:94: in save_obj
+    _emit_insert_statements(
+/var/folders/gp/36jzrv8s3nv8hhml14b9k9740000gq/T/fintracker-audit-repro-_ojrbfgo/.venv/lib/python3.13/site-packages/sqlalchemy/orm/persistence.py:1234: in _emit_insert_statements
+    result = connection.execute(
+/var/folders/gp/36jzrv8s3nv8hhml14b9k9740000gq/T/fintracker-audit-repro-_ojrbfgo/.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py:1421: in execute
+    return meth(
+/var/folders/gp/36jzrv8s3nv8hhml14b9k9740000gq/T/fintracker-audit-repro-_ojrbfgo/.venv/lib/python3.13/site-packages/sqlalchemy/sql/elements.py:526: in _execute_on_connection
+    return connection._execute_clauseelement(
+/var/folders/gp/36jzrv8s3nv8hhml14b9k9740000gq/T/fintracker-audit-repro-_ojrbfgo/.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py:1643: in _execute_clauseelement
+    ret = self._execute_context(
+/var/folders/gp/36jzrv8s3nv8hhml14b9k9740000gq/T/fintracker-audit-repro-_ojrbfgo/.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py:1848: in _execute_context
+    return self._exec_single_context(
+/var/folders/gp/36jzrv8s3nv8hhml14b9k9740000gq/T/fintracker-audit-repro-_ojrbfgo/.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py:1988: in _exec_single_context
+    self._handle_dbapi_exception(
+/var/folders/gp/36jzrv8s3nv8hhml14b9k9740000gq/T/fintracker-audit-repro-_ojrbfgo/.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py:2365: in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+/var/folders/gp/36jzrv8s3nv8hhml14b9k9740000gq/T/fintracker-audit-repro-_ojrbfgo/.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py:1969: in _exec_single_context
+    self.dialect.do_execute(
+/var/folders/gp/36jzrv8s3nv8hhml14b9k9740000gq/T/fintracker-audit-repro-_ojrbfgo/.venv/lib/python3.13/site-packages/sqlalchemy/engine/default.py:952: in do_execute
+    cursor.execute(statement, parameters)
+/var/folders/gp/36jzrv8s3nv8hhml14b9k9740000gq/T/fintracker-audit-repro-_ojrbfgo/.venv/lib/python3.13/site-packages/sqlalchemy/dialects/postgresql/psycopg.py:642: in execute
+    result = self.await_(self._cursor.execute(query, params, **kw))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/var/folders/gp/36jzrv8s3nv8hhml14b9k9740000gq/T/fintracker-audit-repro-_ojrbfgo/.venv/lib/python3.13/site-packages/sqlalchemy/util/_concurrency_py3k.py:132: in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/var/folders/gp/36jzrv8s3nv8hhml14b9k9740000gq/T/fintracker-audit-repro-_ojrbfgo/.venv/lib/python3.13/site-packages/sqlalchemy/util/_concurrency_py3k.py:196: in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+/var/folders/gp/36jzrv8s3nv8hhml14b9k9740000gq/T/fintracker-audit-repro-_ojrbfgo/.venv/lib/python3.13/site-packages/psycopg/cursor_async.py:117: in execute
+    raise ex.with_traceback(None)
+E   sqlalchemy.exc.InternalError: (psycopg.errors.IdleInTransactionSessionTimeout) terminating connection due to idle-in-transaction timeout
+E   [SQL: INSERT INTO drafts (id, workspace_id, owner_user_id, owner_membership_generation, logical_message_id, source_kind, state, raw_text, transcript, source_fingerprint, expires_at, delete_raw_after, failure_reason) VALUES (%(id)s::UUID, %(workspace_id)s::UUID, %(owner_user_id)s::UUID, %(owner_membership_generation)s::UUID, %(logical_message_id)s::UUID, %(source_kind)s::VARCHAR, %(state)s::VARCHAR, %(raw_text)s::VARCHAR, %(transcript)s::VARCHAR, %(source_fingerprint)s::VARCHAR, %(expires_at)s::TIMESTAMP WITH TIME ZONE, %(delete_raw_after)s::TIMESTAMP WITH TIME ZONE, %(failure_reason)s::VARCHAR) RETURNING drafts.version, drafts.created_at, drafts.updated_at]
+E   [parameters: {'id': UUID('877385c4-2a4b-4b09-9e43-142ed144a159'), 'workspace_id': UUID('3c0b4672-6a9c-40f8-b7c3-575b63f8e9ae'), 'owner_user_id': UUID('1a3acb2c-a2c9-462a-9128-094a01b9cae2'), 'owner_membership_generation': UUID('dc468305-37a6-4697-bd46-4dca0dc4581c'), 'logical_message_id': None, 'source_kind': 'text', 'state': 'ready', 'raw_text': 'продукты 450', 'transcript': None, 'source_fingerprint': None, 'expires_at': datetime.datetime(2026, 9, 20, 12, 51, 44, 765815, tzinfo=datetime.timezone.utc), 'delete_raw_after': datetime.datetime(2026, 9, 20, 12, 51, 44, 765815, tzinfo=datetime.timezone.utc), 'failure_reason': None}]
+E   (Background on this error at: https://sqlalche.me/e/20/2j85)
+______________________ test_downstream_retry_no_duplicate ______________________
+tests/integration/test_deep_audit_v2.py:74: in test_downstream_retry_no_duplicate
+    await initial.test_audit_restart_after_post_does_not_duplicate(owner_session,test_settings)
+tests/integration/test_deep_audit.py:72: in test_audit_restart_after_post_does_not_duplicate
+    assert await tx_count(test_settings,f)==1, "Same inbound event created two financial transactions"
+E   AssertionError: Same inbound event created two financial transactions
+E   assert 2 == 1
+----------------------------- Captured stdout call -----------------------------
+2026-09-13 19:51:45 [info     ] inbound_accepted               correlation_id=0df4b6b2bfab43a2a0a174961e659dd0 event_type=message has_workspace=True update_id=101
+2026-09-13 19:51:45 [info     ] inbound_processed              delivered=True event_id=af7091c4-7104-46c2-bede-fea0454e8701 processed_at=2026-09-13T12:51:45.394769+00:00 replies=1
+___________________ test_downstream_stale_lease_cannot_post ____________________
+tests/integration/test_deep_audit_v2.py:77: in test_downstream_stale_lease_cannot_post
+    await initial.test_audit_stale_lease_cannot_post(owner_session,test_settings)
+tests/integration/test_deep_audit.py:84: in test_audit_stale_lease_cannot_post
+    assert await tx_count(test_settings,f)==0, "Worker posted money before checking its lost lease"
+E   AssertionError: Worker posted money before checking its lost lease
+E   assert 1 == 0
+----------------------------- Captured stdout call -----------------------------
+2026-09-13 19:51:45 [info     ] inbound_accepted               correlation_id=1a7cdf3a34c4435b8f381cc6eb1296a7 event_type=message has_workspace=True update_id=101
+2026-09-13 19:51:45 [warning  ] lease_expired_skip_result      job_id=4f723f57-7c3d-4646-9b4a-1d893bdecd4f
+___________________ test_downstream_failed_reply_is_retried ____________________
+tests/integration/test_deep_audit_v2.py:80: in test_downstream_failed_reply_is_retried
+    await initial.test_audit_failed_immediate_reply_remains_retryable(owner_session,test_settings)
+tests/integration/test_deep_audit.py:97: in test_audit_failed_immediate_reply_remains_retryable
+    assert state!="processed", "Failed reply was acknowledged as processed and will never be retried"
+E   AssertionError: Failed reply was acknowledged as processed and will never be retried
+E   assert 'processed' != 'processed'
+----------------------------- Captured stdout call -----------------------------
+2026-09-13 19:51:45 [info     ] inbound_accepted               correlation_id=e604a7facb044107a3bacaf6289ed7b6 event_type=message has_workspace=True update_id=101
+2026-09-13 19:51:45 [warning  ] reply_send_failed              error='temporary failure' event_id=c8defab3-ad02-48bf-9ce9-0499e7e25597
+2026-09-13 19:51:46 [info     ] inbound_processed              delivered=False event_id=c8defab3-ad02-48bf-9ce9-0499e7e25597 processed_at=2026-09-13T12:51:46.006371+00:00 replies=1
+_______________________ test_downstream_group_is_private _______________________
+tests/integration/test_deep_audit_v2.py:83: in test_downstream_group_is_private
+    await initial.test_audit_group_message_does_not_disclose_private_budgets(owner_session,test_settings)
+tests/integration/test_deep_audit.py:110: in test_audit_group_message_does_not_disclose_private_budgets
+    assert not exposed, "Private budget name was sent to all members of an unrelated Telegram group"
+E   AssertionError: Private budget name was sent to all members of an unrelated Telegram group
+E   assert not [{'buttons': [[{'callback_data': 'wiz:start', 'text': 'Создать бюджет'}, {'callback_data': 'join:start', 'text': 'Прис...юджеты'}]], 'chat_id': -100987654321, 'text': 'С возвращением! Ваши бюджеты:\n• Тестовый бюджет (admin, ID C6BC8187)'}]
+----------------------------- Captured stdout call -----------------------------
+2026-09-13 19:51:46 [info     ] inbound_accepted               correlation_id=3c739f02656f420383c550ca93f995e6 event_type=message has_workspace=True update_id=101
+2026-09-13 19:51:46 [info     ] inbound_processed              delivered=True event_id=847649dc-e08d-46d9-9d25-78839bad68ef processed_at=2026-09-13T12:51:46.281790+00:00 replies=1
+____________________ test_edit_versions_accept_third_update ____________________
+tests/integration/test_deep_audit_v2.py:86: in test_edit_versions_accept_third_update
+    await initial.test_audit_multiple_edits_are_accepted(owner_session,test_settings)
+tests/integration/test_deep_audit.py:118: in test_audit_multiple_edits_are_accepted
+    accepted=await accept_telegram_update(test_settings,incoming(f,"продукты 700",update_id=203,message_id=99,edited=True))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/var/folders/gp/36jzrv8s3nv8hhml14b9k9740000gq/T/fintracker-audit-repro-_ojrbfgo/src/fintracker/application/ingestion/accept_update.py:268: in accept_telegram_update
+    await session.execute(
+/var/folders/gp/36jzrv8s3nv8hhml14b9k9740000gq/T/fintracker-audit-repro-_ojrbfgo/.venv/lib/python3.13/site-packages/sqlalchemy/ext/asyncio/session.py:448: in execute
+    result = await greenlet_spawn(
+/var/folders/gp/36jzrv8s3nv8hhml14b9k9740000gq/T/fintracker-audit-repro-_ojrbfgo/.venv/lib/python3.13/site-packages/sqlalchemy/util/_concurrency_py3k.py:190: in greenlet_spawn
+    result = context.switch(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/var/folders/gp/36jzrv8s3nv8hhml14b9k9740000gq/T/fintracker-audit-repro-_ojrbfgo/.venv/lib/python3.13/site-packages/sqlalchemy/orm/session.py:2373: in execute
+    return self._execute_internal(
+/var/folders/gp/36jzrv8s3nv8hhml14b9k9740000gq/T/fintracker-audit-repro-_ojrbfgo/.venv/lib/python3.13/site-packages/sqlalchemy/orm/session.py:2261: in _execute_internal
+    conn = self._connection_for_bind(bind)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/var/folders/gp/36jzrv8s3nv8hhml14b9k9740000gq/T/fintracker-audit-repro-_ojrbfgo/.venv/lib/python3.13/site-packages/sqlalchemy/orm/session.py:2108: in _connection_for_bind
+    TransactionalContext._trans_ctx_check(self)
+/var/folders/gp/36jzrv8s3nv8hhml14b9k9740000gq/T/fintracker-audit-repro-_ojrbfgo/.venv/lib/python3.13/site-packages/sqlalchemy/engine/util.py:111: in _trans_ctx_check
+    raise exc.InvalidRequestError(
+E   sqlalchemy.exc.InvalidRequestError: Can't operate on closed transaction inside context manager.  Please complete the context manager before emitting further commands.
+----------------------------- Captured stdout call -----------------------------
+2026-09-13 19:51:46 [info     ] inbound_accepted               correlation_id=d2c8a76f8b904bd5b64787bfaf1008c0 event_type=message has_workspace=True update_id=201
+2026-09-13 19:51:46 [info     ] inbound_accepted               correlation_id=15ff639e8293490fa4064d80f8b4c6bc event_type=edited_message has_workspace=True update_id=202
+_________________ test_transfer_semantics_survive_confirmation _________________
+tests/integration/test_deep_audit_v2.py:89: in test_transfer_semantics_survive_confirmation
+    await initial.test_audit_transfer_is_not_converted_into_expense(owner_session,test_settings)
+tests/integration/test_deep_audit.py:135: in test_audit_transfer_is_not_converted_into_expense
+    assert "expense" not in kinds, "Confirmed transfer is stored as an expense"
+E   AssertionError: Confirmed transfer is stored as an expense
+E   assert 'expense' not in ['expense']
+_____________________ test_import_export_actions[exp:xlsx] _____________________
+tests/integration/test_deep_audit_v2.py:93: in test_import_export_actions
+    await initial.test_audit_export_import_buttons_are_wired(owner_session,test_settings,button)
+tests/integration/test_deep_audit.py:142: in test_audit_export_import_buttons_are_wired
+    assert not any("Кнопка устарела" in r.text for r in replies), f"{button} displayed by menu but has no handler"
+E   AssertionError: exp:xlsx displayed by menu but has no handler
+E   assert not True
+E    +  where True = any(<generator object test_audit_export_import_buttons_are_wired.<locals>.<genexpr> at 0x10bb93920>)
+_____________________ test_import_export_actions[exp:csv] ______________________
+tests/integration/test_deep_audit_v2.py:93: in test_import_export_actions
+    await initial.test_audit_export_import_buttons_are_wired(owner_session,test_settings,button)
+tests/integration/test_deep_audit.py:142: in test_audit_export_import_buttons_are_wired
+    assert not any("Кнопка устарела" in r.text for r in replies), f"{button} displayed by menu but has no handler"
+E   AssertionError: exp:csv displayed by menu but has no handler
+E   assert not True
+E    +  where True = any(<generator object test_audit_export_import_buttons_are_wired.<locals>.<genexpr> at 0x10a555220>)
+____________________ test_import_export_actions[imp:start] _____________________
+tests/integration/test_deep_audit_v2.py:93: in test_import_export_actions
+    await initial.test_audit_export_import_buttons_are_wired(owner_session,test_settings,button)
+tests/integration/test_deep_audit.py:142: in test_audit_export_import_buttons_are_wired
+    assert not any("Кнопка устарела" in r.text for r in replies), f"{button} displayed by menu but has no handler"
+E   AssertionError: imp:start displayed by menu but has no handler
+E   assert not True
+E    +  where True = any(<generator object test_audit_export_import_buttons_are_wired.<locals>.<genexpr> at 0x10bb118a0>)
+________________________ test_expired_lease_is_invalid _________________________
+tests/integration/test_deep_audit_v2.py:96: in test_expired_lease_is_invalid
+    await initial.test_audit_expired_lease_is_invalid_without_reclaim(owner_session,test_settings)
+tests/integration/test_deep_audit.py:151: in test_audit_expired_lease_is_invalid_without_reclaim
+    assert not valid, "Expired lease accepted before any other worker reclaims it"
+E   AssertionError: Expired lease accepted before any other worker reclaims it
+E   assert not True
+----------------------------- Captured stdout call -----------------------------
+2026-09-13 19:51:47 [info     ] inbound_accepted               correlation_id=970c9f1577a946e3989f187e485725c1 event_type=message has_workspace=True update_id=101
+_______________ test_removed_member_cannot_finish_inflight_write _______________
+tests/integration/test_deep_audit_v2.py:119: in test_removed_member_cannot_finish_inflight_write
+    assert n==0,"Removed member writes after SecurityChange completed using stale ActorContext"
+E   AssertionError: Removed member writes after SecurityChange completed using stale ActorContext
+E   assert 1 == 0
+----------------------------- Captured stdout call -----------------------------
+2026-09-13 19:51:47 [info     ] security_change_completed      acl_revision=2 kind=member_remove operation_id=4674185b-1074-4bcd-9f9a-88e71f9c7797
+______________ test_bad_delete_confirmation_does_not_fence_budget ______________
+tests/integration/test_deep_audit_v3.py:31: in test_bad_delete_confirmation_does_not_fence_budget
+    assert fence is None,"User typo leaves committed security_fence and permanently blocks writes"
+E   AssertionError: User typo leaves committed security_fence and permanently blocks writes
+E   assert UUID('061799ac-3421-4b6a-bf98-bc3a820056aa') is None
+_________________ test_void_refund_restores_refundable_amount __________________
+tests/integration/test_deep_audit_v3.py:42: in test_void_refund_restores_refundable_amount
+    assert sum(p.refundable_minor for p in remaining)==100000,"Voided refund still consumes refund allowance via active TransactionLink"
+E   AssertionError: Voided refund still consumes refund allowance via active TransactionLink
+E   assert 0 == 100000
+E    +  where 0 = sum(<generator object test_void_refund_restores_refundable_amount.<locals>.<genexpr> at 0x10b826d40>)
+_____________ test_runtime_retention_clears_expired_private_draft ______________
+tests/integration/test_deep_audit_v3.py:56: in test_runtime_retention_clears_expired_private_draft
+    assert row.raw_text is None and row.state=="expired",f"Expired draft survives: {row.state}, raw retained={bool(row.raw_text)}"
+E   AssertionError: Expired draft survives: ready, raw retained=True
+E   assert ('AUDIT PRIVATE SOURCE' is None)
+E    +  where 'AUDIT PRIVATE SOURCE' = <fintracker.db.models.platform.Draft object at 0x10afc66c0>.raw_text
+_______________ test_completed_revoke_survives_restored_old_acl ________________
+tests/integration/test_deep_audit_v3.py:92: in test_completed_revoke_survives_restored_old_acl
+    assert not accessible,f"Restored old membership is active despite committed revoke; pending={pending}"
+E   AssertionError: Restored old membership is active despite committed revoke; pending=[]
+E   assert not True
+----------------------------- Captured stdout call -----------------------------
+2026-09-13 19:51:49 [info     ] security_change_completed      acl_revision=2 kind=member_remove operation_id=ce149ccf-4d14-4ae8-8118-8112af6fc6ab
+_________ test_deleted_budget_financial_data_is_purged_after_deadline __________
+tests/integration/test_deep_audit_v3.py:104: in test_deleted_budget_financial_data_is_purged_after_deadline
+    assert await tx_count(test_settings,f)==0,"Deleted workspace retains financial data beyond 24h; no purge handler"
+E   AssertionError: Deleted workspace retains financial data beyond 24h; no purge handler
+E   assert 1 == 0
+----------------------------- Captured stdout call -----------------------------
+2026-09-13 19:51:49 [info     ] security_change_completed      acl_revision=2 kind=workspace_delete operation_id=2b485c58-9c4b-45a1-bed0-8a3d4fec411e
+2026-09-13 19:51:49 [info     ] workspace_deleted              workspace_id=6d324070-c335-4a62-be20-ebbc7d2ebd23
+_______________ test_invite_secret_is_not_retained_in_global_job _______________
+tests/integration/test_deep_audit_v3.py:114: in test_invite_secret_is_not_retained_in_global_job
+    assert not job.payload.get("invite_code"),"Raw invitation secret is stored in a global table readable without workspace context"
+E   AssertionError: Raw invitation secret is stored in a global table readable without workspace context
+E   assert not 'ABCDEFGHJJKJ'
+E    +  where 'ABCDEFGHJJKJ' = <built-in method get of dict object at 0x10b97c340>('invite_code')
+E    +    where <built-in method get of dict object at 0x10b97c340> = {'inbound_event_id': 'b2d33ac9-efb6-4523-a9cc-2e39b622b434', 'invite_code': 'ABCDEFGHJJKJ', 'schema_version': 1}.get
+E    +      where {'inbound_event_id': 'b2d33ac9-efb6-4523-a9cc-2e39b622b434', 'invite_code': 'ABCDEFGHJJKJ', 'schema_version': 1} = <fintracker.db.models.platform.Job object at 0x10a089250>.payload
+----------------------------- Captured stdout call -----------------------------
+2026-09-13 19:51:49 [info     ] inbound_accepted               correlation_id=48def10d269c4d1fb5405e29f88fab8c event_type=message has_workspace=True update_id=101
+- generated xml file: /Users/Bayramov_N/Desktop/Other/financial-tracker/.planning/audits/2026-09-13/run-20260913T125130Z-cf2a/junit.xml -
+=========================== short test summary info ============================
+FAILED tests/integration/test_deep_audit_v2.py::test_actual_worker_routes_accepted_start
+FAILED tests/integration/test_deep_audit_v2.py::test_actual_scheduler_discovers_active_budgets
+FAILED tests/integration/test_deep_audit_v2.py::test_ai_latency_within_provider_timeout_does_not_kill_transaction
+FAILED tests/integration/test_deep_audit_v2.py::test_downstream_retry_no_duplicate
+FAILED tests/integration/test_deep_audit_v2.py::test_downstream_stale_lease_cannot_post
+FAILED tests/integration/test_deep_audit_v2.py::test_downstream_failed_reply_is_retried
+FAILED tests/integration/test_deep_audit_v2.py::test_downstream_group_is_private
+FAILED tests/integration/test_deep_audit_v2.py::test_edit_versions_accept_third_update
+FAILED tests/integration/test_deep_audit_v2.py::test_transfer_semantics_survive_confirmation
+FAILED tests/integration/test_deep_audit_v2.py::test_import_export_actions[exp:xlsx]
+FAILED tests/integration/test_deep_audit_v2.py::test_import_export_actions[exp:csv]
+FAILED tests/integration/test_deep_audit_v2.py::test_import_export_actions[imp:start]
+FAILED tests/integration/test_deep_audit_v2.py::test_expired_lease_is_invalid
+FAILED tests/integration/test_deep_audit_v2.py::test_removed_member_cannot_finish_inflight_write
+FAILED tests/integration/test_deep_audit_v3.py::test_bad_delete_confirmation_does_not_fence_budget
+FAILED tests/integration/test_deep_audit_v3.py::test_void_refund_restores_refundable_amount
+FAILED tests/integration/test_deep_audit_v3.py::test_runtime_retention_clears_expired_private_draft
+FAILED tests/integration/test_deep_audit_v3.py::test_completed_revoke_survives_restored_old_acl
+FAILED tests/integration/test_deep_audit_v3.py::test_deleted_budget_financial_data_is_purged_after_deadline
+FAILED tests/integration/test_deep_audit_v3.py::test_invite_secret_is_not_retained_in_global_job
+20 failed, 1 passed in 18.75s

@@ -73,6 +73,8 @@ class IncomingMessage:
     # Контекст бюджета закрепляется при приёме события (FR-79).
     workspace_id: uuid.UUID | None = None
     inbound_event_id: uuid.UUID | None = None
+    # Проверочное значение кода приглашения: открытый код не переносится (SEC-04).
+    invite_digest: str | None = None
     correlation_id: str = ""
 
     @property

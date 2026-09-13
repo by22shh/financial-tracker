@@ -107,7 +107,7 @@ async def payment_action(
 
         if action in {"move", "skip"}:
             uow = UnitOfWork(session=session, correlation_id=actor.correlation_id)
-            await uow.lock_workspace(workspace_id)
+            await uow.lock_workspace(workspace_id, actor=actor)
             try:
                 if action == "move":
                     await change_occurrence(

@@ -1,0 +1,61 @@
+{
+  "authoritative_diagnostics": "run-20260913T130021Z-69d1/junit.xml",
+  "results": {
+    "baseline-junit.xml": {
+      "tests": "450",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "8",
+      "time": "112.901"
+    },
+    "performance-source-junit.xml": {
+      "tests": "8",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "time": "113.778"
+    },
+    "repros-junit.xml": {
+      "tests": "11",
+      "failures": "7",
+      "errors": "0",
+      "skipped": "0",
+      "time": "4.284"
+    },
+    "repros-v2-junit.xml": {
+      "tests": "14",
+      "failures": "14",
+      "errors": "0",
+      "skipped": "0",
+      "time": "16.312"
+    },
+    "repros-v3-junit.xml": {
+      "tests": "7",
+      "failures": "6",
+      "errors": "0",
+      "skipped": "0",
+      "time": "3.156"
+    },
+    "run-20260913T125130Z-cf2a/junit.xml": {
+      "tests": "21",
+      "failures": "20",
+      "errors": "0",
+      "skipped": "0",
+      "time": "18.544"
+    },
+    "run-20260913T125657Z-4058/junit.xml": {
+      "tests": "21",
+      "failures": "20",
+      "errors": "0",
+      "skipped": "0",
+      "time": "18.549"
+    },
+    "run-20260913T130021Z-69d1/junit.xml": {
+      "tests": "21",
+      "failures": "21",
+      "errors": "0",
+      "skipped": "0",
+      "time": "18.217"
+    }
+  }
+}

@@ -12,7 +12,7 @@ from collections.abc import Sequence
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from fintracker.application.conversation import sections
 from fintracker.application.conversation.context import (
@@ -26,6 +26,7 @@ from fintracker.application.conversation.entry import (
     ExtractionResult,
     create_draft_with_candidates,
     extract_from_text,
+    find_message_draft,
 )
 from fintracker.application.conversation.keyboards import (
     Button,
@@ -106,6 +107,10 @@ async def _handle_command(
             return await submit_join_code(
                 settings, user_id=user_id, raw_code=argument[5:], message=message
             )
+        if message.invite_digest:
+            return await submit_join_code(
+                settings, user_id=user_id, code_digest=message.invite_digest, message=message
+            )
         from fintracker.application.conversation.onboarding_flow import has_active_wizard
 
         async with session_scope(settings, RuntimeRole.API, user_id=user_id) as session:
@@ -153,6 +158,10 @@ async def _handle_command(
         if argument:
             return await submit_join_code(
                 settings, user_id=user_id, raw_code=argument, message=message
+            )
+        if message.invite_digest:
+            return await submit_join_code(
+                settings, user_id=user_id, code_digest=message.invite_digest, message=message
             )
         return await start_join_flow(settings, user_id=user_id)
 
@@ -336,14 +345,39 @@ async def _handle_free_text(
 async def record_free_text(
     settings: Settings, *, actor: ActorContext, workspace: Workspace, message: IncomingMessage
 ) -> list[Reply]:
-    """Полный путь свободного ввода: извлечение → черновик → карточка."""
+    """Полный путь свободного ввода: извлечение → черновик → карточка.
+
+    Три стадии с короткими транзакциями: подготовка, вызов модели вне
+    транзакции базы и сохранение результата. Долгий ответ провайдера не
+    удерживает соединение и не рвёт транзакцию (AUD-07).
+    Повтор обработки того же входящего события находит прежний черновик и не
+    создаёт вторую запись (AUD-02).
+    """
     assert message.text is not None
     workspace_id = actor.require_workspace()
     local_date = message.received_at.astimezone(ZoneInfo(workspace.timezone)).date()
 
+    # --- Стадия 1: короткая транзакция подготовки -------------------------
     async with session_scope(
         settings, RuntimeRole.API, user_id=actor.user_id, workspace_id=workspace_id
     ) as session:
+        if message.inbound_event_id is not None:
+            existing = await find_message_draft(
+                session,
+                workspace_id=workspace_id,
+                owner_user_id=actor.user_id,
+                logical_message_id=message.inbound_event_id,
+            )
+            if existing is not None:
+                known_draft_id = existing.id
+                known_state = existing.state
+            else:
+                known_draft_id = None
+                known_state = None
+        else:
+            known_draft_id = None
+            known_state = None
+
         membership = (
             await session.execute(
                 select(Membership).where(
@@ -368,43 +402,67 @@ async def record_free_text(
             reference_date=local_date,
             assume_self_spender=assume_self,
         )
+        catalog = None
+        if extraction.intent is Intent.RECORD_TRANSACTION and settings.ai.enabled:
+            from fintracker.application.intelligence.extraction import load_catalog
 
+            catalog = await load_catalog(
+                session,
+                workspace_id=workspace_id,
+                currency=workspace.currency,
+                timezone=workspace.timezone,
+            )
+
+    if known_draft_id is not None:
+        # Повтор того же сообщения: показываем прежний результат.
+        if known_state == "posted":
+            return await sections.posted_draft_reply(
+                settings, actor=actor, workspace=workspace, draft_id=known_draft_id
+            )
+        return await sections.draft_reply(
+            settings, actor=actor, workspace=workspace, draft_id=known_draft_id
+        )
+
+    guard_reply = _guard_reply(extraction.intent)
+    if guard_reply is not None:
+        return guard_reply
+    if extraction.intent is Intent.QUESTION:
+        from fintracker.application.conversation.analytics_flow import answer_question
+
+        return await answer_question(
+            settings, actor=actor, workspace=workspace, question=message.text
+        )
+    if extraction.intent is Intent.CREATE_CATEGORY:
+        from fintracker.application.conversation.category_flow import create_category_from_text
+
+        return await create_category_from_text(
+            settings, actor=actor, workspace=workspace, text=message.text
+        )
+
+    # --- Стадия 2: вызов модели вне транзакции базы -----------------------
+    if catalog is not None:
+        extraction = await _extract_with_model_or_fallback(
+            settings,
+            actor=actor,
+            workspace=workspace,
+            text=message.text,
+            reference_date=local_date,
+            deterministic=extraction,
+            catalog=catalog,
+        )
         guard_reply = _guard_reply(extraction.intent)
         if guard_reply is not None:
             return guard_reply
-        if extraction.intent is Intent.QUESTION:
-            from fintracker.application.conversation.analytics_flow import answer_question
 
-            return await answer_question(
-                settings, actor=actor, workspace=workspace, question=message.text
-            )
-        if extraction.intent is Intent.CREATE_CATEGORY:
-            from fintracker.application.conversation.category_flow import (
-                create_category_from_text,
-            )
+    if not extraction.candidates:
+        return [Reply(text="Не понял сообщение. Отправьте /help, чтобы увидеть примеры.")]
+    if not workspace.currency:  # pragma: no cover - защита контракта
+        raise ValidationFailed("У бюджета не задана валюта")
 
-            return await create_category_from_text(
-                settings, actor=actor, workspace=workspace, text=message.text
-            )
-        if extraction.intent is Intent.RECORD_TRANSACTION and settings.ai.enabled:
-            # Модель уточняет свободную формулировку; сервер проверяет результат.
-            extraction = await _extract_with_model_or_fallback(
-                settings,
-                session=session,
-                actor=actor,
-                workspace=workspace,
-                text=message.text,
-                reference_date=local_date,
-                deterministic=extraction,
-            )
-            guard_reply = _guard_reply(extraction.intent)
-            if guard_reply is not None:
-                return guard_reply
-        if not extraction.candidates:
-            return [Reply(text="Не понял сообщение. Отправьте /help, чтобы увидеть примеры.")]
-        if not workspace.currency:  # pragma: no cover - защита контракта
-            raise ValidationFailed("У бюджета не задана валюта")
-
+    # --- Стадия 3: короткая транзакция сохранения -------------------------
+    async with session_scope(
+        settings, RuntimeRole.API, user_id=actor.user_id, workspace_id=workspace_id
+    ) as session:
         draft, candidates = await create_draft_with_candidates(
             session,
             settings=settings,
@@ -412,6 +470,7 @@ async def record_free_text(
             source_kind="text",
             raw_text=message.text,
             extraction=extraction,
+            logical_message_id=message.inbound_event_id,
         )
         draft_id = draft.id
         candidate_fields = [CandidateFields.from_payload(dict(row.fields)) for row in candidates]
@@ -442,45 +501,43 @@ async def record_free_text(
 async def _extract_with_model_or_fallback(
     settings: Settings,
     *,
-    session: Any,
     actor: ActorContext,
     workspace: Workspace,
     text: str,
     reference_date: dt.date,
     deterministic: ExtractionResult,
+    catalog: Any,
 ) -> ExtractionResult:
     """Разбор моделью с деградацией на детерминированный путь (NFR-14, A103).
 
-    При недоступности модели или исчерпанной квоте сохраняется входящий
-    материал и используется результат детерминированного разбора.
+    Черновик попытки сохраняется короткой транзакцией, вызов провайдера идёт
+    вне транзакции базы (AUD-07). При недоступности модели или исчерпанной
+    квоте используется результат детерминированного разбора.
     """
     from fintracker.application.conversation.entry import create_draft_with_candidates
-    from fintracker.application.intelligence.extraction import (
-        extract_with_model,
-        load_catalog,
-    )
+    from fintracker.application.intelligence.extraction import extract_with_model
 
     workspace_id = actor.require_workspace()
-    catalog = await load_catalog(
-        session,
-        workspace_id=workspace_id,
-        currency=workspace.currency,
-        timezone=workspace.timezone,
-    )
-    draft, _ = await create_draft_with_candidates(
-        session,
-        settings=settings,
-        actor=actor,
-        source_kind="text",
-        raw_text=text,
-        extraction=ExtractionResult(intent=Intent.UNKNOWN, candidates=[]),
-    )
+    async with session_scope(
+        settings, RuntimeRole.API, user_id=actor.user_id, workspace_id=workspace_id
+    ) as session:
+        draft, _ = await create_draft_with_candidates(
+            session,
+            settings=settings,
+            actor=actor,
+            source_kind="text",
+            raw_text=text,
+            extraction=ExtractionResult(intent=Intent.UNKNOWN, candidates=[]),
+        )
+        draft_id = draft.id
+        draft_version = draft.version
+
     try:
         return await extract_with_model(
             settings,
             actor=actor,
-            draft_id=draft.id,
-            draft_version=draft.version,
+            draft_id=draft_id,
+            draft_version=draft_version,
             text=text,
             catalog=catalog,
             reference_date=reference_date,
@@ -488,6 +545,18 @@ async def _extract_with_model_or_fallback(
     except (ProviderUnavailable, QuotaExceeded, ValidationFailed) as exc:
         logger.info("ai_fallback_to_deterministic", reason=type(exc).__name__)
         return deterministic
+    finally:
+        # Технический черновик попытки не остаётся активным (RET-03).
+        async with session_scope(
+            settings, RuntimeRole.API, user_id=actor.user_id, workspace_id=workspace_id
+        ) as session:
+            from fintracker.db.models.platform import Draft
+
+            await session.execute(
+                update(Draft)
+                .where(Draft.id == draft_id, Draft.state.in_(("received", "processing")))
+                .values(state="cancelled")
+            )
 
 
 def _guard_reply(intent: Intent) -> list[Reply] | None:

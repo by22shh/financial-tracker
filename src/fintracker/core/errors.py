@@ -57,11 +57,14 @@ class DomainError(Exception):
         *,
         field_errors: dict[str, str] | None = None,
         details: dict[str, Any] | None = None,
+        retry_after: float | None = None,
     ) -> None:
         super().__init__(message)
         self.message = message
         self.field_errors = field_errors or {}
         self.details = details or {}
+        # Задержка, указанная внешней стороной: повтор не раньше неё (A101).
+        self.retry_after = retry_after
 
     @property
     def http_status(self) -> int:

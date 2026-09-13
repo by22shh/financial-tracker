@@ -1,0 +1,73 @@
+.F...FFFFFF                                                              [100%]
+=================================== FAILURES ===================================
+_______________ test_audit_restart_after_post_does_not_duplicate _______________
+tests/integration/test_deep_audit.py:67: in test_audit_restart_after_post_does_not_duplicate
+    with pytest.raises(RuntimeError,match="AUDIT"):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   Failed: DID NOT RAISE <class 'RuntimeError'>
+----------------------------- Captured stdout call -----------------------------
+2026-09-13 19:40:04 [info     ] inbound_accepted               correlation_id=bb3406c656aa41cf906f0b94fe4db277 event_type=message has_workspace=True update_id=101
+____________________ test_audit_multiple_edits_are_accepted ____________________
+tests/integration/test_deep_audit.py:118: in test_audit_multiple_edits_are_accepted
+    accepted=await accept_telegram_update(test_settings,incoming(f,"продукты 700",update_id=203,message_id=99,edited=True))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/var/folders/gp/36jzrv8s3nv8hhml14b9k9740000gq/T/fintracker-audit-3vy71x2l/src/fintracker/application/ingestion/accept_update.py:268: in accept_telegram_update
+    await session.execute(
+/Users/Bayramov_N/Desktop/Other/financial-tracker/.venv/lib/python3.13/site-packages/sqlalchemy/ext/asyncio/session.py:448: in execute
+    result = await greenlet_spawn(
+/Users/Bayramov_N/Desktop/Other/financial-tracker/.venv/lib/python3.13/site-packages/sqlalchemy/util/_concurrency_py3k.py:190: in greenlet_spawn
+    result = context.switch(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/Users/Bayramov_N/Desktop/Other/financial-tracker/.venv/lib/python3.13/site-packages/sqlalchemy/orm/session.py:2373: in execute
+    return self._execute_internal(
+/Users/Bayramov_N/Desktop/Other/financial-tracker/.venv/lib/python3.13/site-packages/sqlalchemy/orm/session.py:2261: in _execute_internal
+    conn = self._connection_for_bind(bind)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/Users/Bayramov_N/Desktop/Other/financial-tracker/.venv/lib/python3.13/site-packages/sqlalchemy/orm/session.py:2108: in _connection_for_bind
+    TransactionalContext._trans_ctx_check(self)
+/Users/Bayramov_N/Desktop/Other/financial-tracker/.venv/lib/python3.13/site-packages/sqlalchemy/engine/util.py:111: in _trans_ctx_check
+    raise exc.InvalidRequestError(
+E   sqlalchemy.exc.InvalidRequestError: Can't operate on closed transaction inside context manager.  Please complete the context manager before emitting further commands.
+----------------------------- Captured stdout call -----------------------------
+2026-09-13 19:40:05 [info     ] inbound_accepted               correlation_id=9d5a727478074b6987c80a9d863128d5 event_type=message has_workspace=True update_id=201
+2026-09-13 19:40:05 [info     ] inbound_accepted               correlation_id=b02d7f736f7e49c28b1c0906c4d3796f event_type=edited_message has_workspace=True update_id=202
+______________ test_audit_transfer_is_not_converted_into_expense _______________
+tests/integration/test_deep_audit.py:135: in test_audit_transfer_is_not_converted_into_expense
+    assert "expense" not in kinds, "Confirmed transfer is stored as an expense"
+E   AssertionError: Confirmed transfer is stored as an expense
+E   assert 'expense' not in ['expense']
+_____________ test_audit_export_import_buttons_are_wired[exp:xlsx] _____________
+tests/integration/test_deep_audit.py:142: in test_audit_export_import_buttons_are_wired
+    assert not any("Кнопка устарела" in r.text for r in replies), f"{button} displayed by menu but has no handler"
+E   AssertionError: exp:xlsx displayed by menu but has no handler
+E   assert not True
+E    +  where True = any(<generator object test_audit_export_import_buttons_are_wired.<locals>.<genexpr> at 0x10e9f3ed0>)
+_____________ test_audit_export_import_buttons_are_wired[exp:csv] ______________
+tests/integration/test_deep_audit.py:142: in test_audit_export_import_buttons_are_wired
+    assert not any("Кнопка устарела" in r.text for r in replies), f"{button} displayed by menu but has no handler"
+E   AssertionError: exp:csv displayed by menu but has no handler
+E   assert not True
+E    +  where True = any(<generator object test_audit_export_import_buttons_are_wired.<locals>.<genexpr> at 0x10e9e2260>)
+____________ test_audit_export_import_buttons_are_wired[imp:start] _____________
+tests/integration/test_deep_audit.py:142: in test_audit_export_import_buttons_are_wired
+    assert not any("Кнопка устарела" in r.text for r in replies), f"{button} displayed by menu but has no handler"
+E   AssertionError: imp:start displayed by menu but has no handler
+E   assert not True
+E    +  where True = any(<generator object test_audit_export_import_buttons_are_wired.<locals>.<genexpr> at 0x10e6ed970>)
+_____________ test_audit_expired_lease_is_invalid_without_reclaim ______________
+tests/integration/test_deep_audit.py:151: in test_audit_expired_lease_is_invalid_without_reclaim
+    assert not valid, "Expired lease accepted before any other worker reclaims it"
+E   AssertionError: Expired lease accepted before any other worker reclaims it
+E   assert not True
+----------------------------- Captured stdout call -----------------------------
+2026-09-13 19:40:06 [info     ] inbound_accepted               correlation_id=06651ae683204fa4910bfd97894c2229 event_type=message has_workspace=True update_id=101
+- generated xml file: /Users/Bayramov_N/Desktop/Other/financial-tracker/.planning/audits/2026-09-13/repros-junit.xml -
+=========================== short test summary info ============================
+FAILED tests/integration/test_deep_audit.py::test_audit_restart_after_post_does_not_duplicate
+FAILED tests/integration/test_deep_audit.py::test_audit_multiple_edits_are_accepted
+FAILED tests/integration/test_deep_audit.py::test_audit_transfer_is_not_converted_into_expense
+FAILED tests/integration/test_deep_audit.py::test_audit_export_import_buttons_are_wired[exp:xlsx]
+FAILED tests/integration/test_deep_audit.py::test_audit_export_import_buttons_are_wired[exp:csv]
+FAILED tests/integration/test_deep_audit.py::test_audit_export_import_buttons_are_wired[imp:start]
+FAILED tests/integration/test_deep_audit.py::test_audit_expired_lease_is_invalid_without_reclaim
+7 failed, 4 passed in 4.42s

@@ -41,6 +41,9 @@ class InboundEvent(Base):
     message_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     edit_version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     media_group_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Тип чата фиксируется при приёме: приватный ответ не уходит в группу
+    # и решение не зависит от чтения защищённого payload (SEC-05).
+    chat_type: Mapped[str | None] = mapped_column(String(24), nullable=True)
     event_type: Mapped[str] = mapped_column(String(40), nullable=False)
     # Контекст закрепляется при приёме и не меняется поздним переключением (FR-79).
     workspace_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)

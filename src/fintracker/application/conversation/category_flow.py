@@ -42,7 +42,7 @@ async def create_category_from_text(
         settings, RuntimeRole.API, user_id=actor.user_id, workspace_id=workspace_id
     ) as session:
         uow = UnitOfWork(session=session, correlation_id=actor.correlation_id)
-        await uow.lock_workspace(workspace_id)
+        await uow.lock_workspace(workspace_id, actor=actor)
         try:
             view = await create_category(session, uow, actor=actor, name=name)
         except ConflictError as exc:
@@ -150,7 +150,7 @@ async def apply_category_removal(
         settings, RuntimeRole.API, user_id=actor.user_id, workspace_id=workspace_id
     ) as session:
         uow = UnitOfWork(session=session, correlation_id=actor.correlation_id)
-        await uow.lock_workspace(workspace_id)
+        await uow.lock_workspace(workspace_id, actor=actor)
         try:
             preview = await remove_category(
                 session,
@@ -183,7 +183,7 @@ async def apply_category_restore(
         settings, RuntimeRole.API, user_id=actor.user_id, workspace_id=workspace_id
     ) as session:
         uow = UnitOfWork(session=session, correlation_id=actor.correlation_id)
-        await uow.lock_workspace(workspace_id)
+        await uow.lock_workspace(workspace_id, actor=actor)
         try:
             view = await restore_category(session, uow, actor=actor, category_id=category_id)
         except ConflictError as exc:
