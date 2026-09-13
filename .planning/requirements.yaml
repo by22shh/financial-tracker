@@ -326,10 +326,14 @@
   title: "Несколько фото одного длинного чека в альбоме"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
+    - src/fintracker/application/intelligence/extraction.py
+    - src/fintracker/application/intelligence/media_pipeline.py
   verification:
+    - tests/acceptance/test_voice_and_receipts.py::test_a28_album_of_one_receipt_is_single_package
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A29
   title: "Скриншот содержит баланс 50 000 и платёж 600"
@@ -2031,10 +2035,12 @@
   title: "Один бюджет с тремя участниками анализируется по расписанию"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
   verification:
+    - tests/integration/test_recommendations.py::test_a179_one_run_gives_independent_deliveries
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A180
   title: "Проверить AI payload и логи после входа по коду"
@@ -2073,10 +2079,12 @@
   title: "Прислать чек с подписью «Купила Софа перед поездкой»"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
   verification:
+    - tests/acceptance/test_voice_and_receipts.py::test_a183_receipt_caption_is_linked_to_operation
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A184
   title: "Ответить на записанную трату «Добавь комментарий: перед поездкой», повторить тот же update"
@@ -4063,6 +4071,7 @@
   stage: P0
   status: implemented
   implementation:
+    - src/fintracker/application/intelligence/extraction.py
     - src/fintracker/application/intelligence/media_pipeline.py
     - src/fintracker/infra/ai/schemas.py
   verification:

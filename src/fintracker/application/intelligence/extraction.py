@@ -342,8 +342,13 @@ async def extract_receipt(
     catalog: WorkspaceCatalog,
     reference_date: dt.date,
     source_fingerprint: str,
+    extra_image_urls: tuple[str, ...] = (),
 ) -> ReceiptResponse:
-    """Визуальный разбор чека тем же профилем Luna (ADR-17)."""
+    """Визуальный разбор чека тем же профилем Luna (ADR-17).
+
+    Несколько фото одного длинного чека передаются одним пакетом: повторяющиеся
+    на перекрытии строки не дублируются (FR-14, A28).
+    """
     workspace_id = actor.require_workspace()
     request_key = f"receipt:{draft_id}:{draft_version}"
     reservation = await quota.reserve(
@@ -367,6 +372,18 @@ async def extract_receipt(
         },
         {"type": "input_image", "image_url": image_data_url},
     ]
+    for extra in extra_image_urls:
+        content.append({"type": "input_image", "image_url": extra})
+    if extra_image_urls:
+        content.append(
+            {
+                "type": "input_text",
+                "text": (
+                    "Это фрагменты одного чека: строки, попавшие на несколько "
+                    "снимков, включаются один раз."
+                ),
+            }
+        )
     if caption:
         content.append(
             {

@@ -92,14 +92,20 @@ class BotUser:
         return self.last_replies
 
     async def send_photo(
-        self, *, caption: str | None = None, size_bytes: int = 120_000
+        self,
+        *,
+        caption: str | None = None,
+        size_bytes: int = 120_000,
+        count: int = 1,
+        media_group_id: str | None = None,
     ) -> list[Reply]:
         message = IncomingMessage(
             telegram_user_id=self.telegram_user_id,
             chat_id=self.chat_id,
             kind=MessageKind.PHOTO,
             text=caption,
-            attachments=(
+            media_group_id=media_group_id,
+            attachments=tuple(
                 Attachment(
                     file_id=f"photo-{uuid.uuid4().hex[:8]}",
                     kind="photo",
@@ -107,7 +113,8 @@ class BotUser:
                     mime_type="image/jpeg",
                     width=1200,
                     height=1600,
-                ),
+                )
+                for _ in range(count)
             ),
             received_at=self.clock,
             correlation_id=uuid.uuid4().hex,

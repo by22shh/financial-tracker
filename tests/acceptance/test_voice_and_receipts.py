@@ -231,3 +231,75 @@ async def test_a182_voice_note_is_kept_for_correction(
     await user.press(user.button_data("Записать"))
     await user.send("/history дешевле")
     assert "из 1" in user.text()
+
+
+def _receipt_json(lines: list[dict[str, object]], total: str = "1200.00") -> str:
+    import json
+
+    return json.dumps(
+        {
+            "schema_version": "1.0",
+            "document_kind": "receipt",
+            "payment_confirmed": True,
+            "merchant": "Магазин",
+            "date_expression": "сегодня",
+            "currency": "RUB",
+            "total_decimal": total,
+            "lines": lines,
+            "unreadable_lines": 0,
+        },
+        ensure_ascii=False,
+    )
+
+
+async def test_a28_album_of_one_receipt_is_single_package(
+    bot: None, ai_enabled: Settings, stub_download
+) -> None:
+    """A28: несколько фото одного чека образуют один пакет без повторов строк."""
+    from fintracker.infra.ai.openai_client import ScriptedAIProvider, set_provider_override
+
+    user = make_user(ai_enabled, 915020)
+    await create_budget(user, categories="Продукты, Рестораны")
+
+    lines = [
+        {"label": "Молоко", "amount_decimal": "200.00", "quantity": "1"},
+        {"label": "Хлеб", "amount_decimal": "1000.00", "quantity": "1"},
+    ]
+    provider = ScriptedAIProvider(responses=[_receipt_json(lines)])
+    set_provider_override(provider)
+    try:
+        await user.send_photo(count=3, media_group_id="album-1")
+    finally:
+        set_provider_override(None)
+
+    assert len(provider.calls) == 1, "альбом разобран одним вызовом"
+    images = [
+        item
+        for item in provider.calls[0]["input"][0]["content"]
+        if item.get("type") == "input_image"
+    ]
+    assert len(images) == 3, "все снимки переданы в одном пакете"
+    text = user.text().replace(" ", " ").replace(" ", " ")
+    assert "1 200" in text
+    assert text.count("Молоко") == 1, "строка на перекрытии не удвоена"
+
+
+async def test_a183_receipt_caption_is_linked_to_operation(
+    bot: None, ai_enabled: Settings, stub_download
+) -> None:
+    """A183: подпись к чеку связана с этой операцией, сумма взята из чека."""
+    from fintracker.infra.ai.openai_client import ScriptedAIProvider, set_provider_override
+
+    user = make_user(ai_enabled, 915021)
+    await create_budget(user, categories="Продукты, Рестораны")
+
+    lines = [{"label": "Продукты", "amount_decimal": "1200.00", "quantity": "1"}]
+    set_provider_override(ScriptedAIProvider(responses=[_receipt_json(lines)]))
+    try:
+        await user.send_photo(caption="Купила Софа перед поездкой")
+    finally:
+        set_provider_override(None)
+
+    text = user.text().replace(" ", " ").replace(" ", " ")
+    assert "1 200" in text, "сумма взята из проверенного чека"
+    assert "Софа" in text or "поездкой" in text, "подпись связана с этой операцией"

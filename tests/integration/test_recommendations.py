@@ -620,3 +620,112 @@ async def test_a140_unknown_subscription_is_not_claimed_detected(
         currency="RUB",
     )
     assert len(still) == confirmed_count, "неизвестная подписка не считается обнаруженной"
+
+
+async def test_a179_one_run_gives_independent_deliveries(
+    clean_db: None, ai_settings: Settings, owner_session: AsyncSession
+) -> None:
+    """A179: один AI результат на бюджет и независимые доставки участникам."""
+    import uuid as _uuid
+
+    from fintracker.application.delivery.dispatch import expand_event
+    from fintracker.core.context import MembershipStatus, Role
+    from fintracker.core.ids import new_generation
+    from fintracker.db.models.access import Membership, User
+    from fintracker.db.models.intelligence import AnalysisRun
+    from fintracker.db.models.platform import NotificationDelivery, OutboxEvent
+    from fintracker.db.session import RuntimeRole, session_scope
+
+    fixture = await _complete_fixture(owner_session, telegram_user_id=5601)
+    others = []
+    for telegram_id in (5602, 5603):
+        user = User(id=_uuid.uuid4(), telegram_user_id=telegram_id)
+        owner_session.add(user)
+        await owner_session.flush()
+        owner_session.add(
+            Membership(
+                workspace_id=fixture.workspace.id,
+                user_id=user.id,
+                role=Role.MEMBER.value,
+                status=MembershipStatus.ACTIVE.value,
+                generation=new_generation(),
+            )
+        )
+        others.append(user)
+    await owner_session.flush()
+
+    _, metrics = await build_snapshot_row(
+        owner_session, workspace=fixture.workspace, period_id=fixture.period.id, today=TODAY
+    )
+    provider = ScriptedAIProvider(
+        responses=[recommendation_json(card={"metric_refs": [str(metrics["metric_id"])]})]
+    )
+    set_provider_override(provider)
+    try:
+        first = await run_analysis(
+            ai_settings,
+            owner_session,
+            fixture.uow,
+            workspace=fixture.workspace,
+            run_kind="weekly_review",
+            logical_key="weekly:a179",
+            today=TODAY,
+        )
+        second = await run_analysis(
+            ai_settings,
+            owner_session,
+            fixture.uow,
+            workspace=fixture.workspace,
+            run_kind="weekly_review",
+            logical_key="weekly:a179",
+            today=TODAY,
+        )
+    finally:
+        set_provider_override(None)
+
+    assert first.run_id == second.run_id, "один результат на логический запуск"
+    assert len(provider.calls) == 1, "повтор не обращается к модели заново"
+
+    runs = (
+        (
+            await owner_session.execute(
+                select(AnalysisRun).where(AnalysisRun.workspace_id == fixture.workspace.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(runs) == 1
+    await owner_session.commit()
+
+    async with session_scope(
+        ai_settings, RuntimeRole.OWNER, workspace_id=fixture.workspace.id
+    ) as session:
+        events = (
+            (
+                await session.execute(
+                    select(OutboxEvent).where(OutboxEvent.event_type == "AnalysisCompleted")
+                )
+            )
+            .scalars()
+            .all()
+        )
+        created = 0
+        for event in events:
+            created += (await expand_event(session, ai_settings, event)).created
+        deliveries = (
+            (
+                await session.execute(
+                    select(NotificationDelivery).where(
+                        NotificationDelivery.delivery_class == "review"
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+    assert created == 3, "каждому участнику своя доставка"
+    assert {row.recipient_user_id for row in deliveries} == {
+        fixture.user.id,
+        *(user.id for user in others),
+    }

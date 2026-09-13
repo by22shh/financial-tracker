@@ -185,6 +185,20 @@ async def _process_image(
         f"data:{attachment.mime_type or 'image/jpeg'};base64,{base64.b64encode(image).decode()}"
     )
 
+    # Альбом из нескольких снимков одного чека разбирается одним пакетом (A28).
+    extra_urls: list[str] = []
+    for item in message.attachments[1:]:
+        try:
+            extra = await download_attachment(settings, file_id=item.file_id)
+        except ProviderUnavailable:
+            continue
+        fingerprint = hashlib.sha256(
+            (fingerprint + hashlib.sha256(extra).hexdigest()).encode()
+        ).hexdigest()
+        extra_urls.append(
+            f"data:{item.mime_type or 'image/jpeg'};base64,{base64.b64encode(extra).decode()}"
+        )
+
     async with session_scope(
         settings, RuntimeRole.API, user_id=actor.user_id, workspace_id=workspace_id
     ) as session:
@@ -218,6 +232,7 @@ async def _process_image(
             catalog=catalog,
             reference_date=local_date,
             source_fingerprint=fingerprint,
+            extra_image_urls=tuple(extra_urls),
         )
     except (ProviderUnavailable, ValidationFailed) as exc:
         await _mark_draft(settings, workspace_id, draft_id, "failed_retryable", exc.message)
