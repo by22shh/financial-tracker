@@ -1727,10 +1727,12 @@
   title: "Открыть ссылку приглашения либо вручную ввести код"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
   verification:
+    - tests/acceptance/test_context_scenarios.py::test_a156_link_and_manual_code_give_same_path
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A157
   title: "U2 присоединился к бюджету U1"
@@ -1789,10 +1791,13 @@
   title: "U2 создал категорию и изменил лимит"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
+    - src/fintracker/application/conversation/sections.py
   verification:
+    - tests/acceptance/test_context_scenarios.py::test_a162_shared_change_is_visible_to_everyone
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A163
   title: "U2 исправил общую запись U1"
@@ -1818,28 +1823,34 @@
   title: "U1 переключил активный бюджет во время распознавания чека"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
   verification:
+    - tests/acceptance/test_context_scenarios.py::test_a165_a166_context_is_pinned_at_receipt
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A166
   title: "Пришло уведомление из другого бюджета, затем пользователь ввёл свободную трату"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
   verification:
+    - tests/acceptance/test_context_scenarios.py::test_a165_a166_context_is_pinned_at_receipt
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A167
   title: "Ответить на карточку другого доступного бюджета"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
   verification:
+    - tests/acceptance/test_context_scenarios.py::test_a167_reply_corrects_the_card_budget
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A168
   title: "U2 подтвердил выход"
@@ -1917,10 +1928,12 @@
   title: "Предложение передачи устарело либо адресат вышел до принятия"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
   verification:
+    - tests/acceptance/test_context_scenarios.py::test_a174_stale_admin_transfer_is_not_applied
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A175
   title: "Участник вызвал удаление бюджета напрямую через API или старую кнопку"
@@ -2160,10 +2173,12 @@
   title: "Автор общего комментария вышел из бюджета"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
   verification:
+    - tests/acceptance/test_context_scenarios.py::test_a197_note_author_survives_leaving
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A198
   title: "В комментарии сохранена инструкция отправить журнал или удалить бюджет"
@@ -3830,12 +3845,14 @@
   title: "Роли"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/catalog/rules.py
     - src/fintracker/application/identity/membership.py
   verification:
+    - tests/acceptance/test_context_scenarios.py::test_a156_link_and_manual_code_give_same_path
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-05
   title: "Стартовое меню"
@@ -4072,6 +4089,7 @@
     - src/fintracker/application/conversation/category_flow.py
     - src/fintracker/application/conversation/context.py
     - src/fintracker/application/conversation/corrections.py
+    - src/fintracker/application/conversation/sections.py
     - src/fintracker/db/models/catalog.py
   verification:
     - tests/integration/test_schema_constraints.py::test_duplicate_active_category_name_rejected

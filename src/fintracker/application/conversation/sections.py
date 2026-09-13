@@ -85,8 +85,23 @@ async def budget_overview(
 async def categories_view(
     settings: Settings, *, actor: ActorContext, workspace: Workspace, page: int = 0
 ) -> list[Reply]:
+    """Статьи бюджета: план и статьи справочника без лимита (FR-21, A162)."""
+    from fintracker.application.catalog.categories import list_categories
+
     status = await current_status(settings, actor=actor, workspace=workspace)
+    workspace_id = actor.require_workspace()
+    async with session_scope(
+        settings, RuntimeRole.API, user_id=actor.user_id, workspace_id=workspace_id
+    ) as session:
+        catalog = await list_categories(session, workspace_id=workspace_id)
+    planned = {line.category_id for line in status.lines}
+    extra = [item for item in catalog if item.id not in planned]
+
     body, has_more = views.category_lines(status, page=page)
+    if extra and page == 0:
+        # Созданная кем-то статья видна всем сразу, даже без лимита (A162).
+        tail = "\n".join(f"{item.name}: лимит не задан" for item in extra[: views.PAGE_SIZE])
+        body = f"{body}\n{tail}" if body else tail
     rows: list[tuple[Button, ...]] = [
         (
             Button("Добавить категорию", callback("cat", "new")),
