@@ -15,18 +15,12 @@ import pathlib
 import subprocess
 import sys
 
+from evidence_source import capture_source, file_digest
+
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 EVIDENCE = ROOT / ".planning" / "evidence"
 # Имя относительно корня проекта: pytest запускается с cwd=ROOT.
 JUNIT_NAME = ".planning/evidence/latest-junit.xml"
-
-
-def file_digest(path: pathlib.Path) -> str | None:
-    import hashlib
-
-    if not path.exists():
-        return None
-    return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def run(command: list[str], extra_env: dict[str, str] | None = None) -> tuple[int, str]:
@@ -38,18 +32,8 @@ def run(command: list[str], extra_env: dict[str, str] | None = None) -> tuple[in
 
 
 def git_revision() -> str:
-    code, out = run(["git", "rev-parse", "--short", "HEAD"])
+    code, out = run(["git", "rev-parse", "HEAD"])
     return out.strip() if code == 0 else "uncommitted"
-
-
-def working_tree_fingerprint() -> str:
-    """Отпечаток незакоммиченного состояния (раздел 9 инструкции)."""
-    code, out = run(["git", "status", "--porcelain"])
-    if code != 0:
-        return "unknown"
-    import hashlib
-
-    return hashlib.sha256(out.encode()).hexdigest()[:16]
 
 
 def schema_revision() -> str:
@@ -60,6 +44,10 @@ def schema_revision() -> str:
 def main() -> int:
     EVIDENCE.mkdir(parents=True, exist_ok=True)
     started = dt.datetime.now(dt.UTC)
+    source_before = capture_source(ROOT)
+    junit = ROOT / JUNIT_NAME
+    # A failed invocation must never reuse the preceding run's XML.
+    junit.unlink(missing_ok=True)
     checks = {
         "format": [".venv/bin/ruff", "format", "--check", "src", "tests"],
         "lint": [".venv/bin/ruff", "check", "src", "tests"],
@@ -74,7 +62,8 @@ def main() -> int:
     report: dict[str, object] = {
         "started_at": started.isoformat(),
         "git_revision": git_revision(),
-        "working_tree_fingerprint": working_tree_fingerprint(),
+        "working_tree_fingerprint": source_before["sha256"],
+        "source_before": source_before,
         "schema_revision": schema_revision(),
         "python": sys.version.split()[0],
         "checks": {},
@@ -93,16 +82,21 @@ def main() -> int:
             "output_tail": tail,
         }
         failures += int(code != 0)
-    junit = ROOT / JUNIT_NAME
     stamped_junit = EVIDENCE / f"junit-{started.strftime('%Y%m%d-%H%M%S')}.xml"
     if junit.exists():
         stamped_junit.write_bytes(junit.read_bytes())
     report["test_report"] = {
         "path": JUNIT_NAME,
         "archived": str(stamped_junit.relative_to(ROOT)) if junit.exists() else None,
-        "sha256": file_digest(junit),
+        "sha256": file_digest(junit) if junit.exists() else None,
     }
     report["finished_at"] = dt.datetime.now(dt.UTC).isoformat()
+    report["source_after"] = capture_source(ROOT)
+    if source_before != report["source_after"]:
+        failures += 1
+        report["source_error"] = "Sources changed while checks were running"
+    if not junit.exists():
+        failures += 1
     report["overall"] = "PASS" if failures == 0 else "FAIL"
 
     stamp = started.strftime("%Y%m%d-%H%M%S")

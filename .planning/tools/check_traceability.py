@@ -10,7 +10,8 @@
    pytest и присутствует в отчёте прогона;
 4. исход этого узла в отчёте — passed: пропуск, ошибка и падение не дают
    verified;
-5. прогон относится к проверяемому commit, а файлы доказательств существуют.
+5. известен commit прогона, content manifest исходников до/после совпадает с
+   текущим, SHA256 JUnit совпадает, а файлы доказательств существуют.
 
 Ссылка на несуществующий узел или на отсутствующий файл доказательства больше
 не проходит проверку. Результаты разделяются по видам проверок: доменные,
@@ -27,6 +28,8 @@ import subprocess
 import sys
 import xml.etree.ElementTree as ET
 from typing import Any
+
+from evidence_source import file_digest, validate_source
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 REGISTRY = ROOT / ".planning" / "requirements.yaml"
@@ -117,23 +120,6 @@ def git(*args: str) -> tuple[int, str]:
     return result.returncode, result.stdout.strip()
 
 
-def git_revision() -> str:
-    code, out = git("rev-parse", "--short", "HEAD")
-    return out if code == 0 else ""
-
-
-def code_changed_since(revision: str) -> bool:
-    """Изменялись ли проверяемые исходники после сохранённого прогона.
-
-    Правки отчётов и самих доказательств прогон не устаревают: значение имеет
-    только код приложения и тестов.
-    """
-    code, out = git("diff", "--name-only", f"{revision}..HEAD", "--", "src", "tests")
-    if code != 0:
-        return True
-    return bool(out.strip())
-
-
 def load_outcomes(report_path: pathlib.Path) -> dict[str, str]:
     """Исход каждого собранного узла из JUnit-отчёта прогона."""
     outcomes: dict[str, str] = {}
@@ -165,7 +151,12 @@ def load_run() -> tuple[dict[str, str], list[str]]:
     notes: list[str] = []
     if not LATEST.exists():
         return {}, ["Нет отчёта прогона .planning/evidence/latest.json"]
-    report = json.loads(LATEST.read_text(encoding="utf-8"))
+    try:
+        report = json.loads(LATEST.read_text(encoding="utf-8"))
+    except (ValueError, OSError) as exc:
+        return {}, [f"Отчёт прогона повреждён: {exc}"]
+    if not isinstance(report, dict):
+        return {}, ["Отчёт прогона должен быть JSON объектом"]
     test_report = report.get("test_report") or {}
     raw_path = test_report.get("path")
     if not raw_path:
@@ -173,16 +164,24 @@ def load_run() -> tuple[dict[str, str], list[str]]:
     path = ROOT / str(raw_path)
     if not path.exists():
         return {}, [f"Файл прогона отсутствует: {raw_path}"]
+    if not test_report.get("sha256") or test_report["sha256"] != file_digest(path):
+        notes.append("SHA256 JUnit отсутствует или не совпадает с сохранённым отчётом")
     checks = report.get("checks") or {}
     if str((checks.get("tests") or {}).get("result")) != "PASS":
         notes.append("Прогон тестов в отчёте не PASS")
     revision = str(report.get("git_revision") or "")
-    head = git_revision()
-    if head and revision and revision != head and code_changed_since(revision):
-        notes.append(
-            f"Отчёт собран на commit {revision}, а src/tests изменялись до {head}"
-        )
-    return load_outcomes(path), notes
+    if not revision or not re.fullmatch(r"[0-9a-f]{7,40}", revision):
+        notes.append("В отчёте отсутствует корректный идентификатор commit")
+    elif git("cat-file", "-e", f"{revision}^{{commit}}")[0] != 0:
+        notes.append("Commit отчёта отсутствует в репозитории")
+    notes.extend(validate_source(report, ROOT))
+    try:
+        outcomes = load_outcomes(path)
+    except (ET.ParseError, OSError) as exc:
+        return {}, [*notes, f"JUnit повреждён: {exc}"]
+    if not outcomes:
+        notes.append("В JUnit нет собранных тестовых узлов")
+    return outcomes, notes
 
 
 def main() -> int:
@@ -190,7 +189,7 @@ def main() -> int:
     parser.add_argument(
         "--allow-stale-run",
         action="store_true",
-        help="не считать ошибкой отчёт другого commit (для промежуточной работы)",
+        help="устаревший флаг; доказательства verified всегда проверяются строго",
     )
     args = parser.parse_args()
 
@@ -201,11 +200,9 @@ def main() -> int:
         return 1
 
     outcomes, notes = load_run()
-    for note in notes:
-        if args.allow_stale_run:
-            print(f"  ! {note}")
-        else:
-            problems.append(note)
+    if args.allow_stale_run:
+        print("  ! --allow-stale-run не отключает проверку доказательств verified")
+    problems.extend(notes)
 
     extracted = json.loads(EXTRACTED.read_text(encoding="utf-8")) if EXTRACTED.exists() else []
     extracted_ids = {item["id"] for item in extracted}
@@ -239,8 +236,6 @@ def main() -> int:
             file_part = node.split("::", 1)[0]
             if not (ROOT / file_part).exists():
                 problems.append(f"{req_id}: файл проверки отсутствует: {node}")
-                continue
-            if not outcomes:
                 continue
             outcome = outcomes.get(node)
             if outcome is None:
