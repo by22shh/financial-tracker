@@ -17,6 +17,7 @@ Revises: 0010_input
 from __future__ import annotations
 
 from collections.abc import Sequence
+from importlib import import_module
 
 from alembic import op
 
@@ -135,5 +136,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    previous = import_module("fintracker.db.migrations.versions.0010_input_identity_and_files")
+    op.execute(previous.PURGE)
     op.execute("DROP FUNCTION IF EXISTS maintenance_purge_author_replies(TIMESTAMPTZ)")
     op.execute("DROP TABLE IF EXISTS author_replies")

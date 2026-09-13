@@ -17,6 +17,7 @@ WORKER-роль не видит защищённые строки вложени
 from __future__ import annotations
 
 from collections.abc import Sequence
+from importlib import import_module
 
 from alembic import op
 
@@ -221,6 +222,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    previous = import_module("fintracker.db.migrations.versions.0009_runtime_maintenance")
+    op.execute(previous.PURGE)
     op.execute("DROP FUNCTION IF EXISTS maintenance_workspace_files(UUID)")
     op.execute("DROP FUNCTION IF EXISTS maintenance_finish_export(UUID)")
     op.execute("DROP FUNCTION IF EXISTS maintenance_due_exports(TIMESTAMPTZ, INT)")

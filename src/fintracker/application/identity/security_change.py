@@ -441,7 +441,9 @@ async def resume_or_quarantine(
     pending = await journal.pending_operations(workspace_id)
     last = await journal.last_committed(workspace_id)
 
-    async with session_scope(settings, RuntimeRole.OWNER, workspace_id=workspace_id) as session:
+    # Recovery uses the same workspace RLS boundary as ordinary worker tasks.
+    # Migration credentials must never be needed by a running API/worker.
+    async with session_scope(settings, RuntimeRole.WORKER, workspace_id=workspace_id) as session:
         workspace = (
             await session.execute(
                 select(Workspace).where(Workspace.id == workspace_id).with_for_update()
@@ -479,13 +481,8 @@ async def reconcile_access_on_start(
     """
     from sqlalchemy import text
 
-    states = [item.value for item in WorkspaceState]
     async with session_scope(settings, RuntimeRole.WORKER) as session:
-        rows = (
-            await session.execute(
-                text("SELECT id FROM maintenance_workspaces(:states)"), {"states": states}
-            )
-        ).all()
+        rows = (await session.execute(text("SELECT id FROM access_recovery_workspaces()"))).all()
     checked = 0
     quarantined = 0
     for (workspace_id,) in rows:
@@ -508,7 +505,7 @@ async def _replay_workspace_state(
     """
     from fintracker.db.models.access import BudgetDeletionRecord
 
-    if not state or state == workspace.state:
+    if not state:
         return
     workspace.state = state
     if state not in DELETION_STATES:
@@ -544,12 +541,44 @@ async def _apply_proven_access(session: AsyncSession, *, workspace: Workspace, r
     """
     snapshot = record.snapshot
     await _replay_workspace_state(session, workspace=workspace, state=str(snapshot.state or ""))
+    proven_users = [uuid.UUID(str(item["user_id"])) for item in snapshot.members]
+    # Demote first: an administrator transfer must not transiently violate the
+    # unique active-administrator index while restoring the new administrator.
+    await session.execute(
+        update(Membership).where(Membership.workspace_id == workspace.id).values(role="member")
+    )
+    # A complete snapshot grants no access to members absent from that snapshot.
+    await session.execute(
+        update(Membership)
+        .where(Membership.workspace_id == workspace.id, Membership.user_id.not_in(proven_users))
+        .values(status="removed", rejoin_blocked=True, generation=uuid.uuid4())
+    )
+    existing_users = set(
+        (
+            await session.execute(
+                select(Membership.user_id).where(Membership.workspace_id == workspace.id)
+            )
+        ).scalars()
+    )
     for item in snapshot.members:
+        user_id = uuid.UUID(str(item["user_id"]))
+        if user_id not in existing_users:
+            session.add(
+                Membership(
+                    workspace_id=workspace.id,
+                    user_id=user_id,
+                    status=item["status"],
+                    role=item["role"],
+                    generation=uuid.UUID(str(item["generation"])),
+                    rejoin_blocked=str(item.get("rejoin_blocked", "False")) == "True",
+                )
+            )
+            continue
         await session.execute(
             update(Membership)
             .where(
                 Membership.workspace_id == workspace.id,
-                Membership.user_id == uuid.UUID(str(item["user_id"])),
+                Membership.user_id == user_id,
             )
             .values(
                 status=item["status"],
