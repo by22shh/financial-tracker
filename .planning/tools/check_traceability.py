@@ -104,15 +104,34 @@ def load_registry() -> dict[str, dict[str, Any]]:
     return items
 
 
-def git_revision() -> str:
-    result = subprocess.run(
-        ["git", "rev-parse", "--short", "HEAD"],  # noqa: S607
+def git(*args: str) -> tuple[int, str]:
+    # Аргументы задаются только этим модулем; пользовательский ввод сюда
+    # не попадает.
+    result = subprocess.run(  # noqa: S603
+        ["git", *args],  # noqa: S607
         capture_output=True,
         text=True,
         cwd=ROOT,
         check=False,
     )
-    return result.stdout.strip() if result.returncode == 0 else ""
+    return result.returncode, result.stdout.strip()
+
+
+def git_revision() -> str:
+    code, out = git("rev-parse", "--short", "HEAD")
+    return out if code == 0 else ""
+
+
+def code_changed_since(revision: str) -> bool:
+    """Изменялись ли проверяемые исходники после сохранённого прогона.
+
+    Правки отчётов и самих доказательств прогон не устаревают: значение имеет
+    только код приложения и тестов.
+    """
+    code, out = git("diff", "--name-only", f"{revision}..HEAD", "--", "src", "tests")
+    if code != 0:
+        return True
+    return bool(out.strip())
 
 
 def load_outcomes(report_path: pathlib.Path) -> dict[str, str]:
@@ -159,8 +178,10 @@ def load_run() -> tuple[dict[str, str], list[str]]:
         notes.append("Прогон тестов в отчёте не PASS")
     revision = str(report.get("git_revision") or "")
     head = git_revision()
-    if head and revision and revision != head:
-        notes.append(f"Отчёт собран на commit {revision}, проверяется {head}")
+    if head and revision and revision != head and code_changed_since(revision):
+        notes.append(
+            f"Отчёт собран на commit {revision}, а src/tests изменялись до {head}"
+        )
     return load_outcomes(path), notes
 
 
