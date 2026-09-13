@@ -161,7 +161,12 @@ async def _handle_command(
         case "/categories":
             return await sections.categories_view(settings, actor=actor, workspace=workspace)
         case "/history":
-            return await sections.history_view(settings, actor=actor, workspace=workspace)
+            return await sections.history_view(
+                settings,
+                actor=actor,
+                workspace=workspace,
+                note_query=message.command_argument or None,
+            )
         case "/report":
             from fintracker.application.conversation.analytics_flow import report_view
 

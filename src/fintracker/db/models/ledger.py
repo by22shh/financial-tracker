@@ -82,6 +82,13 @@ class Transaction(Base):
     occurred_sort_date: Mapped[dt.date] = mapped_column(Date, nullable=False)
     origin: Mapped[str] = mapped_column(String(24), nullable=False)
     entity_version: Mapped[int] = version_column()
+    # Порядок добавления: время создания одинаково у записей одной транзакции,
+    # поэтому «последние добавленные» опираются на последовательность (FR-07).
+    created_seq: Mapped[int] = mapped_column(
+        BigInteger,
+        nullable=False,
+        server_default=text("nextval('transactions_created_seq_seq'::regclass)"),
+    )
     created_at: Mapped[dt.datetime] = now_server()
     updated_at: Mapped[dt.datetime] = now_server()
 

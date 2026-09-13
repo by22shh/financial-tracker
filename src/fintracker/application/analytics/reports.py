@@ -81,6 +81,13 @@ class FilterSpec:
     beneficiary_ids: tuple[uuid.UUID, ...] = ()
     spender_person_ids: tuple[uuid.UUID, ...] = ()
     actor_user_ids: tuple[uuid.UUID, ...] = ()
+    # Автор последнего изменения — отдельный фильтр: он не совпадает с автором
+    # записи после исправления чужой операции (FR-07).
+    editor_user_ids: tuple[uuid.UUID, ...] = ()
+    account_ids: tuple[uuid.UUID, ...] = ()
+    transaction_types: tuple[str, ...] = ()
+    origins: tuple[str, ...] = ()
+    statuses: tuple[str, ...] = ()
     tag_ids: tuple[uuid.UUID, ...] = ()
     tag_mode: str = "any"
     note_query: str | None = None
@@ -95,6 +102,11 @@ class FilterSpec:
             "beneficiary_ids": [str(i) for i in self.beneficiary_ids],
             "spender_person_ids": [str(i) for i in self.spender_person_ids],
             "actor_user_ids": [str(i) for i in self.actor_user_ids],
+            "editor_user_ids": [str(i) for i in self.editor_user_ids],
+            "account_ids": [str(i) for i in self.account_ids],
+            "transaction_types": list(self.transaction_types),
+            "origins": list(self.origins),
+            "statuses": list(self.statuses),
             "tag_ids": [str(i) for i in self.tag_ids],
             "tag_mode": self.tag_mode,
             "note_query": self.note_query,
@@ -116,6 +128,31 @@ def _apply_transaction_filters(statement: Any, *, filters: FilterSpec) -> Any:
         )
     if filters.actor_user_ids:
         statement = statement.where(Transaction.created_by.in_(filters.actor_user_ids))
+    if filters.editor_user_ids:
+        statement = statement.where(TransactionRevision.changed_by.in_(filters.editor_user_ids))
+    if filters.transaction_types:
+        statement = statement.where(
+            TransactionRevision.transaction_type.in_(filters.transaction_types)
+        )
+    if filters.origins:
+        statement = statement.where(Transaction.origin.in_(filters.origins))
+    if filters.statuses:
+        statement = statement.where(Transaction.status.in_(filters.statuses))
+    if filters.account_ids:
+        # Счёт проверяется через EXISTS по денежным частям текущей ревизии.
+        from fintracker.db.models.ledger import CashLeg
+
+        statement = statement.where(
+            select(1)
+            .select_from(CashLeg)
+            .where(
+                CashLeg.workspace_id == Transaction.workspace_id,
+                CashLeg.transaction_id == Transaction.id,
+                CashLeg.revision == Transaction.current_revision,
+                CashLeg.account_id.in_(filters.account_ids),
+            )
+            .exists()
+        )
     if filters.note_query:
         pattern = f"%{escape_like(filters.note_query)}%"
         statement = statement.where(TransactionRevision.note.ilike(pattern, escape="\\"))

@@ -2567,6 +2567,7 @@
     - src/fintracker/db/models/planning.py
     - src/fintracker/runtime/scheduler.py
   verification:
+    - tests/integration/test_journal_filters.py::test_journal_period_bounds_are_half_open
     - tests/integration/test_schema_constraints.py::test_periods_cannot_overlap
   evidence:
     - .planning/evidence/latest.json
@@ -3715,10 +3716,32 @@
   title: "История"
   source: docs/TZ.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
+    - src/fintracker/application/analytics/journal.py
+    - src/fintracker/application/analytics/reports.py
+    - src/fintracker/application/conversation/history_flow.py
+    - src/fintracker/application/conversation/sections.py
+    - src/fintracker/application/conversation/views.py
+    - src/fintracker/db/migrations/versions/0006_transaction_sequence.py
+    - src/fintracker/db/models/ledger.py
   verification:
+    - tests/acceptance/test_history_filters.py::test_history_filter_toggle_narrows_journal
+    - tests/acceptance/test_history_filters.py::test_history_is_shared_between_members
+    - tests/acceptance/test_history_filters.py::test_history_paging_keeps_all_entries
+    - tests/acceptance/test_history_filters.py::test_history_search_by_comment_text
+    - tests/acceptance/test_history_filters.py::test_history_shows_filters_and_counts
+    - tests/acceptance/test_history_filters.py::test_history_sort_switches_to_recently_added
+    - tests/acceptance/test_history_filters.py::test_transaction_card_shows_history_and_links
+    - tests/integration/test_journal_filters.py::test_journal_excludes_voided_until_asked
+    - tests/integration/test_journal_filters.py::test_journal_filters_by_category_and_account
+    - tests/integration/test_journal_filters.py::test_journal_filters_by_note_and_presence
+    - tests/integration/test_journal_filters.py::test_journal_filters_by_type_and_origin
+    - tests/integration/test_journal_filters.py::test_journal_pages_without_losing_rows
+    - tests/integration/test_journal_filters.py::test_journal_period_bounds_are_half_open
+    - tests/integration/test_journal_filters.py::test_journal_sort_by_added_differs_from_occurred
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-08
   title: "Состояния"
@@ -4724,6 +4747,7 @@
   stage: P0
   status: verified
   implementation:
+    - src/fintracker/application/analytics/journal.py
     - src/fintracker/application/analytics/reports.py
     - src/fintracker/application/catalog/directory.py
   verification:
@@ -5558,6 +5582,7 @@
   status: implemented
   implementation:
     - src/fintracker/application/conversation/callbacks.py
+    - src/fintracker/application/conversation/history_flow.py
     - src/fintracker/application/conversation/keyboards.py
   verification:
   evidence:

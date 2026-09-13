@@ -198,6 +198,12 @@ async def dispatch_callback(
                 rest=rest,
                 user_id=user_id,
             )
+        case "hist":
+            from fintracker.application.conversation.history_flow import history_action
+
+            return await history_action(
+                settings, actor=actor, workspace=workspace, action=argument, rest=rest
+            )
         case "set":
             from fintracker.application.conversation.settings_flow import settings_action
 

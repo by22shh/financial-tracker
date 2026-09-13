@@ -188,14 +188,41 @@ def history_line(
     )
 
 
+def change_kind_label(kind: str) -> str:
+    """Человеческое название изменения ревизии (FR-07)."""
+    return {
+        "created": "создана",
+        "amended": "исправлена",
+        "voided": "отменена",
+        "restored": "восстановлена",
+        "note_changed": "изменён комментарий",
+        "context_changed": "изменён контекст",
+        "import_revision": "обновлена импортом",
+    }.get(kind, kind)
+
+
+def link_type_label(link_type: str) -> str:
+    """Человеческое название связи между записями (FR-07)."""
+    return {
+        "refund_of": "возврат",
+        "transfer_pair": "перевод",
+        "settles_receivable": "погашение долга",
+        "replaces_aggregate": "замена агрегата",
+        "duplicate_of": "дубликат",
+        "settles_occurrence": "оплата обязательства",
+    }.get(link_type, link_type)
+
+
 __all__ = [
     "PAGE_SIZE",
     "budget_overview",
     "category_lines",
+    "change_kind_label",
     "empty_state",
     "format_date",
     "format_range",
     "history_line",
+    "link_type_label",
     "money",
     "transaction_card",
 ]

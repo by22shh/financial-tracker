@@ -7,7 +7,7 @@ import uuid
 from collections.abc import Sequence
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from fintracker.application.conversation import views
 from fintracker.application.conversation.context import (
@@ -100,92 +100,27 @@ async def categories_view(
 
 
 async def history_view(
-    settings: Settings, *, actor: ActorContext, workspace: Workspace, limit: int = 8
+    settings: Settings,
+    *,
+    actor: ActorContext,
+    workspace: Workspace,
+    note_query: str | None = None,
 ) -> list[Reply]:
-    workspace_id = actor.require_workspace()
-    async with session_scope(
-        settings, RuntimeRole.API, user_id=actor.user_id, workspace_id=workspace_id
-    ) as session:
-        rows = (
-            await session.execute(
-                select(
-                    Transaction.id,
-                    TransactionRevision.amount_minor,
-                    TransactionRevision.currency,
-                    TransactionRevision.occurred_date,
-                    TransactionRevision.note,
-                    Transaction.status,
-                    Transaction.created_by,
-                )
-                .join(
-                    TransactionRevision,
-                    (TransactionRevision.workspace_id == Transaction.workspace_id)
-                    & (TransactionRevision.transaction_id == Transaction.id)
-                    & (TransactionRevision.revision == Transaction.current_revision),
-                )
-                .where(Transaction.workspace_id == workspace_id)
-                .order_by(Transaction.occurred_sort_date.desc(), Transaction.id.desc())
-                .limit(limit)
-            )
-        ).all()
-        if not rows:
-            from fintracker.application.conversation.keyboards import main_menu
+    """Общий журнал бюджета с фильтрами и сортировкой (FR-07)."""
+    from fintracker.application.conversation.history_flow import JournalView, journal_view
 
-            return [Reply(text=views.empty_state("history"), buttons=main_menu())]
-        paths = await category_paths(session, workspace_id=workspace_id)
-        allocation_rows = (
-            await session.execute(
-                select(Allocation.transaction_id, Allocation.category_id)
-                .join(
-                    Transaction,
-                    (Transaction.workspace_id == Allocation.workspace_id)
-                    & (Transaction.id == Allocation.transaction_id)
-                    & (Transaction.current_revision == Allocation.revision),
-                )
-                .where(
-                    Allocation.workspace_id == workspace_id,
-                    Allocation.transaction_id.in_([row[0] for row in rows]),
-                )
-            )
-        ).all()
-        by_transaction: dict[uuid.UUID, list[uuid.UUID | None]] = {}
-        for transaction_id, category_id in allocation_rows:
-            by_transaction.setdefault(transaction_id, []).append(category_id)
-        authors = await author_names(session, workspace_id=workspace_id)
+    replies = await journal_view(
+        settings,
+        actor=actor,
+        workspace=workspace,
+        view=JournalView(flags="", sort="o", offset=0, category=""),
+        note_query=note_query,
+    )
+    if replies and "Подходящих записей нет" in replies[0].text and not note_query:
+        from fintracker.application.conversation.keyboards import main_menu
 
-    lines = ["Последние операции:"]
-    for row in rows:
-        category_ids = by_transaction.get(row[0], [])
-        if len(category_ids) > 1:
-            path = f"{len(category_ids)} статей"
-        elif category_ids and category_ids[0]:
-            path = paths.get(category_ids[0], "Без категории")
-        else:
-            path = "Без категории"
-        lines.append(
-            views.history_line(
-                transaction_id=row[0],
-                amount_minor=row[1],
-                currency=row[2],
-                occurred_date=row[3],
-                category_path=path,
-                author=authors.get(row[6]),
-                is_voided=row[5] == "voided",
-                has_note=bool(row[4]),
-            )
-        )
-    return [
-        Reply(
-            text="\n".join(lines),
-            buttons=(
-                (
-                    Button("Фильтры", callback("hist", "filters")),
-                    Button("Экспорт", callback("menu", "io")),
-                ),
-                (Button("← Меню", callback("menu", "main")),),
-            ),
-        )
-    ]
+        return [Reply(text=views.empty_state("history"), buttons=main_menu())]
+    return replies
 
 
 async def members_view(
@@ -324,6 +259,75 @@ async def transaction_card_reply(
         currency = revision.currency
         occurred_date = revision.occurred_date
         note = revision.note
+        # История изменения, части распределения и связанные возвраты (FR-07).
+        revisions = (
+            (
+                await session.execute(
+                    select(TransactionRevision)
+                    .where(
+                        TransactionRevision.workspace_id == workspace_id,
+                        TransactionRevision.transaction_id == transaction_id,
+                    )
+                    .order_by(TransactionRevision.revision)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        from fintracker.db.models.ledger import TransactionLink
+
+        link_rows = (
+            (
+                await session.execute(
+                    select(TransactionLink).where(
+                        TransactionLink.workspace_id == workspace_id,
+                        TransactionLink.status == "active",
+                        (TransactionLink.source_transaction_id == transaction_id)
+                        | (TransactionLink.target_transaction_id == transaction_id),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        attachment_count = 0
+        from fintracker.db.models.platform import Attachment as AttachmentRow
+
+        attachment_count = int(
+            (
+                await session.execute(
+                    select(func.count())
+                    .select_from(AttachmentRow)
+                    .where(
+                        AttachmentRow.workspace_id == workspace_id,
+                        AttachmentRow.transaction_id == transaction_id,
+                    )
+                )
+            ).scalar_one()
+        )
+        history_lines = [
+            f"• ревизия {item.revision}: {views.change_kind_label(item.change_kind)}"
+            + (f" — {authors[item.changed_by]}" if item.changed_by in authors else "")
+            for item in revisions
+        ]
+        allocation_lines = [
+            f"• {paths.get(item.category_id, 'Без категории')}"
+            f": {views.money(item.amount_minor, currency)} ({item.economic_role})"
+            if item.category_id
+            else f"• Без категории: {views.money(item.amount_minor, currency)}"
+            for item in allocations
+        ]
+        link_lines = []
+        for link in link_rows:
+            direction = (
+                "возврат по этой записи"
+                if link.target_transaction_id == transaction_id
+                else "связана с записью"
+            )
+            link_lines.append(
+                f"• {views.link_type_label(link.link_type)}: {direction}, "
+                f"{views.money(link.amount_minor, currency)}"
+            )
 
     line = None
     if len(allocations) == 1 and allocations[0].category_id:
@@ -358,6 +362,20 @@ async def transaction_card_reply(
         note=note,
         is_voided=transaction_status == "voided",
     )
+    extra: list[str] = []
+    if len(allocation_lines) > 1:
+        extra.append("Части распределения:")
+        extra.extend(allocation_lines)
+    if link_lines:
+        extra.append("Связанные записи:")
+        extra.extend(link_lines)
+    if attachment_count:
+        extra.append(f"Вложений: {attachment_count}")
+    if len(history_lines) > 1:
+        extra.append("История изменения:")
+        extra.extend(history_lines)
+    if extra:
+        text = text + "\n" + "\n".join(extra)
     return [Reply(text=text, buttons=transaction_card(transaction_id))]
 
 
