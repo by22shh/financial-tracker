@@ -35,6 +35,18 @@ async def sweep_inbound_payloads(session: AsyncSession, now: dt.datetime) -> int
     return len(result.scalars().all())
 
 
+async def sweep_author_replies(session: AsyncSession, now: dt.datetime) -> int:
+    """Подготовленные ответы автору удаляются по сроку (RET-08, R-04).
+
+    Строка изолирована по бюджету и владельцу, поэтому очистку выполняет узкая
+    служебная функция: у фонового процесса нет пользовательского контекста.
+    """
+    value = (
+        await session.execute(text("SELECT maintenance_purge_author_replies(:now)"), {"now": now})
+    ).scalar_one()
+    return int(value)
+
+
 async def sweep_private_drafts(session: AsyncSession, now: dt.datetime) -> tuple[int, int]:
     """Истечение черновиков и очистка исходного текста по сроку (RET-02, RET-03).
 
@@ -185,6 +197,7 @@ async def handle_retention_sweep(settings: Settings, job: LeasedJob) -> None:
             "inbound_payloads": await sweep_inbound_payloads(session, now),
             "draft_sources": cleared,
             "expired_drafts": expired,
+            "author_replies": await sweep_author_replies(session, now),
             "exports": await sweep_exports(session, settings, now),
             "stale_deliveries": await sweep_stale_deliveries(session, now),
             "finished_jobs": await sweep_finished_jobs(session, now),

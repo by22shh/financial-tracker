@@ -213,30 +213,107 @@ async def _mark_state(settings: Settings, event_id: uuid.UUID, state: str) -> No
         )
 
 
-def _reply_payload(event_id: uuid.UUID, chat_id: int, replies: list[Reply]) -> dict[str, Any]:
-    return {
-        "inbound_event_id": str(event_id),
-        "chat_id": chat_id,
-        "messages": [
+async def _store_reply(
+    session: AsyncSession,
+    *,
+    context: _EventContext,
+    event_id: uuid.UUID,
+    chat_id: int,
+    replies: list[Reply],
+) -> uuid.UUID | None:
+    """Сохранить текст ответа в изолированной строке бюджета (ADR-06, R-04).
+
+    Глобальная таблица задач технической маршрутизации не хранит суммы и
+    статьи: там остаётся только идентификатор этой строки.
+    """
+    from fintracker.db.models.platform import AuthorReply
+
+    if context.workspace_id is None or context.actor_user_id is None:
+        return None
+    row = AuthorReply(
+        workspace_id=context.workspace_id,
+        owner_user_id=context.actor_user_id,
+        inbound_event_id=event_id,
+        chat_id=chat_id,
+        messages=[
             {"text": reply.text, "buttons": reply.keyboard()} for reply in replies if reply.text
         ],
-        "schema_version": 1,
-    }
+        state="pending",
+        delete_after=dt.datetime.now(dt.UTC) + dt.timedelta(days=7),
+    )
+    session.add(row)
+    await session.flush()
+    return row.id
+
+
+async def _load_reply(
+    settings: Settings, *, context: _EventContext, reply_id: uuid.UUID
+) -> list[dict[str, Any]] | None:
+    """Прочитать сохранённый ответ под контекстом его владельца."""
+    from fintracker.db.models.platform import AuthorReply
+
+    async with session_scope(
+        settings,
+        RuntimeRole.WORKER,
+        user_id=context.actor_user_id,
+        workspace_id=context.workspace_id,
+    ) as session:
+        row = (
+            await session.execute(select(AuthorReply).where(AuthorReply.id == reply_id))
+        ).scalar_one_or_none()
+        if row is None or row.state != "pending":
+            return None
+        return [dict(item) for item in row.messages]
+
+
+async def _close_reply(
+    settings: Settings, *, context: _EventContext, reply_id: uuid.UUID, state: str
+) -> None:
+    from fintracker.db.models.platform import AuthorReply
+
+    async with session_scope(
+        settings,
+        RuntimeRole.WORKER,
+        user_id=context.actor_user_id,
+        workspace_id=context.workspace_id,
+    ) as session:
+        await session.execute(
+            update(AuthorReply)
+            .where(AuthorReply.id == reply_id, AuthorReply.state == "pending")
+            .values(state=state)
+        )
 
 
 async def _enqueue_reply(
     session: AsyncSession,
     *,
     job: LeasedJob,
+    context: _EventContext,
     event_id: uuid.UUID,
     chat_id: int,
     replies: list[Reply],
 ) -> uuid.UUID | None:
-    """Поставить долговечную доставку ответа (AUD-11).
+    """Поставить долговечную доставку ответа (AUD-11, R-04).
 
     Повтор доставки не запускает бизнес-команду заново и не может создать
-    вторую финансовую запись.
+    вторую финансовую запись. Полезная нагрузка задачи не содержит текста.
     """
+    reply_id = await _store_reply(
+        session, context=context, event_id=event_id, chat_id=chat_id, replies=replies
+    )
+    payload: dict[str, Any] = {
+        "inbound_event_id": str(event_id),
+        "chat_id": chat_id,
+        "schema_version": 2,
+    }
+    if reply_id is not None:
+        payload["author_reply_id"] = str(reply_id)
+    else:
+        # Ответ вне бюджета не содержит его данных: приветствие, подсказка
+        # для группового чата и приглашение создать бюджет.
+        payload["messages"] = [
+            {"text": reply.text, "buttons": reply.keyboard()} for reply in replies if reply.text
+        ]
     return await queue.enqueue(
         session,
         job_type="deliver_reply",
@@ -244,7 +321,7 @@ async def _enqueue_reply(
         queue_class="interactive",
         workspace_id=job.workspace_id,
         subject_id=event_id,
-        payload=_reply_payload(event_id, chat_id, replies),
+        payload=payload,
         correlation_id=job.correlation_id,
     )
 
@@ -301,7 +378,7 @@ async def _settle_delivery(
             )
 
 
-async def _delivery_allowed(settings: Settings, event_id: uuid.UUID) -> bool:
+async def _delivery_allowed(settings: Settings, context: _EventContext) -> bool:
     """Сохраняется ли право получателя на этот приватный ответ (R-04).
 
     Отложенная доставка проверяет адресата заново: исключённый участник,
@@ -311,7 +388,6 @@ async def _delivery_allowed(settings: Settings, event_id: uuid.UUID) -> bool:
     from fintracker.core.context import MembershipStatus, WorkspaceState
     from fintracker.db.models.access import Membership, Workspace
 
-    context = await _read_context(settings, event_id)
     if context.actor_user_id is None:
         return True
     if context.workspace_id is None:
@@ -351,14 +427,35 @@ async def handle_deliver_reply(settings: Settings, job: LeasedJob) -> None:
     Перед отправкой заново проверяется право получателя на эти данные (R-04).
     """
     chat_id = int(job.payload["chat_id"])
-    messages = list(job.payload.get("messages") or [])
     raw_event = job.payload.get("inbound_event_id")
     event_id = uuid.UUID(str(raw_event)) if raw_event is not None else None
 
-    if event_id is not None and not await _delivery_allowed(settings, event_id):
-        logger.info("reply_delivery_revoked", job_id=str(job.id), event_id=str(event_id))
-        await _mark_state(settings, event_id, "ignored")
-        return
+    context: _EventContext | None = None
+    if event_id is not None:
+        context = await _read_context(settings, event_id)
+        if not await _delivery_allowed(settings, context):
+            logger.info("reply_delivery_revoked", job_id=str(job.id), event_id=str(event_id))
+            reply_id = job.payload.get("author_reply_id")
+            if reply_id is not None:
+                await _close_reply(
+                    settings,
+                    context=context,
+                    reply_id=uuid.UUID(str(reply_id)),
+                    state="cancelled",
+                )
+            await _mark_state(settings, event_id, "ignored")
+            return
+
+    raw_reply_id = job.payload.get("author_reply_id")
+    if raw_reply_id is not None and context is not None:
+        messages = await _load_reply(
+            settings, context=context, reply_id=uuid.UUID(str(raw_reply_id))
+        )
+        if messages is None:
+            logger.info("reply_already_settled", job_id=str(job.id))
+            return
+    else:
+        messages = [dict(item) for item in (job.payload.get("messages") or [])]
 
     sender = build_sender(settings)
     for item in messages:
@@ -373,6 +470,10 @@ async def handle_deliver_reply(settings: Settings, job: LeasedJob) -> None:
         raise TemporarilyUnavailable(
             f"Доставка ответа не удалась: {result.error}",
             retry_after=float(result.retry_after or 0) or None,
+        )
+    if raw_reply_id is not None and context is not None:
+        await _close_reply(
+            settings, context=context, reply_id=uuid.UUID(str(raw_reply_id)), state="sent"
         )
     if event_id is not None:
         await _settle_delivery(settings, event_id=event_id, reply_job_id=None)
@@ -418,9 +519,19 @@ async def handle_process_inbound_event(settings: Settings, job: LeasedJob) -> No
             await _mark_state(settings, event_id, "processed")
             return
         hint = [Reply(text=GROUP_HINT)]
-        async with session_scope(settings, RuntimeRole.WORKER) as session:
+        async with session_scope(
+            settings,
+            RuntimeRole.WORKER,
+            user_id=context.actor_user_id,
+            workspace_id=context.workspace_id,
+        ) as session:
             hint_job = await _enqueue_reply(
-                session, job=job, event_id=event_id, chat_id=context.chat_id, replies=hint
+                session,
+                job=job,
+                context=context,
+                event_id=event_id,
+                chat_id=context.chat_id,
+                replies=hint,
             )
         if await _send_now(settings, chat_id=context.chat_id, replies=hint):
             await _settle_delivery(settings, event_id=event_id, reply_job_id=hint_job)
@@ -444,7 +555,12 @@ async def handle_process_inbound_event(settings: Settings, job: LeasedJob) -> No
         replies = [Reply(text=exc.message)]
 
     reply_job: uuid.UUID | None = None
-    async with session_scope(settings, RuntimeRole.WORKER) as session:
+    async with session_scope(
+        settings,
+        RuntimeRole.WORKER,
+        user_id=context.actor_user_id,
+        workspace_id=context.workspace_id,
+    ) as session:
         # Результат принимается только при действующей аренде (ADR-05, AUD-03).
         if not await queue.lease_is_valid(session, job):
             logger.warning("lease_expired_skip_result", job_id=str(job.id))
@@ -465,6 +581,7 @@ async def handle_process_inbound_event(settings: Settings, job: LeasedJob) -> No
             reply_job = await _enqueue_reply(
                 session,
                 job=job,
+                context=context,
                 event_id=event_id,
                 chat_id=context.chat_id,
                 replies=replies,

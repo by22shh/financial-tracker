@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import datetime as dt
+import json
 import uuid
 from dataclasses import replace
 from zoneinfo import ZoneInfo
@@ -39,7 +40,7 @@ from fintracker.db.models.access import (
     Workspace,
 )
 from fintracker.db.models.ledger import Transaction, TransactionRevision
-from fintracker.db.models.platform import Attachment, Job
+from fintracker.db.models.platform import Attachment, AuthorReply, Job
 from fintracker.db.session import RuntimeRole, session_scope
 from fintracker.db.uow import UnitOfWork
 from fintracker.infra.ai.openai_client import ScriptedAIProvider, set_provider_override
@@ -314,6 +315,49 @@ async def test_deferred_reply_is_not_sent_after_member_removal(
         )
     finally:
         set_sender_override(None)
+
+
+async def test_prepared_reply_text_is_not_in_global_job(owner_session, test_settings) -> None:
+    """R-04, ADR-06: подготовленный ответ не лежит в глобальной таблице задач."""
+    f = await prepared(owner_session)
+    async with session_scope(test_settings, RuntimeRole.OWNER) as session:
+        await post_transaction(
+            session,
+            UnitOfWork(session=session, correlation_id="seed"),
+            actor=f.actor,
+            spec=expense_spec(f, amount=rub(98765), category="Продукты"),
+            origin="form",
+        )
+    set_sender_override(RecordingSender(fail_for_chats={f.user.telegram_user_id}))
+    try:
+        job = await leased(test_settings, incoming(f, "/history"))
+        await process_event.handle_process_inbound_event(test_settings, job)
+    finally:
+        set_sender_override(None)
+
+    async with session_scope(test_settings, RuntimeRole.OWNER) as session:
+        payloads = (
+            await session.scalars(select(Job.payload).where(Job.job_type == "deliver_reply"))
+        ).all()
+    assert payloads, "долговечная доставка ответа не создана"
+    for payload in payloads:
+        body = json.dumps(payload, ensure_ascii=False)
+        assert "98765" not in body.replace(" ", "").replace("\u00a0", ""), (
+            f"сумма операции попала в глобальную таблицу задач: {body}"
+        )
+        assert "Продукты" not in body, f"статья бюджета попала в задачу: {body}"
+        assert payload.get("author_reply_id"), "задача должна ссылаться на изолированную строку"
+
+    # Сам текст сохранён и виден только владельцу в его бюджете.
+    async with session_scope(
+        test_settings, RuntimeRole.API, user_id=f.user.id, workspace_id=f.workspace.id
+    ) as session:
+        stored = (await session.scalars(select(AuthorReply))).all()
+    assert stored and stored[0].state == "pending"
+    async with session_scope(test_settings, RuntimeRole.WORKER) as session:
+        # Без контекста бюджета строка ответа не видна (ADR-06).
+        invisible = (await session.scalars(select(AuthorReply))).all()
+    assert not invisible, "ответ виден без контекста бюджета"
 
 
 # --- R-06 -------------------------------------------------------------------

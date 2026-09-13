@@ -135,7 +135,7 @@ def owner_in_workspace_policy_sql(table: str) -> list[str]:
     Для ``candidates``/``clarifications`` владелец определяется через draft.
     """
     ws = f"{table}.workspace_id::text = current_setting('app.workspace_id', true)"
-    if table == "drafts":
+    if table in {"drafts", "author_replies"}:
         owner = f"{table}.owner_user_id::text = current_setting('app.user_id', true)"
     else:
         owner = (

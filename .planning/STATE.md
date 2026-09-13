@@ -12,7 +12,7 @@
 | Роли БД | `fintracker_owner` (миграции), `fintracker_api`, `fintracker_worker` (NOBYPASSRLS) |
 | Зависимости | aiogram 3.31, FastAPI 0.115.14, Pydantic 2.13.5, SQLAlchemy 2.0.52, psycopg 3.3.5, Alembic 1.20, httpx 0.28.1, openpyxl 3.1.5, structlog 25.5 |
 | Проверки | ruff 0.15.22, mypy 1.20.2 (strict), pytest 8.4.2, hypothesis 6.168 |
-| Миграции | 0001 initial → 0002 RLS → 0003 bootstrap → 0004 admin trigger → 0005 invite lookup → 0006 порядок операций → 0007 индексы → 0008 чтение схемы → 0009 служебные функции обслуживания → 0010 идентичность ввода и файлы |
+| Миграции | 0001 initial → 0002 RLS → 0003 bootstrap → 0004 admin trigger → 0005 invite lookup → 0006 порядок операций → 0007 индексы → 0008 чтение схемы → 0009 служебные функции обслуживания → 0010 идентичность ввода и файлы → 0011 изолированный ответ автору |
 
 ## Сделано и проверено
 

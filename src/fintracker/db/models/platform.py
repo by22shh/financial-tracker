@@ -187,6 +187,34 @@ class Draft(Base):
     )
 
 
+class AuthorReply(Base):
+    """Подготовленный ответ автору до его доставки (FR-53, ADR-06, R-04).
+
+    Текст ответа содержит суммы и статьи бюджета, поэтому хранится в строке,
+    изолированной по бюджету и владельцу, а не в глобальной таблице задач.
+    Задача доставки ссылается только на идентификатор.
+    """
+
+    __tablename__ = "author_replies"
+
+    id: Mapped[uuid.UUID] = pk_uuid()
+    workspace_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    owner_user_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    inbound_event_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
+    chat_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    messages: Mapped[list[Any]] = mapped_column(JSONB, nullable=False)
+    state: Mapped[str] = mapped_column(String(16), nullable=False, server_default=text("'pending'"))
+    created_at: Mapped[dt.datetime] = now_server()
+    delete_after: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (
+        CheckConstraint("state IN ('pending','sent','cancelled')", name="state_allowed"),
+        UniqueConstraint("workspace_id", "id"),
+        Index("ix_author_replies_event", "workspace_id", "inbound_event_id"),
+        Index("ix_author_replies_retention", "delete_after"),
+    )
+
+
 class Candidate(Base):
     """Предполагаемое денежное событие внутри черновика (ADR-08)."""
 
