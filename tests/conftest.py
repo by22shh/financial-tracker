@@ -157,7 +157,16 @@ def clock() -> FixedClock:
 
 @pytest_asyncio.fixture
 async def owner_session(clean_db: None, test_settings: Settings) -> AsyncIterator[AsyncSession]:
-    """Сессия владельца схемы — для подготовки данных проверок."""
+    """Сессия владельца схемы — для подготовки данных проверок.
+
+    Транзакция не удерживается контекстом: проверка может зафиксировать
+    подготовленные данные, чтобы их увидели отдельные соединения приложения.
+    """
     factory = get_sessionmaker(test_settings, RuntimeRole.OWNER)
-    async with factory() as session, session.begin():
-        yield session
+    async with factory() as session:
+        try:
+            yield session
+        finally:
+            # Данные проверки не нужны после неё: следующая начинается с
+            # очистки. Незавершённая транзакция закрывается без ошибки.
+            await session.rollback()

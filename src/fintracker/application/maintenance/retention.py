@@ -12,19 +12,15 @@ from __future__ import annotations
 
 import datetime as dt
 
-from sqlalchemy import delete, select, text, update
+from sqlalchemy import and_, delete, or_, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fintracker.application.platform.queue import LeasedJob
 from fintracker.config import Settings
 from fintracker.core.logging import get_logger
-from fintracker.db.models.platform import (
-    Attachment,
-    ExportFile,
-    InboundPayload,
-    NotificationDelivery,
-)
+from fintracker.db.models.platform import InboundPayload, NotificationDelivery
 from fintracker.db.session import RuntimeRole, session_scope
+from fintracker.infra.storage import ObjectStorage
 
 logger = get_logger("maintenance.retention")
 
@@ -61,27 +57,20 @@ STAGING_MAX_AGE = dt.timedelta(hours=6)
 
 
 async def sweep_attachments(session: AsyncSession, settings: Settings, now: dt.datetime) -> int:
-    """Довести удаление вложений до конца; повтор безопасен (ADR-11, AR-27).
+    """Довести удаление вложений до конца; повтор безопасен (ADR-11, AR-27, R-09).
 
-    Незавершённые попытки удаления и зависшие staging подхватываются
-    следующим проходом: сбой хранилища не оставляет файл навсегда.
+    Строки вложений защищены RLS и не видны фоновой роли без контекста, поэтому
+    перечисление и фиксация состояния идут через узкие служебные функции
+    (ADR-06, SEC-02). Незавершённые попытки удаления и зависшие staging
+    подхватываются следующим проходом: сбой хранилища не оставляет файл навсегда.
     """
-    await session.execute(
-        update(Attachment)
-        .where(Attachment.delete_after <= now, Attachment.state == "ready")
-        .values(state="deleting")
-    )
-    await session.execute(
-        update(Attachment)
-        .where(
-            Attachment.state == "staging",
-            Attachment.created_at <= now - STAGING_MAX_AGE,
-        )
-        .values(state="deleting")
-    )
     pending = (
         await session.execute(
-            select(Attachment.id, Attachment.storage_key).where(Attachment.state == "deleting")
+            text(
+                "SELECT id, storage_key FROM maintenance_due_attachments"
+                "(:now, :staging_cutoff, :limit)"
+            ),
+            {"now": now, "staging_cutoff": now - STAGING_MAX_AGE, "limit": 500},
         )
     ).all()
     if not pending:
@@ -91,43 +80,56 @@ async def sweep_attachments(session: AsyncSession, settings: Settings, now: dt.d
     storage = build_storage(settings.storage)
     removed = 0
     for attachment_id, storage_key in pending:
-        try:
-            await storage.delete(storage_key)
-        except Exception as exc:  # сбой хранилища не прерывает весь проход
-            logger.warning(
-                "attachment_delete_failed",
-                attachment_id=str(attachment_id),
-                error=str(exc)[:200],
-            )
+        if not await _drop_object(storage, storage_key, attachment_id=attachment_id):
             continue
         await session.execute(
-            update(Attachment).where(Attachment.id == attachment_id).values(state="deleted")
+            text("SELECT maintenance_finish_attachment(:id)"), {"id": attachment_id}
         )
         removed += 1
     return removed
 
 
-async def sweep_staging_attachments(session: AsyncSession, now: dt.datetime) -> int:
-    """Непривязанные staging объекты очищаются через 24 часа (RET-10)."""
-    cutoff = now - dt.timedelta(hours=24)
-    result = await session.execute(
-        update(Attachment)
-        .where(Attachment.state == "staging", Attachment.created_at <= cutoff)
-        .values(state="deleting")
-        .returning(Attachment.id)
-    )
-    return len(result.scalars().all())
+async def _drop_object(
+    storage: ObjectStorage, storage_key: str | None, *, attachment_id: object
+) -> bool:
+    """Удалить объект хранилища; сбой не прерывает весь проход."""
+    if not storage_key:
+        return True
+    try:
+        await storage.delete(storage_key)
+    except Exception as exc:  # сбой хранилища не прерывает весь проход
+        logger.warning(
+            "attachment_delete_failed",
+            attachment_id=str(attachment_id),
+            error=str(exc)[:200],
+        )
+        return False
+    return True
 
 
-async def sweep_exports(session: AsyncSession, now: dt.datetime) -> int:
-    """Файлы экспорта живут 24 часа в серверном хранилище (RET-07)."""
-    result = await session.execute(
-        update(ExportFile)
-        .where(ExportFile.delete_after <= now, ExportFile.state == "ready")
-        .values(state="deleted", storage_key=None)
-        .returning(ExportFile.id)
-    )
-    return len(result.scalars().all())
+async def sweep_exports(session: AsyncSession, settings: Settings, now: dt.datetime) -> int:
+    """Файлы экспорта живут 24 часа в серверном хранилище (RET-07, R-09).
+
+    Объект удаляется до очистки ссылки: иначе ключ теряется, а файл остаётся.
+    """
+    due = (
+        await session.execute(
+            text("SELECT id, storage_key FROM maintenance_due_exports(:now, :limit)"),
+            {"now": now, "limit": 500},
+        )
+    ).all()
+    if not due:
+        return 0
+    from fintracker.infra.storage import build_storage
+
+    storage = build_storage(settings.storage)
+    removed = 0
+    for export_id, storage_key in due:
+        if not await _drop_object(storage, storage_key, attachment_id=export_id):
+            continue
+        await session.execute(text("SELECT maintenance_finish_export(:id)"), {"id": export_id})
+        removed += 1
+    return removed
 
 
 async def sweep_stale_deliveries(session: AsyncSession, now: dt.datetime) -> int:
@@ -145,6 +147,35 @@ async def sweep_stale_deliveries(session: AsyncSession, now: dt.datetime) -> int
     return len(result.scalars().all())
 
 
+# Завершённые задачи — технический журнал без финансового текста (RET-05).
+JOB_DONE_RETENTION = dt.timedelta(days=7)
+JOB_FAILED_RETENTION = dt.timedelta(days=30)
+
+
+async def sweep_finished_jobs(session: AsyncSession, now: dt.datetime) -> int:
+    """Удалить отработавшие строки очереди по сроку (RET-05).
+
+    Планировщик создаёт периодические задачи с ключом на интервал времени,
+    поэтому завершённые строки нужно убирать, иначе таблица растёт без предела.
+    """
+    from fintracker.db.models.platform import Job
+
+    result = await session.execute(
+        delete(Job)
+        .where(
+            or_(
+                and_(
+                    Job.state.in_(("succeeded", "cancelled")),
+                    Job.updated_at <= now - JOB_DONE_RETENTION,
+                ),
+                and_(Job.state == "failed", Job.updated_at <= now - JOB_FAILED_RETENTION),
+            )
+        )
+        .returning(Job.id)
+    )
+    return len(result.scalars().all())
+
+
 async def handle_retention_sweep(settings: Settings, job: LeasedJob) -> None:
     """Периодическая очистка по срокам хранения."""
     async with session_scope(settings, RuntimeRole.WORKER) as session:
@@ -154,22 +185,25 @@ async def handle_retention_sweep(settings: Settings, job: LeasedJob) -> None:
             "inbound_payloads": await sweep_inbound_payloads(session, now),
             "draft_sources": cleared,
             "expired_drafts": expired,
-            "staging_attachments": await sweep_staging_attachments(session, now),
-            "exports": await sweep_exports(session, now),
+            "exports": await sweep_exports(session, settings, now),
             "stale_deliveries": await sweep_stale_deliveries(session, now),
+            "finished_jobs": await sweep_finished_jobs(session, now),
         }
         stats["attachments"] = await sweep_attachments(session, settings, now)
-        stats["purged_workspaces"] = await purge_deleted_workspaces(session, now)
+        stats["purged_workspaces"] = await purge_deleted_workspaces(session, settings, now)
     if any(stats.values()):
         logger.info("retention_sweep", **stats)
 
 
-async def purge_deleted_workspaces(session: AsyncSession, now: dt.datetime) -> int:
-    """Очистить финансовые данные удалённых бюджетов по сроку (ТЗ §24, AUD-15).
+async def purge_deleted_workspaces(
+    session: AsyncSession, settings: Settings, now: dt.datetime
+) -> int:
+    """Очистить данные и файлы удалённых бюджетов по сроку (ТЗ §24, AUD-15, R-09).
 
-    Удаление выполняется узкой служебной функцией: обычная runtime роль не
-    получает права произвольного удаления журнала (SEC-02). Запись об удалении
-    сохраняется как tombstone для безопасного восстановления.
+    Удаление выполняется узкими служебными функциями: обычная runtime роль не
+    получает права произвольного удаления журнала (SEC-02). Сначала удаляются
+    объекты хранилища, затем строки: покупка файлов не переживает бюджет.
+    Запись об удалении сохраняется как tombstone для безопасного восстановления.
     """
     from fintracker.db.models.access import BudgetDeletionRecord
 
@@ -186,7 +220,30 @@ async def purge_deleted_workspaces(session: AsyncSession, now: dt.datetime) -> i
         .all()
     )
     purged = 0
+    from fintracker.infra.storage import build_storage
+
+    storage = build_storage(settings.storage)
     for record in due:
+        files = (
+            await session.execute(
+                text("SELECT id, storage_key, file_kind FROM maintenance_workspace_files(:ws)"),
+                {"ws": record.workspace_id},
+            )
+        ).all()
+        blocked = False
+        for file_id, storage_key, file_kind in files:
+            if await _drop_object(storage, storage_key, attachment_id=file_id):
+                if file_kind == "attachment":
+                    await session.execute(
+                        text("SELECT maintenance_finish_attachment(:id)"), {"id": file_id}
+                    )
+                continue
+            blocked = True
+        if blocked:
+            # Очистка не подтверждается, пока объекты не удалены: следующий
+            # проход повторит попытку.
+            logger.warning("workspace_purge_deferred", workspace_id=str(record.workspace_id))
+            continue
         removed = (
             await session.execute(
                 text("SELECT purge_workspace_data(:workspace)"),
@@ -200,5 +257,6 @@ async def purge_deleted_workspaces(session: AsyncSession, now: dt.datetime) -> i
             "workspace_purged",
             workspace_id=str(record.workspace_id),
             removed_rows=int(removed),
+            removed_files=len(files),
         )
     return purged

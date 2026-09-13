@@ -22,6 +22,7 @@ from fintracker.core.errors import (
     TemporarilyUnavailable,
     VersionConflict,
 )
+from fintracker.core.fencing import fence_is_valid
 from fintracker.db.models.access import Workspace
 from fintracker.db.models.platform import OutboxEvent
 
@@ -102,6 +103,10 @@ class UnitOfWork:
             raise TemporarilyUnavailable("Бюджет находится в карантине после восстановления")
         if actor is not None:
             await self.check_actor(actor, require_admin=require_admin)
+        if not await fence_is_valid(self.session):
+            # Аренда фоновой задачи потеряна во время выполнения команды:
+            # результат не фиксируется этим исполнителем (ADR-05, R-02).
+            raise TemporarilyUnavailable("Право на выполнение задачи утрачено, запись не сохранена")
         return LockedWorkspace(
             id=row.id,
             name=row.name,

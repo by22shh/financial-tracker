@@ -1,0 +1,28 @@
+{
+  "measured_at": "2026-09-13T14:40:31.063072+00:00",
+  "source_database": "fintracker_reaudit_a63cxl89",
+  "restored_database": "fintracker_reaudit_a63cxl89_restored",
+  "dump_seconds": 0.17,
+  "dump_bytes": 439879,
+  "restore_seconds": 0.43,
+  "total_seconds": 1.63,
+  "rpo_seconds_measured": 0.17,
+  "rpo_limit_seconds": 3600,
+  "rto_seconds_measured": 1.63,
+  "rto_limit_seconds": 14400,
+  "invariant_failures": {},
+  "restored_counts": {
+    "transactions": 20,
+    "transaction_revisions": 20,
+    "allocations": 20,
+    "account_entries": 0
+  },
+  "source_counts": {
+    "transactions": 20,
+    "transaction_revisions": 20,
+    "allocations": 20,
+    "account_entries": 0
+  },
+  "row_counts_match": true,
+  "risk_tail": "Учение выполнено на локальном снимке без WAL архива: непрерывный PITR и офсайт-копия требуют выбранного хостинга (BL-04)."
+}

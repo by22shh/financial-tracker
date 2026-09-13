@@ -1,0 +1,12 @@
+{
+  "commit": "47cad620b48e0fff9c6481d78c4c867eb500eb86",
+  "snapshot": "/var/folders/gp/36jzrv8s3nv8hhml14b9k9740000gq/T/fintracker-audit-repro-h7o9jtow",
+  "test_database": "fintracker_audit_repro_72698604ae7f",
+  "local_pg_port": 55432,
+  "expected_on_audited_commit": {
+    "tests": 21,
+    "failures": 21,
+    "passed": 0
+  },
+  "note": "No live AI, ASR or Telegram requests; snapshot retained for inspection."
+}

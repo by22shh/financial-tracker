@@ -25,6 +25,7 @@ from fintracker.application.platform import queue
 from fintracker.application.platform.queue import LeasedJob
 from fintracker.config import Settings
 from fintracker.core.errors import DomainError, NotFound, TemporarilyUnavailable
+from fintracker.core.fencing import execution_fence
 from fintracker.core.logging import get_logger
 from fintracker.db.models.platform import InboundEvent, InboundPayload
 from fintracker.db.session import RuntimeRole, session_scope
@@ -110,6 +111,7 @@ def _from_message(
                 kind="document",
                 size_bytes=document.get("file_size"),
                 mime_type=document.get("mime_type"),
+                file_name=document.get("file_name"),
             )
         )
 
@@ -158,6 +160,7 @@ class _EventContext:
 
     actor_user_id: uuid.UUID | None
     workspace_id: uuid.UUID | None
+    membership_generation: uuid.UUID | None
     chat_id: int | None
     chat_type: str | None
     state: str
@@ -184,6 +187,7 @@ async def _read_context(settings: Settings, event_id: uuid.UUID) -> _EventContex
                 select(
                     InboundEvent.actor_user_id,
                     InboundEvent.workspace_id,
+                    InboundEvent.membership_generation,
                     InboundEvent.chat_id,
                     InboundEvent.chat_type,
                     InboundEvent.state,
@@ -195,9 +199,10 @@ async def _read_context(settings: Settings, event_id: uuid.UUID) -> _EventContex
     return _EventContext(
         actor_user_id=row[0],
         workspace_id=row[1],
-        chat_id=row[2],
-        chat_type=row[3],
-        state=row[4],
+        membership_generation=row[2],
+        chat_id=row[3],
+        chat_type=row[4],
+        state=row[5],
     )
 
 
@@ -296,13 +301,65 @@ async def _settle_delivery(
             )
 
 
+async def _delivery_allowed(settings: Settings, event_id: uuid.UUID) -> bool:
+    """Сохраняется ли право получателя на этот приватный ответ (R-04).
+
+    Отложенная доставка проверяет адресата заново: исключённый участник,
+    сменившееся поколение членства, карантин, идущее изменение доступа и
+    удаление бюджета отменяют отправку подготовленного финансового текста.
+    """
+    from fintracker.core.context import MembershipStatus, WorkspaceState
+    from fintracker.db.models.access import Membership, Workspace
+
+    context = await _read_context(settings, event_id)
+    if context.actor_user_id is None:
+        return True
+    if context.workspace_id is None:
+        # Ответ без бюджета не содержит финансовых данных бюджета.
+        return True
+    async with session_scope(
+        settings, RuntimeRole.WORKER, workspace_id=context.workspace_id
+    ) as session:
+        row = (
+            await session.execute(
+                select(Membership.status, Membership.generation).where(
+                    Membership.workspace_id == context.workspace_id,
+                    Membership.user_id == context.actor_user_id,
+                )
+            )
+        ).one_or_none()
+        workspace = (
+            await session.execute(
+                select(Workspace.state, Workspace.quarantined, Workspace.security_fence).where(
+                    Workspace.id == context.workspace_id
+                )
+            )
+        ).one_or_none()
+    if row is None or row[0] != MembershipStatus.ACTIVE.value:
+        return False
+    if context.membership_generation is not None and row[1] != context.membership_generation:
+        return False
+    if workspace is None or workspace[0] != WorkspaceState.ACTIVE.value:
+        return False
+    return not (workspace[1] or workspace[2] is not None)
+
+
 async def handle_deliver_reply(settings: Settings, job: LeasedJob) -> None:
     """Отправить подготовленный ответ автору с повтором при сбое (AUD-11).
 
     Задача не повторяет бизнес-команду: она отправляет уже сохранённый текст.
+    Перед отправкой заново проверяется право получателя на эти данные (R-04).
     """
     chat_id = int(job.payload["chat_id"])
     messages = list(job.payload.get("messages") or [])
+    raw_event = job.payload.get("inbound_event_id")
+    event_id = uuid.UUID(str(raw_event)) if raw_event is not None else None
+
+    if event_id is not None and not await _delivery_allowed(settings, event_id):
+        logger.info("reply_delivery_revoked", job_id=str(job.id), event_id=str(event_id))
+        await _mark_state(settings, event_id, "ignored")
+        return
+
     sender = build_sender(settings)
     for item in messages:
         result = await sender.send_message(
@@ -317,9 +374,8 @@ async def handle_deliver_reply(settings: Settings, job: LeasedJob) -> None:
             f"Доставка ответа не удалась: {result.error}",
             retry_after=float(result.retry_after or 0) or None,
         )
-    event_id = job.payload.get("inbound_event_id")
     if event_id is not None:
-        await _settle_delivery(settings, event_id=uuid.UUID(str(event_id)), reply_job_id=None)
+        await _settle_delivery(settings, event_id=event_id, reply_job_id=None)
 
 
 async def handle_process_inbound_event(settings: Settings, job: LeasedJob) -> None:
@@ -378,7 +434,10 @@ async def handle_process_inbound_event(settings: Settings, job: LeasedJob) -> No
             return
 
     try:
-        replies = await handle(settings, message)
+        # Право на результат действует всё время выполнения команды: потеря
+        # аренды отменяет запись в той же транзакции (ADR-05, R-02).
+        async with execution_fence(queue.lease_fence(job)):
+            replies = await handle(settings, message)
     except DomainError as exc:
         # Ошибка домена превращается в понятный текст без раскрытия деталей.
         logger.info("inbound_domain_error", code=exc.code.value, event_id=str(event_id))

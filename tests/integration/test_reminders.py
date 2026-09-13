@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime as dt
 import uuid
+from zoneinfo import ZoneInfo
 
 import pytest
 from sqlalchemy import select
@@ -428,13 +429,16 @@ async def test_a161_quiet_hours_are_personal_for_each_recipient(
                 generation=new_generation(),
             )
         )
+    # Окна задаются относительно текущего часа бюджета: проверка не зависит
+    # от времени суток запуска, но сравнивает те же два режима.
+    local_hour = dt.datetime.now(ZoneInfo("Asia/Novosibirsk")).hour
     owner_session.add(
         NotificationPreference(
             user_id=quiet_user.id,
             workspace_id=fixture.workspace.id,
             settings={},
-            quiet_hours_start=0,
-            quiet_hours_end=23,
+            quiet_hours_start=local_hour,
+            quiet_hours_end=(local_hour + 2) % 24,
             timezone="Asia/Novosibirsk",
         )
     )
@@ -443,8 +447,8 @@ async def test_a161_quiet_hours_are_personal_for_each_recipient(
             user_id=open_user.id,
             workspace_id=fixture.workspace.id,
             settings={},
-            quiet_hours_start=3,
-            quiet_hours_end=4,
+            quiet_hours_start=(local_hour + 1) % 24,
+            quiet_hours_end=(local_hour + 2) % 24,
             timezone="Asia/Novosibirsk",
         )
     )

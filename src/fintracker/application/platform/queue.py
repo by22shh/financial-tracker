@@ -18,6 +18,7 @@ from sqlalchemy import func, or_, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fintracker.config import Settings
+from fintracker.core.fencing import FenceCheck
 from fintracker.core.logging import get_logger
 from fintracker.db.models.platform import Job
 from fintracker.db.session import RuntimeRole, session_scope
@@ -170,7 +171,11 @@ async def claim_jobs(
 
 
 async def renew_lease(settings: Settings, job: LeasedJob) -> bool:
-    """Продлить аренду; False означает, что задача переарендована (AR-04)."""
+    """Продлить действующую аренду; False означает её утрату (AR-04, R-02).
+
+    Истёкшая аренда не продлевается: исполнитель, чей срок уже прошёл, не
+    получает право продолжать работу, даже если задачу ещё никто не перехватил.
+    """
     async with session_scope(settings, RuntimeRole.WORKER) as session:
         now = (await session.execute(text("SELECT now()"))).scalar_one()
         renewed = (
@@ -180,6 +185,7 @@ async def renew_lease(settings: Settings, job: LeasedJob) -> bool:
                     Job.id == job.id,
                     Job.lease_token == job.lease_token,
                     Job.state == "running",
+                    Job.lease_until > now,
                 )
                 .values(lease_until=now + dt.timedelta(seconds=settings.limits.job_lease_seconds))
                 .returning(Job.id)
@@ -209,6 +215,15 @@ async def lease_is_valid(session: AsyncSession, job: LeasedJob) -> bool:
     lease_until = row[2]
     now = row[3]
     return bool(lease_until is not None and lease_until > now)
+
+
+def lease_fence(job: LeasedJob) -> FenceCheck:
+    """Право на результат по действующей аренде задачи (ADR-05, R-02)."""
+
+    async def check(session: AsyncSession) -> bool:
+        return await lease_is_valid(session, job)
+
+    return check
 
 
 async def complete(settings: Settings, job: LeasedJob) -> bool:

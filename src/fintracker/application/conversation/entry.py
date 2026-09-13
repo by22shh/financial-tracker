@@ -16,6 +16,7 @@ from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fintracker.application.catalog.directory import resolve_person_alias
@@ -445,17 +446,30 @@ def first_question(candidates: list[CandidateFields]) -> str | None:
     return None
 
 
+class DraftAlreadyExists(Exception):
+    """Для этого сообщения участника черновик уже существует (R-01).
+
+    Не доменная ошибка пользователя: вызывающий код показывает прежний
+    результат вместо создания второй записи.
+    """
+
+    def __init__(self, draft_id: uuid.UUID, state: str) -> None:
+        super().__init__(str(draft_id))
+        self.draft_id = draft_id
+        self.state = state
+
+
 async def find_message_draft(
     session: AsyncSession,
     *,
     workspace_id: uuid.UUID,
     owner_user_id: uuid.UUID,
-    logical_message_id: uuid.UUID,
+    source_message_key: str,
 ) -> Draft | None:
-    """Черновик, уже созданный для этого входящего события (AUD-02).
+    """Черновик, уже созданный для этого сообщения участника (AUD-02, R-01).
 
-    Повтор задачи после сбоя ответа должен находить прежний результат, а не
-    создавать вторую запись.
+    Повтор задачи после сбоя ответа и редакция того же сообщения должны
+    находить прежний результат, а не создавать вторую запись.
     """
     return (
         await session.execute(
@@ -463,7 +477,7 @@ async def find_message_draft(
             .where(
                 Draft.workspace_id == workspace_id,
                 Draft.owner_user_id == owner_user_id,
-                Draft.logical_message_id == logical_message_id,
+                Draft.source_message_key == source_message_key,
                 Draft.state != "cancelled",
             )
             .order_by(Draft.created_at.desc())
@@ -481,16 +495,32 @@ async def create_draft_with_candidates(
     raw_text: str | None,
     extraction: ExtractionResult,
     logical_message_id: uuid.UUID | None = None,
+    source_message_key: str | None = None,
     source_fingerprint: str | None = None,
 ) -> tuple[Draft, list[Candidate]]:
-    """Сохранить черновик и кандидатов с постоянными ID (ADR-08)."""
+    """Сохранить черновик и кандидатов с постоянными ID (ADR-08).
+
+    При заданном ключе исходного сообщения вставка конкурирует за уникальный
+    индекс: параллельное исполнение одного входа не создаёт второй черновик
+    и получает ``DraftAlreadyExists`` с прежним идентификатором (R-01).
+    """
     workspace_id = actor.require_workspace()
     now = dt.datetime.now(dt.UTC)
+    if source_message_key is not None:
+        existing = await find_message_draft(
+            session,
+            workspace_id=workspace_id,
+            owner_user_id=actor.user_id,
+            source_message_key=source_message_key,
+        )
+        if existing is not None:
+            raise DraftAlreadyExists(existing.id, existing.state)
     draft = Draft(
         workspace_id=workspace_id,
         owner_user_id=actor.user_id,
         owner_membership_generation=actor.membership_generation,
         logical_message_id=logical_message_id,
+        source_message_key=source_message_key,
         source_kind=source_kind,
         state="needs_clarification" if extraction.question else "ready",
         raw_text=raw_text,
@@ -499,7 +529,23 @@ async def create_draft_with_candidates(
         delete_raw_after=now + dt.timedelta(days=7),
     )
     session.add(draft)
-    await session.flush()
+    try:
+        await session.flush()
+    except IntegrityError as exc:
+        if source_message_key is None:
+            raise
+        # Второй исполнитель дошёл до вставки одновременно: уникальный индекс
+        # оставляет ровно один черновик на сообщение участника (R-01).
+        await session.rollback()
+        existing = await find_message_draft(
+            session,
+            workspace_id=workspace_id,
+            owner_user_id=actor.user_id,
+            source_message_key=source_message_key,
+        )
+        if existing is None:  # pragma: no cover - конфликт без строки невозможен
+            raise
+        raise DraftAlreadyExists(existing.id, existing.state) from exc
 
     rows: list[Candidate] = []
     for index, fields in enumerate(extraction.candidates, start=1):

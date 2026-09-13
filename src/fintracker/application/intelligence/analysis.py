@@ -15,6 +15,7 @@ import json
 import uuid
 from dataclasses import dataclass
 from decimal import Decimal
+from typing import Any
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
@@ -40,6 +41,7 @@ from fintracker.db.models.intelligence import (
     RecommendationFeedback,
 )
 from fintracker.db.models.planning import BudgetLine, BudgetVersion
+from fintracker.db.session import RuntimeRole, session_scope
 from fintracker.db.uow import UnitOfWork
 from fintracker.infra.ai.openai_client import build_provider, upper_bound_cost
 from fintracker.infra.ai.schemas import RecommendationResponse
@@ -298,113 +300,303 @@ def validate_cards(
     return accepted, rejected
 
 
-async def run_analysis(
+@dataclass(frozen=True, slots=True)
+class _Preparation:
+    """Сохранённое задание анализа: всё нужное модели уже зафиксировано."""
+
+    run_id: uuid.UUID
+    workspace_id: uuid.UUID
+    currency: str
+    period_id: uuid.UUID
+    snapshot_id: uuid.UUID
+    revision_vector: dict[str, Any]
+    metrics: dict[str, object]
+    protected: set[str]
+    blocked: set[str]
+    muted: set[tuple[str, str | None]]
+
+
+async def _prepare_analysis(
     settings: Settings,
-    session: AsyncSession,
-    uow: UnitOfWork,
     *,
-    workspace: Workspace,
+    workspace_id: uuid.UUID,
     run_kind: str,
     logical_key: str,
     today: dt.date,
+) -> tuple[_Preparation | None, AnalysisOutcome | None]:
+    """Короткая транзакция подготовки: снимок и задание сохраняются (R-07).
+
+    Возвращает либо задание для модели, либо готовый результат, если модель
+    не нужна: повтор, отсутствие новых данных, неполнота учёта, выключенный AI.
+    """
+    async with session_scope(settings, RuntimeRole.WORKER, workspace_id=workspace_id) as session:
+        workspace = (
+            await session.execute(select(Workspace).where(Workspace.id == workspace_id))
+        ).scalar_one()
+        existing = (
+            await session.execute(
+                select(AnalysisRun).where(
+                    AnalysisRun.workspace_id == workspace_id,
+                    AnalysisRun.logical_key == logical_key,
+                )
+            )
+        ).scalar_one_or_none()
+        if existing is not None:
+            # Повтор фоновой задачи не создаёт второй обзор и второй запрос.
+            return None, AnalysisOutcome(
+                run_id=existing.id,
+                status=existing.status,
+                summary="",
+                recommendations=(),
+                abstained_reason=None,
+                fallback_used=existing.fallback_used,
+            )
+
+        period = await period_for_date(session, workspace_id=workspace_id, day=today)
+        snapshot_row, metrics = await build_snapshot_row(
+            session, workspace=workspace, period_id=period.id, today=today
+        )
+        fingerprint = _fingerprint(metrics)
+        previous = (
+            await session.execute(
+                select(AnalysisRun)
+                .where(
+                    AnalysisRun.workspace_id == workspace_id,
+                    AnalysisRun.status.in_(("succeeded", "no_new_data")),
+                )
+                .order_by(AnalysisRun.started_at.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+
+        run = AnalysisRun(
+            workspace_id=workspace_id,
+            run_kind=run_kind,
+            logical_key=logical_key,
+            snapshot_id=snapshot_row.id,
+            status="running",
+            content_fingerprint=fingerprint,
+        )
+        session.add(run)
+        await session.flush()
+        currency = workspace.currency
+
+        if previous is not None and previous.content_fingerprint == fingerprint:
+            # Без новых подходящих данных те же советы не отправляются (A129).
+            run.status = "no_new_data"
+            run.finished_at = dt.datetime.now(dt.UTC)
+            return None, AnalysisOutcome(
+                run_id=run.id,
+                status="no_new_data",
+                summary="С прошлого анализа новых подходящих данных не появилось.",
+                recommendations=(),
+                abstained_reason=None,
+                fallback_used=False,
+            )
+
+        allowed, coverage_reason = _coverage_allows_recommendations(metrics)
+        if not allowed:
+            run.status = "succeeded"
+            run.finished_at = dt.datetime.now(dt.UTC)
+            summary = fallback_summary(metrics, currency)
+            return None, AnalysisOutcome(
+                run_id=run.id,
+                status="succeeded",
+                summary=f"{summary}\n{coverage_reason}",
+                recommendations=(),
+                abstained_reason=coverage_reason,
+                fallback_used=False,
+            )
+
+        if not settings.ai.enabled:
+            run.status = "fallback"
+            run.fallback_used = True
+            run.finished_at = dt.datetime.now(dt.UTC)
+            return None, AnalysisOutcome(
+                run_id=run.id,
+                status="fallback",
+                summary=fallback_summary(metrics, currency),
+                recommendations=(),
+                abstained_reason="AI недоступен",
+                fallback_used=True,
+            )
+
+        preparation = _Preparation(
+            run_id=run.id,
+            workspace_id=workspace_id,
+            currency=currency,
+            period_id=period.id,
+            snapshot_id=snapshot_row.id,
+            revision_vector=dict(snapshot_row.revision_vector),
+            metrics=metrics,
+            protected=await _protected_lines(
+                session, workspace_id=workspace_id, period_id=period.id
+            ),
+            blocked=await _rejected_directions(session, workspace_id=workspace_id, today=today),
+            muted=await _muted_directions(session, workspace_id=workspace_id),
+        )
+    return preparation, None
+
+
+async def _mark_fallback(
+    settings: Settings, preparation: _Preparation, *, reason: str
 ) -> AnalysisOutcome:
-    """Выполнить один логический запуск анализа (FR-73, A128, A129)."""
-    existing = (
-        await session.execute(
-            select(AnalysisRun).where(
-                AnalysisRun.workspace_id == workspace.id,
-                AnalysisRun.logical_key == logical_key,
-            )
-        )
-    ).scalar_one_or_none()
-    if existing is not None:
-        # Повтор фоновой задачи не создаёт второй обзор.
-        return AnalysisOutcome(
-            run_id=existing.id,
-            status=existing.status,
-            summary="",
-            recommendations=(),
-            abstained_reason=None,
-            fallback_used=existing.fallback_used,
-        )
-
-    period = await period_for_date(session, workspace_id=workspace.id, day=today)
-    snapshot_row, metrics = await build_snapshot_row(
-        session, workspace=workspace, period_id=period.id, today=today
+    """Отметить запуск как выполненный по шаблону (AI-08, A138)."""
+    async with session_scope(
+        settings, RuntimeRole.WORKER, workspace_id=preparation.workspace_id
+    ) as session:
+        run = await session.get(AnalysisRun, preparation.run_id)
+        if run is not None:
+            run.status = "fallback"
+            run.fallback_used = True
+            run.finished_at = dt.datetime.now(dt.UTC)
+    return AnalysisOutcome(
+        run_id=preparation.run_id,
+        status="fallback",
+        summary=fallback_summary(preparation.metrics, preparation.currency),
+        recommendations=(),
+        abstained_reason=reason,
+        fallback_used=True,
     )
-    fingerprint = _fingerprint(metrics)
 
-    previous = (
-        await session.execute(
-            select(AnalysisRun)
-            .where(
-                AnalysisRun.workspace_id == workspace.id,
-                AnalysisRun.status.in_(("succeeded", "no_new_data")),
-            )
-            .order_by(AnalysisRun.started_at.desc())
-            .limit(1)
+
+async def _generate_cards(settings: Settings, preparation: _Preparation) -> Any:
+    """Вызов модели вне транзакции базы (ADR-04, AUD-07, R-07)."""
+    provider = build_provider(settings.ai)
+    return await provider.structured(
+        instructions=RECOMMENDATION_INSTRUCTIONS,
+        input_items=[
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "input_text",
+                        "text": (
+                            "Числовой снимок бюджета (единственный источник чисел):\n"
+                            f"{json.dumps(preparation.metrics, ensure_ascii=False, default=str)}"
+                            f"\n\nЗащищённые статьи: {sorted(preparation.protected)}\n"
+                            f"Отключённые направления: {sorted(preparation.blocked)}"
+                        ),
+                    }
+                ],
+            }
+        ],
+        response_model=RecommendationResponse,
+        prompt_version=RECOMMENDATION_PROMPT_VERSION,
+        schema_name="recommendation_v1",
+    )
+
+
+async def _store_analysis(
+    settings: Settings, preparation: _Preparation, result: Any, *, correlation_id: str
+) -> AnalysisOutcome:
+    """Короткая транзакция сохранения проверенных карточек (FR-75, R-07)."""
+    async with session_scope(
+        settings, RuntimeRole.WORKER, workspace_id=preparation.workspace_id
+    ) as session:
+        uow = UnitOfWork(session=session, correlation_id=correlation_id)
+        run = await session.get(AnalysisRun, preparation.run_id)
+        assert run is not None
+        assert isinstance(result.parsed, RecommendationResponse)
+        accepted, rejected = validate_cards(
+            result.parsed,
+            snapshot=preparation.metrics,
+            protected_lines=preparation.protected,
+            blocked_directions=preparation.blocked,
+            muted=preparation.muted,
+            currency=preparation.currency,
         )
-    ).scalar_one_or_none()
+        if rejected:
+            logger.info("recommendations_rejected", count=len(rejected), reasons=rejected[:3])
 
-    run = AnalysisRun(
-        workspace_id=workspace.id,
+        run.status = "succeeded"
+        run.profile_version = result.profile_version
+        run.requested_model = result.requested_model
+        run.returned_model = result.returned_model
+        run.reasoning_effort = result.reasoning_effort
+        run.service_tier = result.service_tier
+        run.prompt_version = result.prompt_version
+        run.schema_version = result.schema_version
+        run.usage = result.usage.as_dict()
+        run.cost_amount = result.cost
+        run.cost_currency = result.cost_currency
+        run.provider_request_id = result.provider_request_id
+        run.finished_at = dt.datetime.now(dt.UTC)
+
+        created: list[uuid.UUID] = []
+        for card in accepted:
+            row = Recommendation(
+                workspace_id=preparation.workspace_id,
+                run_id=run.id,
+                direction=str(card["direction"]),
+                observation=str(card["observation"]),
+                action_kind=str(card["action_kind"]),
+                metric_refs=card["metric_refs"],
+                estimated_effect_minor=card["estimated_effect_minor"],
+                effect_formula=card["effect_formula"],
+                effect_unavailable_reason=card["effect_unavailable_reason"],
+                horizon_period_id=preparation.period_id,
+                conditions=card["conditions"],
+                alternative_group=card["alternative_group"],
+                stable_line_id=uuid.UUID(str(card["stable_line_id"]))
+                if card["stable_line_id"]
+                else None,
+                revision_vector=preparation.revision_vector,
+                priority=int(card["priority"]) if isinstance(card["priority"], int) else 100,
+                status="proposed",
+            )
+            session.add(row)
+            await session.flush()
+            created.append(row.id)
+
+        await uow.emit(
+            workspace_id=preparation.workspace_id,
+            event_type="AnalysisCompleted",
+            aggregate_type="analysis_run",
+            aggregate_id=run.id,
+            payload={
+                "text": result.parsed.summary,
+                "run_id": str(run.id),
+                "cards": len(created),
+            },
+        )
+    return AnalysisOutcome(
+        run_id=preparation.run_id,
+        status="succeeded",
+        summary=result.parsed.summary,
+        recommendations=tuple(created),
+        abstained_reason=result.parsed.abstained_reason,
+        fallback_used=False,
+    )
+
+
+async def run_analysis(
+    settings: Settings,
+    *,
+    workspace_id: uuid.UUID,
+    run_kind: str,
+    logical_key: str,
+    today: dt.date,
+    correlation_id: str = "",
+) -> AnalysisOutcome:
+    """Один логический запуск анализа (FR-73, A128, A129, R-07).
+
+    Три стадии с короткими транзакциями: подготовка снимка и задания, вызов
+    модели вне транзакции базы, сохранение проверенных карточек. Долгий ответ
+    провайдера не удерживает соединение и не рвёт транзакцию (ADR-04).
+    """
+    preparation, outcome = await _prepare_analysis(
+        settings,
+        workspace_id=workspace_id,
         run_kind=run_kind,
         logical_key=logical_key,
-        snapshot_id=snapshot_row.id,
-        status="running",
-        content_fingerprint=fingerprint,
+        today=today,
     )
-    session.add(run)
-    await session.flush()
+    if preparation is None:
+        assert outcome is not None
+        return outcome
 
-    if previous is not None and previous.content_fingerprint == fingerprint:
-        # Без новых подходящих данных те же советы не отправляются (A129).
-        run.status = "no_new_data"
-        run.finished_at = dt.datetime.now(dt.UTC)
-        await session.flush()
-        return AnalysisOutcome(
-            run_id=run.id,
-            status="no_new_data",
-            summary="С прошлого анализа новых подходящих данных не появилось.",
-            recommendations=(),
-            abstained_reason=None,
-            fallback_used=False,
-        )
-
-    allowed, coverage_reason = _coverage_allows_recommendations(metrics)
-    protected = await _protected_lines(session, workspace_id=workspace.id, period_id=period.id)
-    blocked = await _rejected_directions(session, workspace_id=workspace.id, today=today)
-    muted = await _muted_directions(session, workspace_id=workspace.id)
-
-    if not allowed:
-        run.status = "succeeded"
-        run.finished_at = dt.datetime.now(dt.UTC)
-        await session.flush()
-        summary = fallback_summary(metrics, workspace.currency)
-        return AnalysisOutcome(
-            run_id=run.id,
-            status="succeeded",
-            summary=f"{summary}\n{coverage_reason}",
-            recommendations=(),
-            abstained_reason=coverage_reason,
-            fallback_used=False,
-        )
-
-    if not settings.ai.enabled:
-        run.status = "fallback"
-        run.fallback_used = True
-        run.finished_at = dt.datetime.now(dt.UTC)
-        await session.flush()
-        return AnalysisOutcome(
-            run_id=run.id,
-            status="fallback",
-            summary=fallback_summary(metrics, workspace.currency),
-            recommendations=(),
-            abstained_reason="AI недоступен",
-            fallback_used=True,
-        )
-
-    request_key = f"analysis:{run.id}"
+    request_key = f"analysis:{preparation.run_id}"
     try:
         reservation = await quota.reserve(
             settings,
@@ -412,136 +604,22 @@ async def run_analysis(
             upper_bound=upper_bound_cost(
                 settings.ai, input_tokens=6000, max_output=settings.ai.max_output_tokens
             ),
-            workspace_id=workspace.id,
+            workspace_id=workspace_id,
             purpose="recommendation",
         )
     except QuotaExceeded:
-        run.status = "fallback"
-        run.fallback_used = True
-        run.finished_at = dt.datetime.now(dt.UTC)
-        await session.flush()
-        return AnalysisOutcome(
-            run_id=run.id,
-            status="fallback",
-            summary=fallback_summary(metrics, workspace.currency),
-            recommendations=(),
-            abstained_reason="Лимит расходов на AI исчерпан",
-            fallback_used=True,
-        )
+        return await _mark_fallback(settings, preparation, reason="Лимит расходов на AI исчерпан")
 
-    provider = build_provider(settings.ai)
     try:
-        result = await provider.structured(
-            instructions=RECOMMENDATION_INSTRUCTIONS,
-            input_items=[
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "input_text",
-                            "text": (
-                                "Числовой снимок бюджета (единственный источник чисел):\n"
-                                f"{json.dumps(metrics, ensure_ascii=False, default=str)}\n\n"
-                                f"Защищённые статьи: {sorted(protected)}\n"
-                                f"Отключённые направления: {sorted(blocked)}"
-                            ),
-                        }
-                    ],
-                }
-            ],
-            response_model=RecommendationResponse,
-            prompt_version=RECOMMENDATION_PROMPT_VERSION,
-            schema_name="recommendation_v1",
-        )
+        result = await _generate_cards(settings, preparation)
     except (ProviderUnavailable, ValidationFailed) as exc:
         await quota.settle(settings, reservation, actual=None)
-        run.status = "fallback"
-        run.fallback_used = True
-        run.finished_at = dt.datetime.now(dt.UTC)
-        await session.flush()
         logger.info("analysis_fallback", reason=type(exc).__name__)
         # Выдуманные рекомендации не подставляются (A138).
-        return AnalysisOutcome(
-            run_id=run.id,
-            status="fallback",
-            summary=fallback_summary(metrics, workspace.currency),
-            recommendations=(),
-            abstained_reason="Генерация недоступна",
-            fallback_used=True,
-        )
+        return await _mark_fallback(settings, preparation, reason="Генерация недоступна")
 
     await quota.settle(settings, reservation, actual=result.cost)
-    assert isinstance(result.parsed, RecommendationResponse)
-    accepted, rejected = validate_cards(
-        result.parsed,
-        snapshot=metrics,
-        protected_lines=protected,
-        blocked_directions=blocked,
-        muted=muted,
-        currency=workspace.currency,
-    )
-    if rejected:
-        logger.info("recommendations_rejected", count=len(rejected), reasons=rejected[:3])
-
-    run.status = "succeeded"
-    run.profile_version = result.profile_version
-    run.requested_model = result.requested_model
-    run.returned_model = result.returned_model
-    run.reasoning_effort = result.reasoning_effort
-    run.service_tier = result.service_tier
-    run.prompt_version = result.prompt_version
-    run.schema_version = result.schema_version
-    run.usage = result.usage.as_dict()
-    run.cost_amount = result.cost
-    run.cost_currency = result.cost_currency
-    run.provider_request_id = result.provider_request_id
-    run.finished_at = dt.datetime.now(dt.UTC)
-
-    created: list[uuid.UUID] = []
-    for card in accepted:
-        row = Recommendation(
-            workspace_id=workspace.id,
-            run_id=run.id,
-            direction=str(card["direction"]),
-            observation=str(card["observation"]),
-            action_kind=str(card["action_kind"]),
-            metric_refs=card["metric_refs"],
-            estimated_effect_minor=card["estimated_effect_minor"],
-            effect_formula=card["effect_formula"],
-            effect_unavailable_reason=card["effect_unavailable_reason"],
-            horizon_period_id=period.id,
-            conditions=card["conditions"],
-            alternative_group=card["alternative_group"],
-            stable_line_id=uuid.UUID(str(card["stable_line_id"]))
-            if card["stable_line_id"]
-            else None,
-            revision_vector=snapshot_row.revision_vector,
-            priority=int(card["priority"]) if isinstance(card["priority"], int) else 100,
-            status="proposed",
-        )
-        session.add(row)
-        await session.flush()
-        created.append(row.id)
-
-    await uow.emit(
-        workspace_id=workspace.id,
-        event_type="AnalysisCompleted",
-        aggregate_type="analysis_run",
-        aggregate_id=run.id,
-        payload={
-            "text": result.parsed.summary,
-            "run_id": str(run.id),
-            "cards": len(created),
-        },
-    )
-    return AnalysisOutcome(
-        run_id=run.id,
-        status="succeeded",
-        summary=result.parsed.summary,
-        recommendations=tuple(created),
-        abstained_reason=result.parsed.abstained_reason,
-        fallback_used=False,
-    )
+    return await _store_analysis(settings, preparation, result, correlation_id=correlation_id)
 
 
 async def mark_stale_recommendations(session: AsyncSession, *, workspace: Workspace) -> int:

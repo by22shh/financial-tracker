@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime as dt
 import re
 import uuid
 from dataclasses import replace
@@ -327,6 +328,61 @@ async def apply_amount_correction(
     return await transaction_card_reply(
         settings, actor=actor, workspace=workspace, transaction_id=transaction_id
     )
+
+
+async def propose_edit_correction(
+    settings: Settings,
+    *,
+    actor: ActorContext,
+    workspace: Workspace,
+    transaction_id: uuid.UUID,
+    new_amount: Money | None,
+    new_date: dt.date | None,
+) -> list[Reply] | None:
+    """Карточка изменения проведённой операции после правки сообщения (R-03).
+
+    Редакция сообщения адресует исходный ввод: новая независимая трата не
+    проводится, изменение требует подтверждения участника (FR-33).
+    """
+    workspace_id = actor.require_workspace()
+    async with session_scope(
+        settings, RuntimeRole.API, user_id=actor.user_id, workspace_id=workspace_id
+    ) as session:
+        transaction, revision, _spec = await load_current_spec(
+            session, workspace_id=workspace_id, transaction_id=transaction_id
+        )
+        current_amount = Money(revision.amount_minor, revision.currency)
+        current_date = revision.occurred_date
+        entity_version = transaction.entity_version
+
+    changed_amount = new_amount if new_amount is not None and new_amount != current_amount else None
+    changed_date = new_date if new_date is not None and new_date != current_date else None
+    if changed_amount is None and changed_date is None:
+        return None
+
+    lines = ["Сообщение изменено. Обновить прежнюю запись?"]
+    if changed_amount is not None:
+        lines.append(f"Сумма: {current_amount.format()} → {changed_amount.format()}")
+    if changed_date is not None:
+        lines.append(f"Дата: {current_date.isoformat()} → {changed_date.isoformat()}")
+    lines.append("Новая отдельная трата не создана.")
+    payload_parts = [
+        transaction_id.hex[:16],
+        str(entity_version),
+        str(changed_amount.minor) if changed_amount is not None else "-",
+        changed_date.isoformat() if changed_date is not None else "-",
+    ]
+    return [
+        Reply(
+            text="\n".join(lines),
+            buttons=(
+                (
+                    Button("Обновить запись", callback("fix", "apply", *payload_parts)),
+                    Button("Оставить как есть", callback("noop", "x")),
+                ),
+            ),
+        )
+    ]
 
 
 async def _propose_void(

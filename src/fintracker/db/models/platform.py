@@ -146,6 +146,9 @@ class Draft(Base):
         Uuid(as_uuid=True), nullable=True
     )
     logical_message_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
+    # Постоянный ключ исходного сообщения: одинаков для всех его редакций и
+    # для любого повтора обработки одного входа (R-01, R-03).
+    source_message_key: Mapped[str | None] = mapped_column(String(120), nullable=True)
     source_kind: Mapped[str] = mapped_column(String(24), nullable=False)
     state: Mapped[str] = mapped_column(
         String(24), nullable=False, server_default=text("'received'")
@@ -173,6 +176,14 @@ class Draft(Base):
         UniqueConstraint("workspace_id", "id"),
         Index("ix_drafts_owner", "workspace_id", "owner_user_id", "state"),
         Index("ix_drafts_expiry", "expires_at", postgresql_where=text("state <> 'posted'")),
+        Index(
+            "uq_drafts_source_message",
+            "workspace_id",
+            "owner_user_id",
+            "source_message_key",
+            unique=True,
+            postgresql_where=text("source_message_key IS NOT NULL AND state <> 'cancelled'"),
+        ),
     )
 
 

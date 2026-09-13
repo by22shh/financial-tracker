@@ -23,6 +23,7 @@ from fintracker.application.conversation.context import (
 )
 from fintracker.application.conversation.entry import (
     CandidateFields,
+    DraftAlreadyExists,
     ExtractionResult,
     create_draft_with_candidates,
     extract_from_text,
@@ -46,6 +47,7 @@ from fintracker.core.errors import (
     ValidationFailed,
 )
 from fintracker.core.logging import get_logger
+from fintracker.core.money import Money
 from fintracker.db.models.access import Membership, Workspace
 from fintracker.db.models.platform import Candidate, Draft
 from fintracker.db.session import RuntimeRole, session_scope
@@ -342,6 +344,56 @@ async def _handle_free_text(
     return await record_free_text(settings, actor=actor, workspace=workspace, message=message)
 
 
+async def _existing_message_reply(
+    settings: Settings,
+    *,
+    actor: ActorContext,
+    workspace: Workspace,
+    draft_id: uuid.UUID,
+    state: str | None,
+    previous_text: str | None,
+    message: IncomingMessage,
+    extraction: ExtractionResult,
+) -> list[Reply]:
+    """Ответ на повтор или редакцию уже обработанного сообщения (R-01, R-03).
+
+    Проведённая запись не дублируется: изменение текста предлагается как
+    исправление связанной операции и требует подтверждения.
+    """
+    if state != "posted":
+        return await sections.draft_reply(
+            settings, actor=actor, workspace=workspace, draft_id=draft_id
+        )
+
+    new_text = (message.text or "").strip()
+    if previous_text is not None and new_text and previous_text.strip() != new_text:
+        transaction_id = await sections.posted_transaction_of_draft(
+            settings, actor=actor, draft_id=draft_id
+        )
+        if transaction_id is not None and len(extraction.candidates) == 1:
+            from fintracker.application.conversation.corrections import propose_edit_correction
+
+            candidate = extraction.candidates[0]
+            amount = (
+                Money(candidate.amount_minor, candidate.currency or workspace.currency)
+                if candidate.amount_minor is not None
+                else None
+            )
+            proposal = await propose_edit_correction(
+                settings,
+                actor=actor,
+                workspace=workspace,
+                transaction_id=transaction_id,
+                new_amount=amount,
+                new_date=candidate.occurred_date,
+            )
+            if proposal is not None:
+                return proposal
+    return await sections.posted_draft_reply(
+        settings, actor=actor, workspace=workspace, draft_id=draft_id
+    )
+
+
 async def record_free_text(
     settings: Settings, *, actor: ActorContext, workspace: Workspace, message: IncomingMessage
 ) -> list[Reply]:
@@ -361,22 +413,21 @@ async def record_free_text(
     async with session_scope(
         settings, RuntimeRole.API, user_id=actor.user_id, workspace_id=workspace_id
     ) as session:
-        if message.inbound_event_id is not None:
+        known_draft_id: uuid.UUID | None = None
+        known_state: str | None = None
+        known_text: str | None = None
+        source_key = message.source_key
+        if source_key is not None:
             existing = await find_message_draft(
                 session,
                 workspace_id=workspace_id,
                 owner_user_id=actor.user_id,
-                logical_message_id=message.inbound_event_id,
+                source_message_key=source_key,
             )
             if existing is not None:
                 known_draft_id = existing.id
                 known_state = existing.state
-            else:
-                known_draft_id = None
-                known_state = None
-        else:
-            known_draft_id = None
-            known_state = None
+                known_text = existing.raw_text
 
         membership = (
             await session.execute(
@@ -414,13 +465,17 @@ async def record_free_text(
             )
 
     if known_draft_id is not None:
-        # Повтор того же сообщения: показываем прежний результат.
-        if known_state == "posted":
-            return await sections.posted_draft_reply(
-                settings, actor=actor, workspace=workspace, draft_id=known_draft_id
-            )
-        return await sections.draft_reply(
-            settings, actor=actor, workspace=workspace, draft_id=known_draft_id
+        # Повтор или редакция того же сообщения: вторая независимая трата не
+        # создаётся (R-01, R-03).
+        return await _existing_message_reply(
+            settings,
+            actor=actor,
+            workspace=workspace,
+            draft_id=known_draft_id,
+            state=known_state,
+            previous_text=known_text,
+            message=message,
+            extraction=extraction,
         )
 
     guard_reply = _guard_reply(extraction.intent)
@@ -463,17 +518,38 @@ async def record_free_text(
     async with session_scope(
         settings, RuntimeRole.API, user_id=actor.user_id, workspace_id=workspace_id
     ) as session:
-        draft, candidates = await create_draft_with_candidates(
-            session,
-            settings=settings,
+        conflicting: DraftAlreadyExists | None = None
+        try:
+            draft, candidates = await create_draft_with_candidates(
+                session,
+                settings=settings,
+                actor=actor,
+                source_kind="text",
+                raw_text=message.text,
+                extraction=extraction,
+                logical_message_id=message.inbound_event_id,
+                source_message_key=source_key,
+            )
+        except DraftAlreadyExists as clash:
+            # Параллельное исполнение того же входа: результат уже существует.
+            conflicting = clash
+        else:
+            draft_id = draft.id
+            candidate_fields = [
+                CandidateFields.from_payload(dict(row.fields)) for row in candidates
+            ]
+
+    if conflicting is not None:
+        return await _existing_message_reply(
+            settings,
             actor=actor,
-            source_kind="text",
-            raw_text=message.text,
+            workspace=workspace,
+            draft_id=conflicting.draft_id,
+            state=conflicting.state,
+            previous_text=message.text,
+            message=message,
             extraction=extraction,
-            logical_message_id=message.inbound_event_id,
         )
-        draft_id = draft.id
-        candidate_fields = [CandidateFields.from_payload(dict(row.fields)) for row in candidates]
 
     if extraction.question:
         summary = sections.draft_summary(candidate_fields, workspace.currency)

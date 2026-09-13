@@ -191,6 +191,41 @@ class SecurityLog:
                 raise SecurityLogConflict(f"Запись {key} уже существует с другим содержимым")
         return record
 
+    async def write_aborted(
+        self,
+        *,
+        operation_id: uuid.UUID,
+        workspace_id: uuid.UUID,
+        kind: str,
+        snapshot: AccessSnapshot,
+        reason: str,
+        now: dt.datetime,
+    ) -> SecurityLogRecord:
+        """Доказанный отказ: изменение не применено и не будет применено (R-11).
+
+        Запись нужна, чтобы отклонённая операция не выглядела незавершённой
+        после восстановления и не держала бюджет в карантине.
+        """
+        record = SecurityLogRecord(
+            operation_id=str(operation_id),
+            workspace_id=str(workspace_id),
+            phase="aborted",
+            kind=kind,
+            expected_acl_revision=snapshot.acl_revision,
+            proposed_acl_revision=snapshot.acl_revision,
+            snapshot=snapshot,
+            previous_version_key=self._key(str(workspace_id), str(operation_id), "prepared"),
+            digest=snapshot.digest(),
+            written_at=now.isoformat(),
+        )
+        key = self._key(str(workspace_id), str(operation_id), "aborted")
+        existing = await self._storage.put_if_absent(key, record.to_json())
+        if existing is not None:
+            stored = json.loads(existing)
+            if stored.get("digest") != record.digest:
+                raise SecurityLogConflict(f"Запись {key} уже существует с другим содержимым")
+        return record
+
     async def last_committed(self, workspace_id: uuid.UUID) -> SecurityLogRecord | None:
         """Последняя подтверждённая версия доступа.
 
@@ -233,7 +268,9 @@ class SecurityLog:
         keys = await self._storage.list_keys(f"ws/{workspace_id}/op/")
         prepared = {key.rsplit("/", 2)[-2] for key in keys if key.endswith("prepared.json")}
         committed = {key.rsplit("/", 2)[-2] for key in keys if key.endswith("committed.json")}
-        return sorted(prepared - committed)
+        # Доказанный отказ так же определён, как и подтверждение (R-11).
+        aborted = {key.rsplit("/", 2)[-2] for key in keys if key.endswith("aborted.json")}
+        return sorted(prepared - committed - aborted)
 
 
 def build_security_log(settings: SecurityLogSettings) -> SecurityLog:

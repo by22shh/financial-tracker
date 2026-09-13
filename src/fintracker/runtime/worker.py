@@ -14,6 +14,7 @@ from typing import Any
 from fintracker.application.platform import queue
 from fintracker.config import Settings
 from fintracker.core.errors import DomainError
+from fintracker.core.fencing import execution_fence
 from fintracker.core.logging import get_logger
 
 logger = get_logger("runtime.worker")
@@ -53,6 +54,7 @@ def build_registry() -> JobHandlerRegistry:
         handle_deliver_reply,
         handle_process_inbound_event,
     )
+    from fintracker.application.intelligence.schedule import handle_run_analysis
     from fintracker.application.maintenance.retention import handle_retention_sweep
     from fintracker.application.planning.rollover import (
         handle_open_next_period,
@@ -68,6 +70,7 @@ def build_registry() -> JobHandlerRegistry:
     registry.register("payment_reminders", handle_payment_reminders)
     registry.register("plan_review", handle_plan_review)
     registry.register("deliver_reply", handle_deliver_reply)
+    registry.register("run_analysis", handle_run_analysis)
     return registry
 
 
@@ -83,7 +86,10 @@ async def _run_with_lease(
 
     renew_task = asyncio.create_task(_renew_periodically(settings, job))
     try:
-        await handler(settings, job)
+        # Право на результат действует на всё выполнение обработчика: команда
+        # с потерянной арендой не фиксирует запись (ADR-05, R-02).
+        async with execution_fence(queue.lease_fence(job)):
+            await handler(settings, job)
     except DomainError as exc:
         state = await queue.fail(
             settings,
@@ -123,6 +129,10 @@ async def run_worker(settings: Settings, *, stop_event: asyncio.Event | None = N
         with contextlib.suppress(NotImplementedError):
             loop.add_signal_handler(sig, stop.set)
 
+    from fintracker.application.identity.security_change import reconcile_access_on_start
+
+    # Очереди не обрабатываются, пока доступ не сверен с журналом (R-10).
+    await reconcile_access_on_start(settings)
     logger.info("worker_started", queues=[classes for classes, _ in QUEUE_PLAN])
     while not stop.is_set():
         did_work = False

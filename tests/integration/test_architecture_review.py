@@ -361,6 +361,8 @@ async def test_ar27_failed_deletion_is_retried(
         row = (
             await owner_session.execute(select(Attachment).where(Attachment.id == attachment.id))
         ).scalar_one()
+        # Состояние меняет служебная функция, поэтому снимок ORM обновляется.
+        await owner_session.refresh(row)
         assert row.state == "deleting"
 
         second = await sweep_attachments(owner_session, test_settings, now)

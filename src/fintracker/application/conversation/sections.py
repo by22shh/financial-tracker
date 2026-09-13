@@ -572,6 +572,21 @@ async def draft_reply(
     ]
 
 
+async def posted_transaction_of_draft(
+    settings: Settings, *, actor: ActorContext, draft_id: uuid.UUID
+) -> uuid.UUID | None:
+    """Единственная проведённая операция этого черновика (R-03)."""
+    workspace_id = actor.require_workspace()
+    async with session_scope(
+        settings, RuntimeRole.API, user_id=actor.user_id, workspace_id=workspace_id
+    ) as session:
+        _, candidates = await load_draft(
+            session, workspace_id=workspace_id, draft_id=draft_id, owner_id=actor.user_id
+        )
+        posted = [row.posted_transaction_id for row in candidates if row.posted_transaction_id]
+    return posted[0] if len(posted) == 1 else None
+
+
 async def posted_draft_reply(
     settings: Settings, *, actor: ActorContext, workspace: Workspace, draft_id: uuid.UUID
 ) -> list[Reply]:

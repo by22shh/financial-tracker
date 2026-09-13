@@ -1,0 +1,6 @@
+.venv/bin/ruff format --check src tests
+205 files already formatted
+.venv/bin/ruff check src tests
+All checks passed!
+.venv/bin/mypy src/fintracker
+Success: no issues found in 142 source files

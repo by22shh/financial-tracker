@@ -597,6 +597,15 @@ async def revise_transaction(
     transaction.status = "posted"
     await session.flush()
 
+    if money_changed and new_spec.transaction_type.value == "refund":
+        # Изменённая сумма возврата меняет и занятую долю покупки (FR-29, R-05).
+        await _resize_refund_links(
+            session,
+            workspace_id=workspace_id,
+            transaction_id=transaction_id,
+            new_amount_minor=new_spec.amount.minor,
+        )
+
     if money_changed:
         # Денежная правка до cutoff делает затронутую сверку требующей
         # повторной проверки; правка заметки — нет (AR-20, RV04).
@@ -733,7 +742,10 @@ async def restore_transaction(
     )
     if transaction.status != "voided":
         raise ConflictError("Операция не отменена, восстанавливать нечего")
-    return await revise_transaction(
+    # Возврат снова займёт долю исходной покупки: свободного остатка должно
+    # хватать, иначе восстановление отклоняется целиком (FR-29, R-05).
+    await _guard_link_capacity(session, workspace_id=workspace_id, transaction_id=transaction_id)
+    restored = await revise_transaction(
         session,
         uow,
         actor=actor,
@@ -742,6 +754,99 @@ async def restore_transaction(
         expected_version=expected_version,
         change_kind="restored",
     )
+    await _sync_links_with_status(
+        session, workspace_id=workspace_id, transaction_id=transaction_id, active=True
+    )
+    return restored
+
+
+async def _resize_refund_links(
+    session: AsyncSession,
+    *,
+    workspace_id: uuid.UUID,
+    transaction_id: uuid.UUID,
+    new_amount_minor: int,
+) -> None:
+    """Согласовать занятую долю покупки с новой суммой возврата (R-05)."""
+    links = (
+        (
+            await session.execute(
+                select(TransactionLink).where(
+                    TransactionLink.workspace_id == workspace_id,
+                    TransactionLink.target_transaction_id == transaction_id,
+                    TransactionLink.link_type == "refund_of",
+                    TransactionLink.status == "active",
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if not links:
+        return
+    if len(links) > 1:
+        raise ConflictError(
+            "Возврат относится к нескольким частям покупки: измените части отдельно"
+        )
+    link = links[0]
+    await _guard_link_capacity(
+        session,
+        workspace_id=workspace_id,
+        transaction_id=transaction_id,
+        amounts={link.id: new_amount_minor},
+    )
+    link.amount_minor = new_amount_minor
+    await session.flush()
+
+
+async def _guard_link_capacity(
+    session: AsyncSession,
+    *,
+    workspace_id: uuid.UUID,
+    transaction_id: uuid.UUID,
+    amounts: dict[uuid.UUID, int] | None = None,
+) -> None:
+    """Проверить, что вклад этой операции умещается в остаток источника (R-05).
+
+    Учитываются только действующие связи других операций: собственные связи
+    восстанавливаемого возврата в остатке ещё не участвуют.
+    """
+    from fintracker.application.ledger.operations import refundable_parts
+
+    links = (
+        (
+            await session.execute(
+                select(TransactionLink).where(
+                    TransactionLink.workspace_id == workspace_id,
+                    TransactionLink.target_transaction_id == transaction_id,
+                    TransactionLink.link_type == "refund_of",
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if not links:
+        return
+    remaining: dict[uuid.UUID, dict[uuid.UUID | None, int]] = {}
+    for link in links:
+        source_id = link.source_transaction_id
+        if source_id not in remaining:
+            parts = await refundable_parts(
+                session, workspace_id=workspace_id, transaction_id=source_id
+            )
+            remaining[source_id] = {part.stable_line_id: part.refundable_minor for part in parts}
+        wanted = link.amount_minor if amounts is None else amounts.get(link.id, link.amount_minor)
+        # Собственный действующий вклад уже вычтен из остатка: при правке
+        # суммы он сначала возвращается, затем проверяется новая величина.
+        own_active = link.amount_minor if link.status == "active" else 0
+        free = remaining[source_id].get(link.source_stable_line_id, 0) + own_active
+        if wanted > free:
+            raise ConflictError(
+                "Возврат больше не помещается в остаток исходной покупки: "
+                f"свободно {free}, требуется {wanted}"
+            )
+        remaining[source_id][link.source_stable_line_id] = free - wanted
 
 
 async def account_balance(

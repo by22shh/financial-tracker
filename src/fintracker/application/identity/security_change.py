@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import datetime as dt
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -20,6 +21,7 @@ from fintracker.config import Settings
 from fintracker.core.context import MembershipStatus, WorkspaceState
 from fintracker.core.errors import (
     ConflictError,
+    DomainError,
     NotFound,
     TemporarilyUnavailable,
     VersionConflict,
@@ -106,6 +108,124 @@ async def run_security_change(
     security_log: SecurityLog | None = None,
     acting_user_id: uuid.UUID | None = None,
     precheck: ApplyFn | None = None,
+) -> SecurityChangeResult:
+    """Выполнить изменение доступа по протоколу ADR-14 с исходом отказа.
+
+    Отклонение до применения — такой же определённый исход, как успех: fence
+    снимается, операция помечается failed, а в журнал пишется доказанный
+    отказ, чтобы восстановление не считало её незавершённой (ADR-14, R-11).
+    Неопределённый внешний исход fence не снимает.
+    """
+    journal = security_log or build_security_log(settings.security_log)
+    operation = operation_id or uuid.uuid4()
+    progress: dict[str, bool] = {"prepared": False, "applied": False}
+    try:
+        return await _run_fenced_change(
+            settings,
+            workspace_id=workspace_id,
+            kind=kind,
+            initiated_by=initiated_by,
+            apply=apply,
+            correlation_id=correlation_id,
+            operation_id=operation,
+            allow_states=allow_states,
+            security_log=journal,
+            acting_user_id=acting_user_id,
+            precheck=precheck,
+            progress=progress,
+        )
+    except DomainError as exc:
+        if progress["applied"]:
+            # Изменение уже применено: снятие fence решается шагами 4–5.
+            raise
+        await _abort_security_change(
+            settings,
+            journal=journal,
+            operation=operation,
+            workspace_id=workspace_id,
+            kind=kind,
+            acting_user_id=acting_user_id or initiated_by,
+            reason=exc.message,
+        )
+        raise
+
+
+async def _abort_security_change(
+    settings: Settings,
+    *,
+    journal: SecurityLog,
+    operation: uuid.UUID,
+    workspace_id: uuid.UUID,
+    kind: str,
+    acting_user_id: uuid.UUID | None,
+    reason: str,
+) -> None:
+    """Завершить отклонённое изменение доступа и снять его блокировку (R-11).
+
+    Фактическое состояние журнала проверяется: недоступный журнал оставляет
+    бюджет заблокированным, потому что исход не доказан.
+    """
+    try:
+        pending = await journal.pending_operations(workspace_id)
+    except Exception as exc:
+        logger.error(
+            "security_abort_journal_unavailable",
+            operation_id=str(operation),
+            error=type(exc).__name__,
+        )
+        return
+    if str(operation) in pending:
+        async with session_scope(
+            settings, RuntimeRole.API, user_id=acting_user_id, workspace_id=workspace_id
+        ) as session:
+            snapshot = await read_access_snapshot(session, workspace_id)
+        try:
+            await journal.write_aborted(
+                operation_id=operation,
+                workspace_id=workspace_id,
+                kind=kind,
+                snapshot=snapshot,
+                reason=reason[:300],
+                now=_utcnow(),
+            )
+        except Exception as exc:
+            logger.error(
+                "security_abort_not_recorded",
+                operation_id=str(operation),
+                error=type(exc).__name__,
+            )
+            return
+
+    async with session_scope(
+        settings, RuntimeRole.API, user_id=acting_user_id, workspace_id=workspace_id
+    ) as session:
+        await session.execute(
+            update(Workspace)
+            .where(Workspace.id == workspace_id, Workspace.security_fence == operation)
+            .values(security_fence=None, version=Workspace.version + 1)
+        )
+        await session.execute(
+            update(SecurityChange)
+            .where(SecurityChange.operation_id == operation)
+            .values(state="failed")
+        )
+    logger.info("security_change_rejected", operation_id=str(operation), kind=kind)
+
+
+async def _run_fenced_change(
+    settings: Settings,
+    *,
+    workspace_id: uuid.UUID,
+    kind: str,
+    initiated_by: uuid.UUID | None,
+    apply: ApplyFn,
+    correlation_id: str,
+    operation_id: uuid.UUID | None = None,
+    allow_states: tuple[str, ...] = (WorkspaceState.ACTIVE.value,),
+    security_log: SecurityLog | None = None,
+    acting_user_id: uuid.UUID | None = None,
+    precheck: ApplyFn | None = None,
+    progress: dict[str, bool],
 ) -> SecurityChangeResult:
     """Выполнить изменение доступа по протоколу ADR-14.
 
@@ -209,6 +329,7 @@ async def run_security_change(
             "Журнал изменений доступа недоступен, изменение не выполнено"
         ) from exc
 
+    progress["prepared"] = True
     async with session_scope(
         settings, RuntimeRole.API, user_id=rls_user, workspace_id=workspace_id
     ) as session:
@@ -254,6 +375,8 @@ async def run_security_change(
             members=snapshot_after.members,
         )
 
+    progress["applied"] = True
+
     # --- Шаг 4: committed вне транзакции БД -------------------------------
     try:
         await journal.write_committed(
@@ -298,9 +421,7 @@ async def run_security_change(
     )
 
 
-def _utcnow() -> Any:
-    import datetime as dt
-
+def _utcnow() -> dt.datetime:
     return dt.datetime.now(dt.UTC)
 
 
@@ -345,9 +466,84 @@ async def resume_or_quarantine(
     return pending
 
 
+DELETION_STATES = (WorkspaceState.DELETING.value, WorkspaceState.DELETED.value)
+
+
+async def reconcile_access_on_start(
+    settings: Settings, *, security_log: SecurityLog | None = None
+) -> dict[str, int]:
+    """Сверить доступ всех бюджетов с журналом до открытия доступа (AR-31, R-10).
+
+    Вызывается при старте API и исполнителя: восстановленная из копии база
+    сверяется с независимым журналом раньше, чем принимаются запросы и задачи.
+    """
+    from sqlalchemy import text
+
+    states = [item.value for item in WorkspaceState]
+    async with session_scope(settings, RuntimeRole.WORKER) as session:
+        rows = (
+            await session.execute(
+                text("SELECT id FROM maintenance_workspaces(:states)"), {"states": states}
+            )
+        ).all()
+    checked = 0
+    quarantined = 0
+    for (workspace_id,) in rows:
+        pending = await resume_or_quarantine(settings, workspace_id, security_log=security_log)
+        checked += 1
+        if pending:
+            quarantined += 1
+    report = {"checked": checked, "pending_operations": quarantined}
+    logger.info("access_reconciled", **report)
+    return report
+
+
+async def _replay_workspace_state(
+    session: AsyncSession, *, workspace: Workspace, state: str
+) -> None:
+    """Вернуть бюджет в доказанное состояние, включая удаление (R-10).
+
+    Точное время удаления журналом не доказано, поэтому срок очистки
+    отсчитывается от момента сверки: восстановление не сокращает окно.
+    """
+    from fintracker.db.models.access import BudgetDeletionRecord
+
+    if not state or state == workspace.state:
+        return
+    workspace.state = state
+    if state not in DELETION_STATES:
+        return
+    now = _utcnow()
+    if workspace.deleted_at is None:
+        workspace.deleted_at = now
+    record = (
+        await session.execute(
+            select(BudgetDeletionRecord).where(BudgetDeletionRecord.workspace_id == workspace.id)
+        )
+    ).scalar_one_or_none()
+    if record is None:
+        session.add(
+            BudgetDeletionRecord(
+                workspace_id=workspace.id,
+                initiated_by=workspace.admin_user_id,
+                purge_after=now + dt.timedelta(hours=24),
+                state="pending",
+                recipients=[],
+            )
+        )
+    await session.flush()
+    logger.warning("restored_deletion_replayed", workspace_id=str(workspace.id), state=state)
+
+
 async def _apply_proven_access(session: AsyncSession, *, workspace: Workspace, record: Any) -> None:
-    """Восстановить членства и версию ACL по доказанной записи журнала."""
+    """Восстановить доказанный снимок доступа целиком (AUD-06, R-10).
+
+    Воспроизводятся членства с их поколениями, версия ACL, администратор и
+    состояние бюджета: удаление, подтверждённое журналом, не должно исчезать
+    после восстановления из копии.
+    """
     snapshot = record.snapshot
+    await _replay_workspace_state(session, workspace=workspace, state=str(snapshot.state or ""))
     for item in snapshot.members:
         await session.execute(
             update(Membership)

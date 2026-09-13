@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Сбор доказательств проверок: команда, дата, версия кода и схемы, результат."""
+"""Сбор доказательств проверок: команда, дата, версия кода и схемы, результат.
+
+Прогон тестов сохраняется в JUnit XML с результатом каждого узла: статус
+``verified`` в реестре требований привязывается к конкретному commit, к
+фактически собранному pytest-узлу и к его исходу, а не к наличию ссылки (R-12).
+"""
 
 from __future__ import annotations
 
@@ -11,6 +16,16 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 EVIDENCE = ROOT / ".planning" / "evidence"
+# Имя относительно корня проекта: pytest запускается с cwd=ROOT.
+JUNIT_NAME = ".planning/evidence/latest-junit.xml"
+
+
+def file_digest(path: pathlib.Path) -> str | None:
+    import hashlib
+
+    if not path.exists():
+        return None
+    return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def run(command: list[str]) -> tuple[int, str]:
@@ -47,7 +62,12 @@ def main() -> int:
         "format": [".venv/bin/ruff", "format", "--check", "src", "tests"],
         "lint": [".venv/bin/ruff", "check", "src", "tests"],
         "types": [".venv/bin/mypy", "src/fintracker"],
-        "tests": [".venv/bin/pytest", "-q", "--tb=short"],
+        "tests": [
+            ".venv/bin/pytest",
+            "-q",
+            "--tb=short",
+            f"--junitxml={JUNIT_NAME}",
+        ],
     }
     report: dict[str, object] = {
         "started_at": started.isoformat(),
@@ -68,6 +88,15 @@ def main() -> int:
             "output_tail": tail,
         }
         failures += int(code != 0)
+    junit = ROOT / JUNIT_NAME
+    stamped_junit = EVIDENCE / f"junit-{started.strftime('%Y%m%d-%H%M%S')}.xml"
+    if junit.exists():
+        stamped_junit.write_bytes(junit.read_bytes())
+    report["test_report"] = {
+        "path": JUNIT_NAME,
+        "archived": str(stamped_junit.relative_to(ROOT)) if junit.exists() else None,
+        "sha256": file_digest(junit),
+    }
     report["finished_at"] = dt.datetime.now(dt.UTC).isoformat()
     report["overall"] = "PASS" if failures == 0 else "FAIL"
 

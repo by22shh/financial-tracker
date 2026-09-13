@@ -1,0 +1,5 @@
+{
+  "snapshot": "/var/folders/gp/36jzrv8s3nv8hhml14b9k9740000gq/T/fintracker-recheck-probes-av69g7lc",
+  "baseline_snapshot": "/var/folders/gp/36jzrv8s3nv8hhml14b9k9740000gq/T/fintracker-reaudit-a63cxl89",
+  "changes": "Prior assertions unchanged; helper renamed and RLS monkeypatch removed."
+}

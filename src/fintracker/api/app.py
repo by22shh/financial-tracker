@@ -19,6 +19,11 @@ from fintracker.runtime.health import check_readiness
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    # Восстановленная база сверяется с независимым журналом доступа раньше,
+    # чем принимаются запросы (AR-31, R-10).
+    from fintracker.application.identity.security_change import reconcile_access_on_start
+
+    await reconcile_access_on_start(app.state.settings)
     yield
     await dispose_engines()
 

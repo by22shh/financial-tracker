@@ -51,6 +51,7 @@ class Attachment:
     kind: str
     size_bytes: int | None = None
     mime_type: str | None = None
+    file_name: str | None = None
     duration_seconds: int | None = None
     width: int | None = None
     height: int | None = None
@@ -76,6 +77,24 @@ class IncomingMessage:
     # Проверочное значение кода приглашения: открытый код не переносится (SEC-04).
     invite_digest: str | None = None
     correlation_id: str = ""
+
+    @property
+    def source_key(self) -> str | None:
+        """Постоянный ключ пользовательского сообщения (R-01, R-03).
+
+        Ключ одинаков для повторной обработки того же входа и для всех
+        редакций одного сообщения Telegram, поэтому одно действие участника
+        даёт один результат независимо от числа доставленных Update.
+        """
+        if self.kind is MessageKind.CALLBACK:
+            return None
+        if self.message_id is not None:
+            return f"tg:{self.chat_id}:{self.message_id}"
+        if self.inbound_event_id is not None:
+            # Без номера сообщения идентичность даёт сохранённое событие: его
+            # повторная обработка тоже не должна создавать вторую запись.
+            return f"ev:{self.inbound_event_id}"
+        return None
 
     @property
     def command(self) -> str | None:

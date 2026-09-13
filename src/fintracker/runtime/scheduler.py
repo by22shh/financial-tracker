@@ -13,6 +13,7 @@ import signal
 
 from sqlalchemy import text
 
+from fintracker.application.intelligence.schedule import enqueue_scheduled_analysis
 from fintracker.application.platform import queue
 from fintracker.config import Settings
 from fintracker.core.context import WorkspaceState
@@ -69,9 +70,12 @@ async def schedule_tick(settings: Settings) -> int:
             )
             if reminder is not None:
                 scheduled += 1
+        # Периодический анализ по общему календарю бюджета (FR-73, AUD-14).
+        scheduled += await enqueue_scheduled_analysis(settings, workspace_id=workspace_id)
 
     async with session_scope(settings, RuntimeRole.WORKER) as session:
-        today_utc = dt.datetime.now(dt.UTC).date()
+        now_utc = dt.datetime.now(dt.UTC)
+        today_utc = now_utc.date()
         await queue.enqueue(
             session,
             job_type="retention_sweep",
@@ -79,6 +83,17 @@ async def schedule_tick(settings: Settings) -> int:
             queue_class="maintenance",
             payload={"schema_version": 1},
             correlation_id=f"retention-{today_utc.isoformat()}",
+        )
+        # Фоновые события (напоминания, границы периода, анализ) раскрываются
+        # в персональные доставки без участия входящих сообщений (TECH-05).
+        minute = now_utc.strftime("%Y%m%dT%H%M")
+        await queue.enqueue(
+            session,
+            job_type="expand_outbox",
+            logical_key=f"expand:sweep:{minute}",
+            queue_class="interactive",
+            payload={"batch": 200, "schema_version": 1},
+            correlation_id=f"outbox-{minute}",
         )
     return scheduled
 

@@ -527,9 +527,7 @@ async def test_ai07_model_proposes_but_does_not_change_plan(
     try:
         outcome = await run_analysis(
             ai_settings,
-            owner_session,
-            rich.uow,
-            workspace=rich.workspace,
+            workspace_id=rich.workspace.id,
             run_kind="weekly_review",
             logical_key="weekly:ai07",
             today=TODAY,

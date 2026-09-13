@@ -1,0 +1,172 @@
+{
+  "src/fintracker/application/conversation/service.py": [
+    {
+      "line": 84,
+      "text": "if message.kind in {MessageKind.VOICE, MessageKind.PHOTO, MessageKind.DOCUMENT}:"
+    },
+    {
+      "line": 345,
+      "text": "async def record_free_text("
+    },
+    {
+      "line": 365,
+      "text": "existing = await find_message_draft("
+    },
+    {
+      "line": 466,
+      "text": "draft, candidates = await create_draft_with_candidates("
+    }
+  ],
+  "src/fintracker/application/ingestion/process_event.py": [
+    {
+      "line": 299,
+      "text": "async def handle_deliver_reply(settings: Settings, job: LeasedJob) -> None:"
+    },
+    {
+      "line": 376,
+      "text": "if not await queue.lease_is_valid(session, job):"
+    },
+    {
+      "line": 381,
+      "text": "replies = await handle(settings, message)"
+    },
+    {
+      "line": 390,
+      "text": "if not await queue.lease_is_valid(session, job):"
+    }
+  ],
+  "src/fintracker/application/platform/queue.py": [
+    {
+      "line": 172,
+      "text": "async def renew_lease(settings: Settings, job: LeasedJob) -> bool:"
+    },
+    {
+      "line": 191,
+      "text": "async def lease_is_valid(session: AsyncSession, job: LeasedJob) -> bool:"
+    }
+  ],
+  "src/fintracker/application/ingestion/accept_update.py": [
+    {
+      "line": 206,
+      "text": "edit_version = 0"
+    },
+    {
+      "line": 208,
+      "text": "highest = ("
+    },
+    {
+      "line": 217,
+      "text": "edit_version = int(highest or 0) + 1"
+    }
+  ],
+  "src/fintracker/application/ledger/service.py": [
+    {
+      "line": 533,
+      "text": "async def revise_transaction("
+    },
+    {
+      "line": 597,
+      "text": "transaction.status = \"posted\""
+    },
+    {
+      "line": 718,
+      "text": "async def restore_transaction("
+    },
+    {
+      "line": 764,
+      "text": "async def _sync_links_with_status("
+    }
+  ],
+  "src/fintracker/application/intelligence/schedule.py": [
+    {
+      "line": 76,
+      "text": "preference = AnalysisPreference(workspace_id=workspace_id)"
+    },
+    {
+      "line": 170,
+      "text": "async def handle_run_analysis(settings: Settings, job: LeasedJob) -> None:"
+    },
+    {
+      "line": 198,
+      "text": "outcome = await run_analysis("
+    }
+  ],
+  "src/fintracker/application/conversation/media.py": [
+    {
+      "line": 57,
+      "text": "and attachment.mime_type not in SUPPORTED_IMAGE_TYPES"
+    }
+  ],
+  "src/fintracker/application/conversation/io_flow.py": [
+    {
+      "line": 140,
+      "text": "async def handle_table_document("
+    }
+  ],
+  "src/fintracker/application/maintenance/retention.py": [
+    {
+      "line": 177,
+      "text": "async def handle_retention_sweep(settings: Settings, job: LeasedJob) -> None:"
+    },
+    {
+      "line": 197,
+      "text": "async def purge_deleted_workspaces(session: AsyncSession, now: dt.datetime) -> int:"
+    }
+  ],
+  "src/fintracker/db/migrations/versions/0009_runtime_maintenance.py": [
+    {
+      "line": 94,
+      "text": "ordered TEXT[] := ARRAY["
+    },
+    {
+      "line": 118,
+      "text": "FOREACH target IN ARRAY ordered LOOP"
+    }
+  ],
+  "src/fintracker/application/identity/security_change.py": [
+    {
+      "line": 123,
+      "text": "if precheck is not None:"
+    },
+    {
+      "line": 236,
+      "text": "payload = await apply(session, uow, row)"
+    },
+    {
+      "line": 307,
+      "text": "async def resume_or_quarantine("
+    },
+    {
+      "line": 348,
+      "text": "async def _apply_proven_access(session: AsyncSession, *, workspace: Workspace, record: Any) -> None:"
+    }
+  ],
+  "src/fintracker/application/identity/invites.py": [
+    {
+      "line": 306,
+      "text": "async def accept_invite("
+    },
+    {
+      "line": 321,
+      "text": "preview = await preview_invite(settings, user=user, code_digest=code_digest)"
+    },
+    {
+      "line": 360,
+      "text": "or invite.expires_at <= now"
+    },
+    {
+      "line": 423,
+      "text": "await run_security_change("
+    }
+  ],
+  ".planning/tools/check_traceability.py": [
+    {
+      "line": 99,
+      "text": "if status == \"verified\":"
+    },
+    {
+      "line": 107,
+      "text": "if not item.get(\"evidence\"):"
+    }
+  ]
+}

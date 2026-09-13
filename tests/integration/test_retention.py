@@ -16,7 +16,6 @@ from fintracker.application.maintenance.retention import (
     sweep_exports,
     sweep_inbound_payloads,
     sweep_private_drafts,
-    sweep_staging_attachments,
     sweep_stale_deliveries,
 )
 from fintracker.config import Settings
@@ -200,7 +199,7 @@ async def test_a109_attachment_removed_but_operation_remains(
 async def test_ret10_staging_objects_cleaned_after_day(
     clean_db: None, test_settings: Settings, owner_session: AsyncSession
 ) -> None:
-    """RET-09, RET-10: непривязанные staging объекты очищаются через 24 часа."""
+    """RET-09, RET-10: непривязанные staging объекты очищаются вместе с файлом."""
     fixture = await build_fixture(owner_session)
     attachment = Attachment(
         workspace_id=fixture.workspace.id,
@@ -221,8 +220,15 @@ async def test_ret10_staging_objects_cleaned_after_day(
         .where(Attachment.id == attachment.id)
         .values(created_at=NOW - dt.timedelta(hours=30))
     )
-    marked = await sweep_staging_attachments(owner_session, NOW)
+    from fintracker.infra.storage import build_storage
+
+    storage = build_storage(test_settings.storage)
+    await storage.put("staging/object", b"binary")
+    marked = await sweep_attachments(owner_session, test_settings, NOW)
     assert marked == 1
+    await owner_session.refresh(attachment)
+    assert attachment.state == "deleted"
+    assert await storage.get("staging/object") is None
 
 
 async def test_ret07_export_file_expires(
@@ -241,11 +247,17 @@ async def test_ret07_export_file_expires(
     )
     owner_session.add(export)
     await owner_session.flush()
-    removed = await sweep_exports(owner_session, NOW)
+    from fintracker.infra.storage import build_storage
+
+    storage = build_storage(test_settings.storage)
+    await storage.put("exports/file.csv", b"binary")
+    removed = await sweep_exports(owner_session, test_settings, NOW)
     assert removed == 1
     await owner_session.refresh(export)
     assert export.state == "deleted"
     assert export.storage_key is None
+    # Ссылка и сам объект удаляются вместе (RET-07, R-09).
+    assert await storage.get("exports/file.csv") is None
 
 
 async def test_stale_delivery_is_cancelled_not_retried_forever(

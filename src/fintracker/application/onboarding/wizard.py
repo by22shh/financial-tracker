@@ -422,8 +422,12 @@ async def _materialize_workspace(
     state: WizardState,
 ) -> None:
     """Создать всё содержимое бюджета в одной транзакции."""
+    from fintracker.application.intelligence.schedule import ensure_analysis_preference
+
     workspace.state = WorkspaceState.ACTIVE.value
     workspace.admin_user_id = user.id
+    # Расписание анализа сохраняется вместе с бюджетом (FR-73, R-06).
+    await ensure_analysis_preference(session, workspace_id=workspace.id)
     generation = new_generation()
     membership = Membership(
         workspace_id=workspace.id,

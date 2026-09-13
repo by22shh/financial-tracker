@@ -25,6 +25,28 @@ logger = get_logger("conversation.media")
 
 SUPPORTED_IMAGE_TYPES = frozenset({"image/jpeg", "image/png", "image/webp"})
 
+# Табличные документы идут в импорт, а не в разбор изображений (FR-63, R-08).
+SUPPORTED_TABLE_TYPES = frozenset(
+    {
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/vnd.ms-excel",
+        "text/csv",
+        "application/csv",
+    }
+)
+TABLE_SUFFIXES = (".xlsx", ".xls", ".csv")
+
+
+def is_table_document(message: IncomingMessage) -> bool:
+    """Похоже ли вложение на таблицу для импорта (FR-63, CMD-28)."""
+    if message.kind is not MessageKind.DOCUMENT or not message.attachments:
+        return False
+    attachment = message.attachments[0]
+    if attachment.mime_type and attachment.mime_type.lower() in SUPPORTED_TABLE_TYPES:
+        return True
+    name = (attachment.file_name or "").lower()
+    return name.endswith(TABLE_SUFFIXES)
+
 
 async def handle_media(
     settings: Settings, message: IncomingMessage, *, user_id: uuid.UUID
@@ -35,6 +57,25 @@ async def handle_media(
         return no_budget_reply()
 
     limits = settings.limits
+    if is_table_document(message):
+        # Таблица направляется в импорт до проверок изображения: общие
+        # ограничения файла проверяются в самом обработчике (R-08).
+        from fintracker.application.conversation import io_flow
+
+        actor, workspace = await load_actor(
+            settings,
+            user_id=user_id,
+            workspace_id=workspace_id,
+            correlation_id=message.correlation_id,
+        )
+        if message.attachments[0].size_bytes and (
+            message.attachments[0].size_bytes > limits.max_attachment_bytes
+        ):
+            return [Reply(text="Файл больше допустимого размера. Разделите таблицу на части.")]
+        return await io_flow.handle_table_document(
+            settings, actor=actor, workspace=workspace, message=message
+        )
+
     for attachment in message.attachments:
         if attachment.size_bytes and attachment.size_bytes > limits.max_attachment_bytes:
             # Безопасный отказ до декодирования сверх лимита (A33).

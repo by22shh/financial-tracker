@@ -90,7 +90,9 @@ async def _complete_fixture(session: AsyncSession, **kwargs):
         ),
         origin="form",
     )
-    await session.flush()
+    # Анализ выполняется отдельными короткими транзакциями (R-07), поэтому
+    # подготовленные данные должны быть видимы другим соединениям.
+    await session.commit()
     return fixture
 
 
@@ -104,18 +106,14 @@ async def test_a128_repeated_task_creates_one_run(
     try:
         first = await run_analysis(
             ai_settings,
-            owner_session,
-            fixture.uow,
-            workspace=fixture.workspace,
+            workspace_id=fixture.workspace.id,
             run_kind="weekly_review",
             logical_key="weekly:test",
             today=TODAY,
         )
         second = await run_analysis(
             ai_settings,
-            owner_session,
-            fixture.uow,
-            workspace=fixture.workspace,
+            workspace_id=fixture.workspace.id,
             run_kind="weekly_review",
             logical_key="weekly:test",
             today=TODAY,
@@ -146,18 +144,14 @@ async def test_a129_no_new_data_does_not_repeat_advice(
     try:
         await run_analysis(
             ai_settings,
-            owner_session,
-            fixture.uow,
-            workspace=fixture.workspace,
+            workspace_id=fixture.workspace.id,
             run_kind="weekly_review",
             logical_key="weekly:1",
             today=TODAY,
         )
         second = await run_analysis(
             ai_settings,
-            owner_session,
-            fixture.uow,
-            workspace=fixture.workspace,
+            workspace_id=fixture.workspace.id,
             run_kind="weekly_review",
             logical_key="weekly:2",
             today=TODAY,
@@ -181,14 +175,13 @@ async def test_a130_incomplete_history_blocks_recommendations(
         spec=expense_spec(fixture, amount=rub(9_000), category="Рестораны"),
         origin="form",
     )
+    await owner_session.commit()
     provider = ScriptedAIProvider(responses=[recommendation_json()])
     set_provider_override(provider)
     try:
         outcome = await run_analysis(
             ai_settings,
-            owner_session,
-            fixture.uow,
-            workspace=fixture.workspace,
+            workspace_id=fixture.workspace.id,
             run_kind="weekly_review",
             logical_key="weekly:incomplete",
             today=TODAY,
@@ -213,9 +206,7 @@ async def test_a138_generation_failure_gives_numeric_summary(
     try:
         outcome = await run_analysis(
             ai_settings,
-            owner_session,
-            fixture.uow,
-            workspace=fixture.workspace,
+            workspace_id=fixture.workspace.id,
             run_kind="weekly_review",
             logical_key="weekly:fail",
             today=TODAY,
@@ -235,9 +226,7 @@ async def test_a93_no_ai_key_keeps_report(
     fixture = await _complete_fixture(owner_session)
     outcome = await run_analysis(
         test_settings,
-        owner_session,
-        fixture.uow,
-        workspace=fixture.workspace,
+        workspace_id=fixture.workspace.id,
         run_kind="weekly_review",
         logical_key="weekly:nokey",
         today=TODAY,
@@ -442,9 +431,7 @@ async def test_a133_correction_marks_recommendation_stale(
     try:
         outcome = await run_analysis(
             ai_settings,
-            owner_session,
-            fixture.uow,
-            workspace=fixture.workspace,
+            workspace_id=fixture.workspace.id,
             run_kind="weekly_review",
             logical_key="weekly:stale",
             today=TODAY,
@@ -535,9 +522,7 @@ async def test_a131_alternative_effect_names_conditions_and_horizon(
     try:
         outcome = await run_analysis(
             ai_settings,
-            owner_session,
-            fixture.uow,
-            workspace=fixture.workspace,
+            workspace_id=fixture.workspace.id,
             run_kind="weekly_review",
             logical_key="weekly:a131",
             today=TODAY,
@@ -664,18 +649,14 @@ async def test_a179_one_run_gives_independent_deliveries(
     try:
         first = await run_analysis(
             ai_settings,
-            owner_session,
-            fixture.uow,
-            workspace=fixture.workspace,
+            workspace_id=fixture.workspace.id,
             run_kind="weekly_review",
             logical_key="weekly:a179",
             today=TODAY,
         )
         second = await run_analysis(
             ai_settings,
-            owner_session,
-            fixture.uow,
-            workspace=fixture.workspace,
+            workspace_id=fixture.workspace.id,
             run_kind="weekly_review",
             logical_key="weekly:a179",
             today=TODAY,
