@@ -207,28 +207,35 @@
   title: "Ясное голосовое «вчера 1500 за такси Софе»"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
   verification:
+    - tests/acceptance/test_voice_and_receipts.py::test_a18_clear_voice_gives_correct_card
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A19
   title: "Голосовая сумма допускает 1500 или 15000"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
+    - src/fintracker/application/intelligence/extraction.py
   verification:
+    - tests/acceptance/test_voice_and_receipts.py::test_a19_ambiguous_voice_amount_asks_once
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A20
   title: "Аудио без речи либо обрыв"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
   verification:
+    - tests/acceptance/test_voice_and_receipts.py::test_a20_audio_without_speech_keeps_problem_state
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A21
   title: "Аудио длиннее продуктового лимита"
@@ -240,6 +247,7 @@
     - src/fintracker/application/identity/preferences.py
   verification:
     - tests/acceptance/test_input_guards.py::test_a21_long_voice_rejected_before_paid_processing
+    - tests/acceptance/test_voice_and_receipts.py::test_a21_long_audio_is_refused_before_paid_call
   evidence:
     - .planning/evidence/latest.json
 
@@ -349,10 +357,12 @@
   title: "QR содержит внешнюю ссылку"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
   verification:
+    - tests/acceptance/test_voice_and_receipts.py::test_a31_photo_without_ai_key_keeps_draft
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A32
   title: "В чеке инструкция удалить историю или отправить данные"
@@ -2014,10 +2024,12 @@
   title: "Голос содержит расход и пояснение для будущего"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
   verification:
+    - tests/acceptance/test_voice_and_receipts.py::test_a182_voice_note_is_kept_for_correction
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A183
   title: "Прислать чек с подписью «Купила Софа перед поездкой»"
@@ -3986,10 +3998,12 @@
   status: verified
   implementation:
     - src/fintracker/application/conversation/media.py
+    - src/fintracker/application/intelligence/extraction.py
     - src/fintracker/application/intelligence/media_pipeline.py
     - src/fintracker/infra/asr/provider.py
   verification:
     - tests/acceptance/test_input_guards.py::test_voice_without_asr_keeps_draft_not_zero_expense
+    - tests/acceptance/test_voice_and_receipts.py::test_voice_without_configured_asr_keeps_material
   evidence:
     - .planning/evidence/latest.json
 
@@ -4042,12 +4056,14 @@
   title: "QR"
   source: docs/TZ.md
   stage: P0
-  status: implemented
+  status: verified
   implementation:
     - src/fintracker/application/conversation/media.py
     - src/fintracker/application/intelligence/media_pipeline.py
   verification:
+    - tests/acceptance/test_voice_and_receipts.py::test_a31_photo_without_ai_key_keeps_draft
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-19
   title: "Однозначный ввод"
@@ -5262,6 +5278,7 @@
     - src/fintracker/api/routes/telegram.py
     - src/fintracker/application/conversation/media.py
   verification:
+    - tests/acceptance/test_voice_and_receipts.py::test_a21_long_audio_is_refused_before_paid_call
     - tests/integration/test_qa_integrations.py::test_qa02_corrupted_image_is_rejected_before_paid_call
   evidence:
     - .planning/evidence/latest.json

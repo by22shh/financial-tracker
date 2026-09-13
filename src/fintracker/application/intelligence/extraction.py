@@ -322,7 +322,12 @@ def validate_extraction(
 
     question = response.question
     if question is None and any(item.ambiguities for item in candidates):
-        question = "Уточните, пожалуйста, недостающие данные операции."
+        # Один короткий вопрос с числовыми вариантами, а не общая фраза (FR-13, A19).
+        from fintracker.application.conversation.entry import first_question
+
+        question = (
+            first_question(candidates) or "Уточните, пожалуйста, недостающие данные операции."
+        )
     return ExtractionResult(intent=intent, candidates=candidates, question=question)
 
 

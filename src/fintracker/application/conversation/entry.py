@@ -407,7 +407,7 @@ async def extract_from_text(
 
     question = None
     if any(candidate.ambiguities for candidate in candidates):
-        question = _first_question(candidates)
+        question = first_question(candidates)
     return ExtractionResult(
         intent=Intent.RECORD_TRANSACTION,
         candidates=candidates,
@@ -422,7 +422,7 @@ def _describe(segment: str, amount_raw: str) -> str | None:
     return cleaned[:300] or None
 
 
-def _first_question(candidates: list[CandidateFields]) -> str | None:
+def first_question(candidates: list[CandidateFields]) -> str | None:
     """Один наиболее полезный вопрос, сохраняя распознанные поля (AI-05)."""
     for candidate in candidates:
         for ambiguity in candidate.ambiguities:
