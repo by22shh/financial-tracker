@@ -57,13 +57,16 @@ def more_menu() -> tuple[tuple[Button, ...], ...]:
     )
 
 
-def start_menu(*, returning: bool) -> tuple[tuple[Button, ...], ...]:
+def start_menu(*, returning: bool, unfinished: bool = False) -> tuple[tuple[Button, ...], ...]:
+    """Стартовое меню: создание, вход по коду и доступное продолжение (FR-05)."""
     rows: list[tuple[Button, ...]] = [
         (
             Button("Создать бюджет", callback("wiz", "start")),
             Button("Присоединиться по коду", callback("join", "start")),
         )
     ]
+    if unfinished:
+        rows.append((Button("Продолжить настройку", callback("wiz", "start")),))
     if returning:
         rows.append((Button("Мои бюджеты", callback("menu", "budgets")),))
     return tuple(rows)

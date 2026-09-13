@@ -409,8 +409,8 @@ async def remove_category(
         ).scalar_one_or_none()
         if target is None:
             raise NotFound("Целевая категория недоступна")
-        await _reassign_allocations(
-            session, workspace_id=workspace_id, source=category_id, target=reassign_to
+        moved = await _reassign_allocations(
+            session, uow, actor=actor, source=category_id, target=reassign_to
         )
         session.add(
             CategoryMergeMap(
@@ -418,7 +418,7 @@ async def remove_category(
                 source_category_id=category_id,
                 target_category_id=reassign_to,
                 merged_by=actor.user_id,
-                affected_transactions=preview.transaction_count,
+                affected_transactions=moved,
             )
         )
         row.archived_at = func.now()
@@ -444,37 +444,109 @@ async def remove_category(
 
 
 async def _reassign_allocations(
-    session: AsyncSession, *, workspace_id: uuid.UUID, source: uuid.UUID, target: uuid.UUID
-) -> None:
-    """Перенести текущие распределения в другую категорию.
+    session: AsyncSession,
+    uow: UnitOfWork,
+    *,
+    actor: ActorContext,
+    source: uuid.UUID,
+    target: uuid.UUID,
+) -> int:
+    """Перенести текущие распределения в другую категорию (FR-22, A122).
 
-    Общий расход остаётся прежним: меняется только разрез отчёта, суммы частей
-    не трогаются (FR-22, A122).
+    Распределения неизменяемы (ADR-03): перенос создаёт новую ревизию каждой
+    затронутой операции, а не переписывает историю. Общий расход остаётся
+    прежним — меняется только разрез отчёта.
     """
-    from sqlalchemy import update
+    from dataclasses import replace
 
+    from fintracker.application.ledger.service import load_current_spec, revise_transaction
     from fintracker.db.models.ledger import Transaction
 
-    current = (
-        select(Transaction.id, Transaction.current_revision)
-        .where(Transaction.workspace_id == workspace_id)
-        .subquery()
-    )
-    await session.execute(
-        update(Allocation)
-        .where(
-            Allocation.workspace_id == workspace_id,
-            Allocation.category_id == source,
-            Allocation.transaction_id.in_(select(current.c.id)),
-            Allocation.revision.in_(select(current.c.current_revision)),
+    workspace_id = actor.require_workspace()
+    affected = (
+        (
+            await session.execute(
+                select(Allocation.transaction_id)
+                .join(
+                    Transaction,
+                    (Transaction.workspace_id == Allocation.workspace_id)
+                    & (Transaction.id == Allocation.transaction_id)
+                    & (Transaction.current_revision == Allocation.revision),
+                )
+                .where(
+                    Allocation.workspace_id == workspace_id,
+                    Allocation.category_id == source,
+                )
+                .distinct()
+            )
         )
-        .values(category_id=target)
+        .scalars()
+        .all()
     )
-    await session.execute(
-        update(BudgetLine)
-        .where(BudgetLine.workspace_id == workspace_id, BudgetLine.category_id == source)
-        .values(category_id=target)
+    for transaction_id in affected:
+        _, _, spec = await load_current_spec(
+            session, workspace_id=workspace_id, transaction_id=transaction_id
+        )
+        allocations = tuple(
+            replace(item, category_id=target) if item.category_id == source else item
+            for item in spec.allocations
+        )
+        await revise_transaction(
+            session,
+            uow,
+            actor=actor,
+            transaction_id=transaction_id,
+            new_spec=replace(spec, allocations=allocations),
+            expected_version=None,
+            change_reason="Перенос записей архивируемой статьи",
+        )
+
+    await _merge_budget_lines(session, workspace_id=workspace_id, source=source, target=target)
+    return len(affected)
+
+
+async def _merge_budget_lines(
+    session: AsyncSession, *, workspace_id: uuid.UUID, source: uuid.UUID, target: uuid.UUID
+) -> None:
+    """Объединить строки плана при переносе статьи (FR-22, FR-37).
+
+    Если в той же версии плана уже есть строка целевой статьи с тем же
+    получателем, лимиты складываются: общий план периода не меняется и не
+    теряется. Незаданный лимит не обнуляет заданный.
+    """
+    source_lines = (
+        (
+            await session.execute(
+                select(BudgetLine).where(
+                    BudgetLine.workspace_id == workspace_id,
+                    BudgetLine.category_id == source,
+                )
+            )
+        )
+        .scalars()
+        .all()
     )
+    for line in source_lines:
+        existing = (
+            await session.execute(
+                select(BudgetLine).where(
+                    BudgetLine.workspace_id == workspace_id,
+                    BudgetLine.budget_version_id == line.budget_version_id,
+                    BudgetLine.category_id == target,
+                    BudgetLine.beneficiary_id.is_(line.beneficiary_id)
+                    if line.beneficiary_id is None
+                    else BudgetLine.beneficiary_id == line.beneficiary_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if existing is None:
+            line.category_id = target
+            continue
+        if line.limit_minor is not None:
+            existing.limit_minor = (existing.limit_minor or 0) + line.limit_minor
+        existing.is_protected = existing.is_protected or line.is_protected
+        await session.delete(line)
+    await session.flush()
 
 
 async def restore_category(

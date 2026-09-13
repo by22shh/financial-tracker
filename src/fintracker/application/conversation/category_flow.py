@@ -194,3 +194,48 @@ async def apply_category_restore(
             buttons=((Button("Категории", callback("menu", "categories")),),),
         )
     ]
+
+
+async def choose_reassign_target(
+    settings: Settings, *, actor: ActorContext, workspace: Workspace, category_id: uuid.UUID
+) -> list[Reply]:
+    """Выбрать статью, куда переносятся записи перед архивом (FR-22, A120).
+
+    Связанные правила и будущие платежи показываются явно: они не
+    переназначаются молча.
+    """
+    from fintracker.application.catalog.categories import list_categories
+
+    workspace_id = actor.require_workspace()
+    async with session_scope(
+        settings, RuntimeRole.API, user_id=actor.user_id, workspace_id=workspace_id
+    ) as session:
+        preview = await removal_preview(session, workspace_id=workspace_id, category_id=category_id)
+        categories = await list_categories(session, workspace_id=workspace_id)
+    others = [item for item in categories if item.id != category_id][:6]
+    if not others:
+        return [
+            Reply(
+                text="Переносить записи некуда: в бюджете нет другой активной статьи.",
+                buttons=((Button("← Категории", callback("cat", "manage")),),),
+            )
+        ]
+    lines = [
+        f"Куда перенести записи статьи «{preview.name}»?",
+        f"Операций: {preview.transaction_count} · строк плана: {preview.budget_line_count}",
+    ]
+    if preview.rule_count:
+        lines.append(
+            f"Правил классификации: {preview.rule_count} — они будут отключены, "
+            "новые записи в архивную статью не попадут."
+        )
+    if preview.scheduled_count:
+        lines.append(
+            f"Будущих платежей: {preview.scheduled_count} — укажите для них статью отдельно."
+        )
+    source = short(category_id)
+    rows = [
+        (Button(item.name[:24], callback("cat", "mv", source, short(item.id))),) for item in others
+    ]
+    rows.append((Button("← Категория", callback("cat", "open", source)),))
+    return [Reply(text="\n".join(lines), buttons=tuple(rows))]

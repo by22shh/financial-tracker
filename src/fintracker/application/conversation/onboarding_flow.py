@@ -457,14 +457,33 @@ def _parse_period_dates(text: str) -> tuple[dt.date, dt.date] | None:
     return start.value, end.value
 
 
+def _split_name_and_amount(line: str, by_name: dict[str, DraftCategory]) -> tuple[str, str]:
+    """Разделить «Категория 20000» на известное название и сумму (FR-84)."""
+    words = line.split()
+    for count in range(len(words) - 1, 0, -1):
+        candidate = " ".join(words[:count])
+        if candidate.casefold() in by_name:
+            return candidate, " ".join(words[count:])
+    return "", ""
+
+
 def _apply_limits(state: WizardState, text: str) -> list[str]:
     errors: list[str] = []
     currency = state.currency or DEFAULT_CURRENCY
     by_name = {item.name.casefold(): item for item in state.categories}
     for raw_line in text.splitlines():
-        if "=" not in raw_line:
+        line = raw_line.strip()
+        if not line:
             continue
-        name, _, value = raw_line.partition("=")
+        if "=" in line:
+            name, _, value = line.partition("=")
+        else:
+            # Форма «Категория 20000» принимается наравне с «Категория = 20000»:
+            # молча терять заданный лимит нельзя.
+            name, value = _split_name_and_amount(line, by_name)
+            if not name:
+                errors.append(f"Строка «{line}» не разобрана: укажите «Категория = сумма»")
+                continue
         target = by_name.get(name.strip().casefold())
         if target is None:
             errors.append(f"Категория «{name.strip()}» не найдена в списке")

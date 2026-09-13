@@ -337,6 +337,7 @@ async def _category_action(
     from fintracker.application.conversation.category_flow import (
         apply_category_removal,
         category_card,
+        choose_reassign_target,
         manage_categories,
     )
 
@@ -355,6 +356,29 @@ async def _category_action(
     if action == "page" and rest:
         return await sections.categories_view(
             settings, actor=actor, workspace=workspace, page=int(rest[0])
+        )
+    if action == "mv" and len(rest) >= 2:
+        source_id = await _resolve_uuid(
+            settings,
+            workspace_id=workspace_id,
+            user_id=user_id,
+            table="categories",
+            prefix=rest[0],
+        )
+        target_id = await _resolve_uuid(
+            settings,
+            workspace_id=workspace_id,
+            user_id=user_id,
+            table="categories",
+            prefix=rest[1],
+        )
+        return await apply_category_removal(
+            settings,
+            actor=actor,
+            workspace=workspace,
+            category_id=source_id,
+            option="reassign_and_archive",
+            reassign_to=target_id,
         )
     if action in {"open", "arch", "del", "limit", "rename", "move"} and rest:
         category_id = await _resolve_uuid(
@@ -383,6 +407,10 @@ async def _category_action(
                 workspace=workspace,
                 category_id=category_id,
                 option="delete",
+            )
+        if action == "move":
+            return await choose_reassign_target(
+                settings, actor=actor, workspace=workspace, category_id=category_id
             )
         return [
             Reply(
@@ -522,11 +550,12 @@ async def _fix_action(
     from fintracker.application.conversation.corrections import (
         apply_amount_correction,
         apply_category_correction,
+        create_category_and_move,
         remember_category_rule,
     )
 
     workspace_id = actor.require_workspace()
-    if action not in {"apply", "cat", "rule"} or len(rest) < 2:
+    if action not in {"apply", "cat", "rule", "newcat"} or len(rest) < 2:
         return [Reply(text="Кнопка устарела.")]
     transaction_id = await _resolve_uuid(
         settings,
@@ -535,6 +564,17 @@ async def _fix_action(
         table="transactions",
         prefix=rest[0],
     )
+    if action == "newcat":
+        if len(rest) < 3:
+            return [Reply(text="Кнопка устарела.")]
+        return await create_category_and_move(
+            settings,
+            actor=actor,
+            workspace=workspace,
+            transaction_id=transaction_id,
+            expected_version=int(rest[1]),
+            name=":".join(rest[2:]),
+        )
     if action == "rule":
         category_id = await _resolve_uuid(
             settings,

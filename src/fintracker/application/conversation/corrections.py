@@ -10,7 +10,12 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 
-from fintracker.application.conversation.keyboards import Button, callback, short
+from fintracker.application.conversation.keyboards import (
+    MAX_CALLBACK_BYTES,
+    Button,
+    callback,
+    short,
+)
 from fintracker.application.conversation.types import IncomingMessage, Reply
 from fintracker.application.ledger.service import (
     load_current_spec,
@@ -506,7 +511,9 @@ async def _propose_category_move(
     """Показать перенос в другую категорию до применения (FR-27, FR-33)."""
     target = await _match_category_name(settings, actor=actor, text=text)
     if target is None:
-        return None
+        return await _offer_new_category(
+            settings, actor=actor, workspace=workspace, transaction_id=transaction_id, text=text
+        )
     category_id, category_name = target
 
     workspace_id = actor.require_workspace()
@@ -666,3 +673,92 @@ async def remember_category_rule(
             buttons=((Button("Мои правила", callback("set", "rules")),),),
         )
     ]
+
+
+async def _offer_new_category(
+    settings: Settings,
+    *,
+    actor: ActorContext,
+    workspace: Workspace,
+    transaction_id: uuid.UUID,
+    text: str,
+) -> list[Reply] | None:
+    """«Создать категорию и перенести сюда эту запись» (A115, FR-21, FR-33).
+
+    Общий расход при этом не меняется: переносится только принадлежность
+    записи к статье.
+    """
+    from fintracker.application.catalog.normalize import normalize_name
+
+    match = _CATEGORY_MOVE.search(text)
+    if match is None:
+        return None
+    name = " ".join(match.group("name").split())[:40]
+    if not normalize_name(name):
+        return None
+
+    workspace_id = actor.require_workspace()
+    async with session_scope(
+        settings, RuntimeRole.API, user_id=actor.user_id, workspace_id=workspace_id
+    ) as session:
+        transaction, _revision, spec = await load_current_spec(
+            session, workspace_id=workspace_id, transaction_id=transaction_id
+        )
+        if len(spec.allocations) != 1:
+            return None
+        version = transaction.entity_version
+
+    data = callback("fix", "newcat", transaction_id.hex[:16], str(version), name)
+    if len(data.encode()) > MAX_CALLBACK_BYTES:
+        return [
+            Reply(
+                text=(
+                    f"Статьи «{name}» пока нет. Создайте её сообщением "
+                    f"«Создай категорию {name}», затем повторите перенос."
+                )
+            )
+        ]
+    return [
+        Reply(
+            text=(
+                f"Статьи «{name}» пока нет.\n"
+                "Создать её и перенести сюда эту запись? Общий расход не изменится."
+            ),
+            buttons=(
+                (
+                    Button("Создать и перенести", data),
+                    Button("Отмена", callback("noop", "x")),
+                ),
+            ),
+        )
+    ]
+
+
+async def create_category_and_move(
+    settings: Settings,
+    *,
+    actor: ActorContext,
+    workspace: Workspace,
+    transaction_id: uuid.UUID,
+    expected_version: int,
+    name: str,
+) -> list[Reply]:
+    """Создать статью и перенести в неё запись одним подтверждением (A115)."""
+    from fintracker.application.catalog.categories import create_category
+
+    workspace_id = actor.require_workspace()
+    async with session_scope(
+        settings, RuntimeRole.API, user_id=actor.user_id, workspace_id=workspace_id
+    ) as session:
+        uow = UnitOfWork(session=session, correlation_id=actor.correlation_id)
+        await uow.lock_workspace(workspace_id)
+        view = await create_category(session, uow, actor=actor, name=name)
+        category_id = view.id
+    return await apply_category_correction(
+        settings,
+        actor=actor,
+        workspace=workspace,
+        transaction_id=transaction_id,
+        expected_version=expected_version,
+        category_id=category_id,
+    )

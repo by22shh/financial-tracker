@@ -106,16 +106,33 @@ async def _handle_command(
             return await submit_join_code(
                 settings, user_id=user_id, raw_code=argument[5:], message=message
             )
+        from fintracker.application.conversation.onboarding_flow import has_active_wizard
+
         async with session_scope(settings, RuntimeRole.API, user_id=user_id) as session:
             budgets = await list_budgets(session, user_id)
+        # Повторный /start не создаёт второй бюджет и не сбрасывает планы (FR-05).
+        unfinished = await has_active_wizard(settings, user_id=user_id)
         if budgets:
             names = "\n".join(
                 f"• {item.name} ({item.role.value}, ID {item.short_id})" for item in budgets
             )
+            text = f"С возвращением! Ваши бюджеты:\n{names}"
+            if unfinished:
+                text += "\nЕсть незавершённая настройка бюджета."
             return [
                 Reply(
-                    text=f"С возвращением! Ваши бюджеты:\n{names}",
-                    buttons=start_menu(returning=True),
+                    text=text,
+                    buttons=start_menu(returning=True, unfinished=unfinished),
+                )
+            ]
+        if unfinished:
+            return [
+                Reply(
+                    text=(
+                        "С возвращением! Настройка бюджета не завершена — "
+                        "можно продолжить с того же шага."
+                    ),
+                    buttons=start_menu(returning=False, unfinished=True),
                 )
             ]
         return [

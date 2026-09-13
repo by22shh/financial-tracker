@@ -1261,10 +1261,13 @@
   title: "При исправлении выбрать «Создать категорию и перенести сюда эту запись»"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
+    - src/fintracker/application/conversation/corrections.py
   verification:
+    - tests/acceptance/test_category_scenarios.py::test_a115_create_category_and_move_record
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A116
   title: "Переименовать категорию с расходами и бюджетом"
@@ -1290,10 +1293,12 @@
   title: "Нажать «Удалить» у категории с тратами и выбрать архив"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
   verification:
+    - tests/acceptance/test_category_scenarios.py::test_a118_archive_keeps_expenses_in_reports
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A119
   title: "Восстановить архивную категорию"
@@ -1309,10 +1314,13 @@
   title: "Архивировать категорию с будущим платежом и правилом AI"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
+    - src/fintracker/application/conversation/category_flow.py
   verification:
+    - tests/acceptance/test_category_scenarios.py::test_a120_reassign_shows_links_before_archive
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A121
   title: "Удалить группу с подкатегориями"
@@ -1369,10 +1377,12 @@
   title: "Отменить исправление после конфликтующей последующей правки"
   source: docs/ACCEPTANCE.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
   verification:
+    - tests/acceptance/test_category_scenarios.py::test_a126_conflicting_correction_is_reported
   evidence:
+    - .planning/evidence/latest.json
 
 - id: A127
   title: "«Удали эту трату, это дубль», затем восстановить"
@@ -2521,6 +2531,7 @@
   implementation:
     - src/fintracker/application/analytics/coverage.py
     - src/fintracker/application/analytics/reviews.py
+    - src/fintracker/application/catalog/categories.py
     - src/fintracker/application/catalog/directory.py
     - src/fintracker/application/ledger/service.py
     - src/fintracker/application/planning/plan.py
@@ -3723,10 +3734,16 @@
   title: "Стартовое меню"
   source: docs/TZ.md
   stage: P0
-  status: planned
+  status: verified
   implementation:
+    - src/fintracker/application/conversation/keyboards.py
+    - src/fintracker/application/conversation/service.py
   verification:
+    - tests/acceptance/test_start_menu.py::test_fr05_new_user_sees_two_paths
+    - tests/acceptance/test_start_menu.py::test_fr05_repeat_start_does_not_duplicate_budget
+    - tests/acceptance/test_start_menu.py::test_fr05_unfinished_setup_can_be_resumed
   evidence:
+    - .planning/evidence/latest.json
 
 - id: FR-06
   title: "Категории"
@@ -3944,6 +3961,7 @@
     - src/fintracker/application/catalog/categories.py
     - src/fintracker/application/conversation/category_flow.py
     - src/fintracker/application/conversation/context.py
+    - src/fintracker/application/conversation/corrections.py
     - src/fintracker/db/models/catalog.py
   verification:
     - tests/integration/test_schema_constraints.py::test_duplicate_active_category_name_rejected
@@ -4139,6 +4157,7 @@
   stage: P0
   status: implemented
   implementation:
+    - src/fintracker/application/catalog/categories.py
     - src/fintracker/application/planning/plan.py
     - src/fintracker/db/models/planning.py
   verification:
