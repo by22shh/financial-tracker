@@ -1,0 +1,13 @@
+..........F                                                              [100%]
+=================================== FAILURES ===================================
+______________ test_successful_summary_emits_one_completion_event ______________
+tests/integration/test_verification4_cases.py:325: in test_successful_summary_emits_one_completion_event
+    with pytest.raises(TemporarilyUnavailable):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   Failed: DID NOT RAISE <class 'fintracker.core.errors.TemporarilyUnavailable'>
+----------------------------- Captured stderr call -----------------------------
+{"workspace_id": "924873e5-028b-443b-8e25-1eb4b205382f", "run_kind": "weekly_review", "status": "succeeded", "cards": 0, "event": "analysis_completed", "level": "info", "timestamp": "2026-09-13T18:49:01.050677Z"}
+- generated xml file: /Users/Bayramov_N/Desktop/Other/financial-tracker/.planning/audits/2026-09-14-verification-enqwqlik/run-20260913T184853Z-4ca2/junit.xml -
+=========================== short test summary info ============================
+FAILED tests/integration/test_verification4_cases.py::test_successful_summary_emits_one_completion_event
+1 failed, 10 passed in 7.14s

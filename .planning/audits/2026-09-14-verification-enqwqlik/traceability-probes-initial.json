@@ -1,0 +1,29 @@
+{
+  "snapshot": "/var/folders/gp/36jzrv8s3nv8hhml14b9k9740000gq/T/fintracker-trace3-50lyk459",
+  "results": [
+    {
+      "scenario": "unaltered_current_evidence",
+      "exit_code": 1,
+      "stdout": "Прослеживаемость нарушена:\n  - ADR-02: файл реализации отсутствует: docker-compose.yml\n  - ADR-02: файл реализации отсутствует: pyproject.toml\n  - ADR-04: файл реализации отсутствует: .env.example\n  - ADR-09: файл реализации отсутствует: .env.example\n  - ADR-11: файл реализации отсутствует: .env.example\n  - ADR-12: файл реализации отсутствует: .env.example\n  - ADR-14: файл реализации отсутствует: .env.example\n  - ADR-14: файл реализации отсутствует: docker-compose.yml\n  - ADR-15: файл реализации отсутствует: .github/workflows/ci.yml\n  - ADR-17: файл реализации отсутствует: .env.example\n  - OPS-01: файл реализации отсутствует: .github/workflows/ci.yml\n  - OPS-03: файл реализации отсутствует: .env.example\n  - OPS-04: файл реализации отсутствует: .github/workflows/ci.yml\n  - OPS-05: файл реализации отсутствует: .github/workflows/ci.yml\n  - OPS-06: файл реализации отсутствует: Makefile\n  - SEC-02: файл реализации отсутствует: .env.example\n  - SEC-04: файл реализации отсутствует: .env.example\n  - SEC-10: файл реализации отсутствует: .env.example\nВсего проблем: 18\n",
+      "stderr": ""
+    },
+    {
+      "scenario": "nonexistent_test_and_evidence",
+      "exit_code": 1,
+      "stdout": "Прослеживаемость нарушена:\n  - A01: узел не собран в прогоне: tests/integration/test_recheck_regressions.py::test_nonexistent_audit_node\n  - A01: доказательство отсутствует: .planning/evidence/nonexistent-audit-evidence.json\n  - ADR-02: файл реализации отсутствует: docker-compose.yml\n  - ADR-02: файл реализации отсутствует: pyproject.toml\n  - ADR-04: файл реализации отсутствует: .env.example\n  - ADR-09: файл реализации отсутствует: .env.example\n  - ADR-11: файл реализации отсутствует: .env.example\n  - ADR-12: файл реализации отсутствует: .env.example\n  - ADR-14: файл реализации отсутствует: .env.example\n  - ADR-14: файл реализации отсутствует: docker-compose.yml\n  - ADR-15: файл реализации отсутствует: .github/workflows/ci.yml\n  - ADR-17: файл реализации отсутствует: .env.example\n  - OPS-01: файл реализации отсутствует: .github/workflows/ci.yml\n  - OPS-03: файл реализации отсутствует: .env.example\n  - OPS-04: файл реализации отсутствует: .github/workflows/ci.yml\n  - OPS-05: файл реализации отсутствует: .github/workflows/ci.yml\n  - OPS-06: файл реализации отсутствует: Makefile\n  - SEC-02: файл реализации отсутствует: .env.example\n  - SEC-04: файл реализации отсутствует: .env.example\n  - SEC-10: файл реализации отсутствует: .env.example\nВсего проблем: 20\n",
+      "stderr": ""
+    },
+    {
+      "scenario": "zero_collected_nodes_with_stale_metadata",
+      "exit_code": 1,
+      "stdout": "Прослеживаемость нарушена:\n  - ADR-02: файл реализации отсутствует: docker-compose.yml\n  - ADR-02: файл реализации отсутствует: pyproject.toml\n  - ADR-04: файл реализации отсутствует: .env.example\n  - ADR-09: файл реализации отсутствует: .env.example\n  - ADR-11: файл реализации отсутствует: .env.example\n  - ADR-12: файл реализации отсутствует: .env.example\n  - ADR-14: файл реализации отсутствует: .env.example\n  - ADR-14: файл реализации отсутствует: docker-compose.yml\n  - ADR-15: файл реализации отсутствует: .github/workflows/ci.yml\n  - ADR-17: файл реализации отсутствует: .env.example\n  - OPS-01: файл реализации отсутствует: .github/workflows/ci.yml\n  - OPS-03: файл реализации отсутствует: .env.example\n  - OPS-04: файл реализации отсутствует: .github/workflows/ci.yml\n  - OPS-05: файл реализации отсутствует: .github/workflows/ci.yml\n  - OPS-06: файл реализации отсутствует: Makefile\n  - SEC-02: файл реализации отсутствует: .env.example\n  - SEC-04: файл реализации отсутствует: .env.example\n  - SEC-10: файл реализации отсутствует: .env.example\nВсего проблем: 18\n",
+      "stderr": ""
+    },
+    {
+      "scenario": "missing_commit_identity",
+      "exit_code": 1,
+      "stdout": "Прослеживаемость нарушена:\n  - ADR-02: файл реализации отсутствует: docker-compose.yml\n  - ADR-02: файл реализации отсутствует: pyproject.toml\n  - ADR-04: файл реализации отсутствует: .env.example\n  - ADR-09: файл реализации отсутствует: .env.example\n  - ADR-11: файл реализации отсутствует: .env.example\n  - ADR-12: файл реализации отсутствует: .env.example\n  - ADR-14: файл реализации отсутствует: .env.example\n  - ADR-14: файл реализации отсутствует: docker-compose.yml\n  - ADR-15: файл реализации отсутствует: .github/workflows/ci.yml\n  - ADR-17: файл реализации отсутствует: .env.example\n  - OPS-01: файл реализации отсутствует: .github/workflows/ci.yml\n  - OPS-03: файл реализации отсутствует: .env.example\n  - OPS-04: файл реализации отсутствует: .github/workflows/ci.yml\n  - OPS-05: файл реализации отсутствует: .github/workflows/ci.yml\n  - OPS-06: файл реализации отсутствует: Makefile\n  - SEC-02: файл реализации отсутствует: .env.example\n  - SEC-04: файл реализации отсутствует: .env.example\n  - SEC-10: файл реализации отсутствует: .env.example\nВсего проблем: 18\n",
+      "stderr": ""
+    }
+  ]
+}

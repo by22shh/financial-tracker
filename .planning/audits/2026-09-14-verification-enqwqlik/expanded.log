@@ -1,0 +1,76 @@
+FFFFFFFF                                                                 [100%]
+=================================== FAILURES ===================================
+________________ test_both_concurrent_executors_return_a_result ________________
+tests/integration/test_verification3_cases.py:72: in test_both_concurrent_executors_return_a_result
+    assert not failures, f"One expense exists, but the second executor crashes: {failures}"
+E   AssertionError: One expense exists, but the second executor crashes: ["InvalidRequestError: Can't operate on closed transaction inside context manager.  Please complete the context manager before emitting further commands."]
+E   assert not ["InvalidRequestError: Can't operate on closed transaction inside context manager.  Please complete the context manager before emitting further commands."]
+___________________ test_immediate_reply_rechecks_revocation ___________________
+tests/integration/test_verification3_cases.py:110: in test_immediate_reply_rechecks_revocation
+    assert not exposed, "Immediate path sends rendered financial history after remove_member has completed"
+E   AssertionError: Immediate path sends rendered financial history after remove_member has completed
+E   assert not [{'buttons': [[{'callback_data': 'tx:open:915f6a8cd484460d', 'text': 'Запись 1'}], [{'callback_data': 'hist:filters:-:..., 'text': 'Фильтры: без ограничений · по дате операции\nЗаписи 1–1 из 1:\n12 сентября — 98\xa0765,00\xa0₽ · Продукты'}]
+----------------------------- Captured stdout call -----------------------------
+2026-09-14 01:22:10 [info     ] inbound_accepted               correlation_id=8d1df183418845a49b28356aa7ad67b2 event_type=message has_workspace=True update_id=101
+2026-09-14 01:22:10 [info     ] security_change_completed      acl_revision=2 kind=member_remove operation_id=9ba68590-da00-4e11-a79a-b82043f86d0f
+2026-09-14 01:22:10 [info     ] inbound_processed              event_id=f06b9d6d-9cd6-433d-b599-9b404f34965e processed_at=2026-09-13T18:22:10.898917+00:00 replies=1
+________________ test_expired_lease_cannot_send_deferred_reply _________________
+tests/integration/test_verification3_cases.py:128: in test_expired_lease_cannot_send_deferred_reply
+    assert not sender.sent, "Execution fence is installed, but deferred delivery never checks it"
+E   AssertionError: Execution fence is installed, but deferred delivery never checks it
+E   assert not [{'buttons': [[{'callback_data': 'tx:open:9be696028cb6497d', 'text': 'Запись 1'}], [{'callback_data': 'hist:filters:-:..., 'text': 'Фильтры: без ограничений · по дате операции\nЗаписи 1–1 из 1:\n12 сентября — 98\xa0765,00\xa0₽ · Продукты'}]
+E    +  where [{'buttons': [[{'callback_data': 'tx:open:9be696028cb6497d', 'text': 'Запись 1'}], [{'callback_data': 'hist:filters:-:..., 'text': 'Фильтры: без ограничений · по дате операции\nЗаписи 1–1 из 1:\n12 сентября — 98\xa0765,00\xa0₽ · Продукты'}] = RecordingSender(sent=[{'chat_id': 880099881, 'text': 'Фильтры: без ограничений · по дате операции\nЗаписи 1–1 из 1:\n1...back_data': 'menu:main'}]]}], documents=[], fail_for_chats=set(), blocked_chats=set(), unknown_chats=set(), _next_id=2).sent
+----------------------------- Captured stdout call -----------------------------
+2026-09-14 01:22:11 [info     ] inbound_accepted               correlation_id=0ead24d4d2a84935b625c568eb1e51ad event_type=message has_workspace=True update_id=101
+2026-09-14 01:22:11 [warning  ] reply_immediate_failed         chat_id=880099881 error='temporary failure'
+2026-09-14 01:22:11 [warning  ] reply_deferred_to_delivery_job event_id=214066c9-5c19-41b9-b441-b33a332a4444
+2026-09-14 01:22:11 [info     ] inbound_processed              event_id=214066c9-5c19-41b9-b441-b33a332a4444 processed_at=2026-09-13T18:22:11.193787+00:00 replies=1
+_______________ test_analysis_resumes_after_process_interruption _______________
+tests/integration/test_verification3_cases.py:151: in test_analysis_resumes_after_process_interruption
+    assert result.status in {"succeeded", "fallback"}, (
+E   AssertionError: Retry returns 'running'; persisted running analysis is never resumed
+E   assert 'running' in {'fallback', 'succeeded'}
+E    +  where 'running' = AnalysisOutcome(run_id=UUID('948d910c-a823-47fe-a547-38270b32db7d'), status='running', summary='', recommendations=(), abstained_reason=None, fallback_used=False).status
+_____________ test_analysis_rechecks_authority_after_model[lease] ______________
+tests/integration/test_verification3_cases.py:190: in test_analysis_rechecks_authority_after_model
+    assert status != "succeeded" and events == 0, (
+E   AssertionError: After lease invalidation, result was accepted: status=succeeded, completion events=2
+E   assert ('succeeded' != 'succeeded')
+----------------------------- Captured stdout call -----------------------------
+2026-09-14 01:22:11 [info     ] analysis_completed             cards=0 run_kind=weekly_review status=succeeded workspace_id=f7008373-e4f7-49e4-9bb8-a894224ae397
+___________ test_analysis_rechecks_authority_after_model[quarantine] ___________
+tests/integration/test_verification3_cases.py:190: in test_analysis_rechecks_authority_after_model
+    assert status != "succeeded" and events == 0, (
+E   AssertionError: After quarantine invalidation, result was accepted: status=succeeded, completion events=2
+E   assert ('succeeded' != 'succeeded')
+----------------------------- Captured stdout call -----------------------------
+2026-09-14 01:22:12 [info     ] analysis_completed             cards=0 run_kind=weekly_review status=succeeded workspace_id=8ac7b6de-0a87-4360-a1aa-d897073e41a1
+__________________ test_repeated_photo_event_reuses_its_draft __________________
+tests/integration/test_verification3_cases.py:219: in test_repeated_photo_event_reuses_its_draft
+    assert len(drafts) == 1, f"One photo event created {len(drafts)} independent drafts with keys {[d.source_message_key for d in drafts]}"
+E   AssertionError: One photo event created 2 independent drafts with keys [None, None]
+E   assert 2 == 1
+E    +  where 2 = len([<fintracker.db.models.platform.Draft object at 0x10d4fc160>, <fintracker.db.models.platform.Draft object at 0x10d20ea50>])
+_____________ test_downgrade_keeps_previous_purge_function_usable ______________
+tests/integration/test_verification3_cases.py:244: in test_downgrade_keeps_previous_purge_function_usable
+    assert failure is None, f"Downgrade succeeds but previous application purge is broken: {failure}"
+E   AssertionError: Downgrade succeeds but previous application purge is broken: ProgrammingError: (psycopg.errors.UndefinedTable) relation "author_replies" does not exist
+E     LINE 1: DELETE FROM author_replies WHERE workspace_id = $1
+E                         ^
+E     QUERY:  DELETE FROM author_replies WHERE workspace_id = $1
+E     CONTEXT:  PL/pgSQL function purge_workspace_data(uuid) line 38 at EXECUTE
+E     [SQL: SELECT purge_workspace_data(%(id)s)]
+E     [parameters: {'id': UUID('518e5de9-aade-4707-8b86-de656fdcabe2')}]
+E     (Background on this error at: https://sqlalche.me/e/20/f405)
+E   assert 'ProgrammingError: (psycopg.errors.UndefinedTable) relation "author_replies" does not exist\nLINE 1: DELETE FROM autho...\'id\': UUID(\'518e5de9-aade-4707-8b86-de656fdcabe2\')}]\n(Background on this error at: https://sqlalche.me/e/20/f405)' is None
+- generated xml file: /Users/Bayramov_N/Desktop/Other/financial-tracker/.planning/audits/2026-09-14-verification-enqwqlik/expanded-junit.xml -
+=========================== short test summary info ============================
+FAILED tests/integration/test_verification3_cases.py::test_both_concurrent_executors_return_a_result
+FAILED tests/integration/test_verification3_cases.py::test_immediate_reply_rechecks_revocation
+FAILED tests/integration/test_verification3_cases.py::test_expired_lease_cannot_send_deferred_reply
+FAILED tests/integration/test_verification3_cases.py::test_analysis_resumes_after_process_interruption
+FAILED tests/integration/test_verification3_cases.py::test_analysis_rechecks_authority_after_model[lease]
+FAILED tests/integration/test_verification3_cases.py::test_analysis_rechecks_authority_after_model[quarantine]
+FAILED tests/integration/test_verification3_cases.py::test_repeated_photo_event_reuses_its_draft
+FAILED tests/integration/test_verification3_cases.py::test_downgrade_keeps_previous_purge_function_usable
+8 failed in 13.27s

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="2" skipped="0" tests="11" time="7.136" timestamp="2026-09-14T01:47:42.937238+07:00" hostname="Bayramov-N-mb"><testcase classname="tests.integration.test_verification3_cases" name="test_both_concurrent_executors_return_a_result" time="1.611" /><testcase classname="tests.integration.test_verification3_cases" name="test_immediate_reply_rechecks_revocation" time="0.354" /><testcase classname="tests.integration.test_verification3_cases" name="test_expired_lease_cannot_send_deferred_reply" time="0.312" /><testcase classname="tests.integration.test_verification3_cases" name="test_analysis_resumes_after_process_interruption" time="0.331" /><testcase classname="tests.integration.test_verification3_cases" name="test_analysis_rechecks_authority_after_model[lease]" time="0.305"><failure message="fintracker.core.errors.TemporarilyUnavailable: Право на выполнение задачи утрачено, запись не сохранена">tests/integration/test_verification3_cases.py:183: in test_analysis_rechecks_authority_after_model
+    await handle_run_analysis(configured, job)
+/var/folders/gp/36jzrv8s3nv8hhml14b9k9740000gq/T/fintracker-verification3-f7c8uaqw/src/fintracker/application/intelligence/schedule.py:268: in handle_run_analysis
+    outcome = await run_analysis(
+/var/folders/gp/36jzrv8s3nv8hhml14b9k9740000gq/T/fintracker-verification3-f7c8uaqw/src/fintracker/application/intelligence/analysis.py:708: in run_analysis
+    return await _store_analysis(settings, preparation, result, correlation_id=correlation_id)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/var/folders/gp/36jzrv8s3nv8hhml14b9k9740000gq/T/fintracker-verification3-f7c8uaqw/src/fintracker/application/intelligence/analysis.py:589: in _store_analysis
+    uow, run = await _checked_run(session, preparation, correlation_id)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/var/folders/gp/36jzrv8s3nv8hhml14b9k9740000gq/T/fintracker-verification3-f7c8uaqw/src/fintracker/application/intelligence/analysis.py:390: in _checked_run
+    await uow.lock_workspace(preparation.workspace_id)
+/var/folders/gp/36jzrv8s3nv8hhml14b9k9740000gq/T/fintracker-verification3-f7c8uaqw/src/fintracker/db/uow.py:109: in lock_workspace
+    raise TemporarilyUnavailable("Право на выполнение задачи утрачено, запись не сохранена")
+E   fintracker.core.errors.TemporarilyUnavailable: Право на выполнение задачи утрачено, запись не сохранена</failure></testcase><testcase classname="tests.integration.test_verification3_cases" name="test_analysis_rechecks_authority_after_model[quarantine]" time="0.261"><failure message="fintracker.core.errors.TemporarilyUnavailable: Бюджет находится в карантине после восстановления">tests/integration/test_verification3_cases.py:183: in test_analysis_rechecks_authority_after_model
+    await handle_run_analysis(configured, job)
+/var/folders/gp/36jzrv8s3nv8hhml14b9k9740000gq/T/fintracker-verification3-f7c8uaqw/src/fintracker/application/intelligence/schedule.py:268: in handle_run_analysis
+    outcome = await run_analysis(
+/var/folders/gp/36jzrv8s3nv8hhml14b9k9740000gq/T/fintracker-verification3-f7c8uaqw/src/fintracker/application/intelligence/analysis.py:708: in run_analysis
+    return await _store_analysis(settings, preparation, result, correlation_id=correlation_id)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/var/folders/gp/36jzrv8s3nv8hhml14b9k9740000gq/T/fintracker-verification3-f7c8uaqw/src/fintracker/application/intelligence/analysis.py:589: in _store_analysis
+    uow, run = await _checked_run(session, preparation, correlation_id)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/var/folders/gp/36jzrv8s3nv8hhml14b9k9740000gq/T/fintracker-verification3-f7c8uaqw/src/fintracker/application/intelligence/analysis.py:390: in _checked_run
+    await uow.lock_workspace(preparation.workspace_id)
+/var/folders/gp/36jzrv8s3nv8hhml14b9k9740000gq/T/fintracker-verification3-f7c8uaqw/src/fintracker/db/uow.py:103: in lock_workspace
+    raise TemporarilyUnavailable("Бюджет находится в карантине после восстановления")
+E   fintracker.core.errors.TemporarilyUnavailable: Бюджет находится в карантине после восстановления</failure></testcase><testcase classname="tests.integration.test_verification3_cases" name="test_repeated_photo_event_reuses_its_draft" time="0.424" /><testcase classname="tests.integration.test_verification3_cases" name="test_downgrade_keeps_previous_purge_function_usable" time="1.471" /><testcase classname="tests.integration.test_verification3_cases" name="test_api_start_does_not_require_migration_credentials" time="0.406" /><testcase classname="tests.integration.test_verification3_cases" name="test_edited_message_confirmation_updates_original_transaction" time="0.502" /><testcase classname="tests.integration.test_verification3_cases" name="test_successful_summary_emits_one_completion_event" time="0.605" /></testsuite></testsuites>

@@ -1,0 +1,77 @@
+{
+  "immediate_send": {
+    "file": "src/fintracker/application/ingestion/process_event.py",
+    "line": 592,
+    "code": "elif await _send_now(settings, chat_id=context.chat_id, replies=replies):"
+  },
+  "deferred_send": {
+    "file": "src/fintracker/application/ingestion/process_event.py",
+    "line": 423,
+    "code": "async def handle_deliver_reply(settings: Settings, job: LeasedJob) -> None:"
+  },
+  "photo_draft": {
+    "file": "src/fintracker/application/intelligence/media_pipeline.py",
+    "line": 215,
+    "code": "source_kind=\"photo\","
+  },
+  "voice_draft": {
+    "file": "src/fintracker/application/intelligence/media_pipeline.py",
+    "line": 81,
+    "code": "source_kind=\"voice\","
+  },
+  "duplicate_rollback": {
+    "file": "src/fintracker/application/conversation/entry.py",
+    "line": 545,
+    "code": "await session.rollback()"
+  },
+  "analysis_store": {
+    "file": "src/fintracker/application/intelligence/analysis.py",
+    "line": 490,
+    "code": "async def _store_analysis("
+  },
+  "analysis_existing": {
+    "file": "src/fintracker/application/intelligence/analysis.py",
+    "line": 344,
+    "code": "if existing is not None:"
+  },
+  "analysis_emit": {
+    "file": "src/fintracker/application/intelligence/analysis.py",
+    "line": 552,
+    "code": "await uow.emit("
+  },
+  "schedule_emit": {
+    "file": "src/fintracker/application/intelligence/schedule.py",
+    "line": 280,
+    "code": "if not outcome.recommendations and outcome.summary:"
+  },
+  "access_owner": {
+    "file": "src/fintracker/application/identity/security_change.py",
+    "line": 444,
+    "code": "async with session_scope(settings, RuntimeRole.OWNER, workspace_id=workspace_id) as session:"
+  },
+  "api_lifespan": {
+    "file": "src/fintracker/api/app.py",
+    "line": 26,
+    "code": "await reconcile_access_on_start(app.state.settings)"
+  },
+  "worker_lifespan": {
+    "file": "src/fintracker/runtime/worker.py",
+    "line": 135,
+    "code": "await reconcile_access_on_start(settings)"
+  },
+  "downgrade": {
+    "file": "src/fintracker/db/migrations/versions/0011_author_replies.py",
+    "line": 137,
+    "code": "def downgrade() -> None:"
+  },
+  "trace_empty": {
+    "file": ".planning/tools/check_traceability.py",
+    "line": 243,
+    "code": "if not outcomes:"
+  },
+  "trace_revision": {
+    "file": ".planning/tools/check_traceability.py",
+    "line": 181,
+    "code": "if head and revision and revision != head and code_changed_since(revision):"
+  }
+}

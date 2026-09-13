@@ -1,0 +1,85 @@
+FFFFFFFFF.                                                               [100%]
+=================================== FAILURES ===================================
+________________ test_both_concurrent_executors_return_a_result ________________
+tests/integration/test_verification3_cases.py:72: in test_both_concurrent_executors_return_a_result
+    assert not failures, f"One expense exists, but the second executor crashes: {failures}"
+E   AssertionError: One expense exists, but the second executor crashes: ["InvalidRequestError: Can't operate on closed transaction inside context manager.  Please complete the context manager before emitting further commands."]
+E   assert not ["InvalidRequestError: Can't operate on closed transaction inside context manager.  Please complete the context manager before emitting further commands."]
+___________________ test_immediate_reply_rechecks_revocation ___________________
+tests/integration/test_verification3_cases.py:110: in test_immediate_reply_rechecks_revocation
+    assert not exposed, "Immediate path sends rendered financial history after remove_member has completed"
+E   AssertionError: Immediate path sends rendered financial history after remove_member has completed
+E   assert not [{'buttons': [[{'callback_data': 'tx:open:443fe5053a004413', 'text': 'Запись 1'}], [{'callback_data': 'hist:filters:-:..., 'text': 'Фильтры: без ограничений · по дате операции\nЗаписи 1–1 из 1:\n12 сентября — 98\xa0765,00\xa0₽ · Продукты'}]
+----------------------------- Captured stdout call -----------------------------
+2026-09-14 01:24:52 [info     ] inbound_accepted               correlation_id=a5308079f90f467294ec988678108469 event_type=message has_workspace=True update_id=101
+2026-09-14 01:24:52 [info     ] security_change_completed      acl_revision=2 kind=member_remove operation_id=84452616-183f-4201-bb69-366cdd5578ac
+2026-09-14 01:24:52 [info     ] inbound_processed              event_id=1f1a7995-8937-4177-8961-2bf53a013996 processed_at=2026-09-13T18:24:52.502601+00:00 replies=1
+________________ test_expired_lease_cannot_send_deferred_reply _________________
+tests/integration/test_verification3_cases.py:128: in test_expired_lease_cannot_send_deferred_reply
+    assert not sender.sent, "Execution fence is installed, but deferred delivery never checks it"
+E   AssertionError: Execution fence is installed, but deferred delivery never checks it
+E   assert not [{'buttons': [[{'callback_data': 'tx:open:cc2c18d4e0af491c', 'text': 'Запись 1'}], [{'callback_data': 'hist:filters:-:..., 'text': 'Фильтры: без ограничений · по дате операции\nЗаписи 1–1 из 1:\n12 сентября — 98\xa0765,00\xa0₽ · Продукты'}]
+E    +  where [{'buttons': [[{'callback_data': 'tx:open:cc2c18d4e0af491c', 'text': 'Запись 1'}], [{'callback_data': 'hist:filters:-:..., 'text': 'Фильтры: без ограничений · по дате операции\nЗаписи 1–1 из 1:\n12 сентября — 98\xa0765,00\xa0₽ · Продукты'}] = RecordingSender(sent=[{'chat_id': 880099881, 'text': 'Фильтры: без ограничений · по дате операции\nЗаписи 1–1 из 1:\n1...back_data': 'menu:main'}]]}], documents=[], fail_for_chats=set(), blocked_chats=set(), unknown_chats=set(), _next_id=2).sent
+----------------------------- Captured stdout call -----------------------------
+2026-09-14 01:24:52 [info     ] inbound_accepted               correlation_id=6eee021524ea4ffeb9bd632c55f08c6e event_type=message has_workspace=True update_id=101
+2026-09-14 01:24:52 [warning  ] reply_immediate_failed         chat_id=880099881 error='temporary failure'
+2026-09-14 01:24:52 [warning  ] reply_deferred_to_delivery_job event_id=d55f6c7d-7dc5-49f5-86f8-0963ea4ef005
+2026-09-14 01:24:52 [info     ] inbound_processed              event_id=d55f6c7d-7dc5-49f5-86f8-0963ea4ef005 processed_at=2026-09-13T18:24:52.767562+00:00 replies=1
+_______________ test_analysis_resumes_after_process_interruption _______________
+tests/integration/test_verification3_cases.py:151: in test_analysis_resumes_after_process_interruption
+    assert result.status in {"succeeded", "fallback"}, (
+E   AssertionError: Retry returns 'running'; persisted running analysis is never resumed
+E   assert 'running' in {'fallback', 'succeeded'}
+E    +  where 'running' = AnalysisOutcome(run_id=UUID('d7c94358-d34e-4e21-a926-48218f5526a5'), status='running', summary='', recommendations=(), abstained_reason=None, fallback_used=False).status
+_____________ test_analysis_rechecks_authority_after_model[lease] ______________
+tests/integration/test_verification3_cases.py:190: in test_analysis_rechecks_authority_after_model
+    assert status != "succeeded" and events == 0, (
+E   AssertionError: After lease invalidation, result was accepted: status=succeeded, completion events=2
+E   assert ('succeeded' != 'succeeded')
+----------------------------- Captured stdout call -----------------------------
+2026-09-14 01:24:53 [info     ] analysis_completed             cards=0 run_kind=weekly_review status=succeeded workspace_id=6f5d2190-c94a-4b48-a922-e05bc6df9358
+___________ test_analysis_rechecks_authority_after_model[quarantine] ___________
+tests/integration/test_verification3_cases.py:190: in test_analysis_rechecks_authority_after_model
+    assert status != "succeeded" and events == 0, (
+E   AssertionError: After quarantine invalidation, result was accepted: status=succeeded, completion events=2
+E   assert ('succeeded' != 'succeeded')
+----------------------------- Captured stdout call -----------------------------
+2026-09-14 01:24:53 [info     ] analysis_completed             cards=0 run_kind=weekly_review status=succeeded workspace_id=341efa2b-f8b3-4f91-9205-9594d1a31515
+__________________ test_repeated_photo_event_reuses_its_draft __________________
+tests/integration/test_verification3_cases.py:231: in test_repeated_photo_event_reuses_its_draft
+    assert count == 1 and len(drafts) == 1, (
+E   AssertionError: One retried photo event made 2 cards and 2 expenses; source keys=[None, None]
+E   assert (2 == 1)
+----------------------------- Captured stdout call -----------------------------
+2026-09-14 01:24:53 [info     ] inbound_accepted               correlation_id=aad134e41ada416caf5dca2869cca676 event_type=message has_workspace=True update_id=101
+2026-09-14 01:24:53 [info     ] inbound_processed              event_id=439596cf-896c-49e2-bba6-692879fc521d processed_at=2026-09-13T18:24:53.942879+00:00 replies=1
+_____________ test_downgrade_keeps_previous_purge_function_usable ______________
+tests/integration/test_verification3_cases.py:260: in test_downgrade_keeps_previous_purge_function_usable
+    assert failure is None, f"Downgrade succeeds but previous application purge is broken: {failure}"
+E   AssertionError: Downgrade succeeds but previous application purge is broken: ProgrammingError: (psycopg.errors.UndefinedTable) relation "author_replies" does not exist
+E     LINE 1: DELETE FROM author_replies WHERE workspace_id = $1
+E                         ^
+E     QUERY:  DELETE FROM author_replies WHERE workspace_id = $1
+E     CONTEXT:  PL/pgSQL function purge_workspace_data(uuid) line 38 at EXECUTE
+E     [SQL: SELECT purge_workspace_data(%(id)s)]
+E     [parameters: {'id': UUID('60149ced-d94d-4834-9117-deb9b5bb4765')}]
+E     (Background on this error at: https://sqlalche.me/e/20/f405)
+E   assert 'ProgrammingError: (psycopg.errors.UndefinedTable) relation "author_replies" does not exist\nLINE 1: DELETE FROM autho...\'id\': UUID(\'60149ced-d94d-4834-9117-deb9b5bb4765\')}]\n(Background on this error at: https://sqlalche.me/e/20/f405)' is None
+____________ test_api_start_does_not_require_migration_credentials _____________
+tests/integration/test_verification3_cases.py:281: in test_api_start_does_not_require_migration_credentials
+    assert failure is None, f"API startup requires the forbidden migration connection: {failure}"
+E   AssertionError: API startup requires the forbidden migration connection: OperationalError: (psycopg.OperationalError) connection failed: connection to server at "127.0.0.1", port 1 failed: could not receive data from server: Connection refused
+E     (Background on this error at: https://sqlalche.me/e/20/e3q8)
+E   assert 'OperationalError: (psycopg.OperationalError) connection failed: connection to server at "127.0.0.1", port 1 failed: could not receive data from server: Connection refused\n(Background on this error at: https://sqlalche.me/e/20/e3q8)' is None
+- generated xml file: /Users/Bayramov_N/Desktop/Other/financial-tracker/.planning/audits/2026-09-14-verification-enqwqlik/expanded-final-junit.xml -
+=========================== short test summary info ============================
+FAILED tests/integration/test_verification3_cases.py::test_both_concurrent_executors_return_a_result
+FAILED tests/integration/test_verification3_cases.py::test_immediate_reply_rechecks_revocation
+FAILED tests/integration/test_verification3_cases.py::test_expired_lease_cannot_send_deferred_reply
+FAILED tests/integration/test_verification3_cases.py::test_analysis_resumes_after_process_interruption
+FAILED tests/integration/test_verification3_cases.py::test_analysis_rechecks_authority_after_model[lease]
+FAILED tests/integration/test_verification3_cases.py::test_analysis_rechecks_authority_after_model[quarantine]
+FAILED tests/integration/test_verification3_cases.py::test_repeated_photo_event_reuses_its_draft
+FAILED tests/integration/test_verification3_cases.py::test_downgrade_keeps_previous_purge_function_usable
+FAILED tests/integration/test_verification3_cases.py::test_api_start_does_not_require_migration_credentials
+9 failed, 1 passed in 6.54s

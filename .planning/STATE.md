@@ -1,7 +1,7 @@
 # STATE — текущее состояние работы
 
-Обновлено: после внешнего аудита 13 сентября 2026 и повторной проверки
-исправлений (AUD-01…AUD-18, R-01…R-12).
+Обновлено: 14 сентября 2026, после исправления замечаний V-01…V-09
+последней независимой проверки. Подробности: `docs/IMPLEMENTATION_FIXES_2026-09-14.md`.
 
 ## Среда
 
@@ -12,7 +12,7 @@
 | Роли БД | `fintracker_owner` (миграции), `fintracker_api`, `fintracker_worker` (NOBYPASSRLS) |
 | Зависимости | aiogram 3.31, FastAPI 0.115.14, Pydantic 2.13.5, SQLAlchemy 2.0.52, psycopg 3.3.5, Alembic 1.20, httpx 0.28.1, openpyxl 3.1.5, structlog 25.5 |
 | Проверки | ruff 0.15.22, mypy 1.20.2 (strict), pytest 8.4.2, hypothesis 6.168 |
-| Миграции | 0001 initial → 0002 RLS → 0003 bootstrap → 0004 admin trigger → 0005 invite lookup → 0006 порядок операций → 0007 индексы → 0008 чтение схемы → 0009 служебные функции обслуживания → 0010 идентичность ввода и файлы → 0011 изолированный ответ автору |
+| Миграции | 0001 initial → 0002 RLS → 0003 bootstrap → 0004 admin trigger → 0005 invite lookup → 0006 порядок операций → 0007 индексы → 0008 чтение схемы → 0009 служебные функции обслуживания → 0010 идентичность ввода и файлы → 0011 изолированный ответ автору → 0012 ограниченное восстановление доступа → 0013 попытки анализа и атомарная публикация |
 
 ## Сделано и проверено
 
@@ -37,6 +37,9 @@
 |---|---|---|
 | Диагностики первого аудита (21) | все проходят | `.planning/audits/2026-09-13/run_reproductions.py --commit HEAD` |
 | Диагностики повторной проверки (36 = 21 + 15) | все проходят | `.planning/audits/2026-09-13-recheck-a63cxl89/run_recheck.py` |
+| Исправления V-01…V-09 | 9/9 закрыты; дополнительная диагностика 11/11 | `docs/IMPLEMENTATION_FIXES_2026-09-14.md` |
+| Полный сохранённый прогон | 546 passed, 0 skipped; Ruff и mypy PASS | `.planning/evidence/latest.json`, `latest-junit.xml` |
+| Подмена доказательств | три испорченных варианта отвергнуты; 19 штатных тестов PASS | `tests/unit/test_traceability_evidence.py` |
 | Те же инварианты в штатном наборе | `tests/integration/test_deep_audit.py`, `test_audit_regressions.py`, `test_audit_access_money.py`, `test_recheck_regressions.py` | без изоляций и подмен |
 
 Ключевые исправления: атомарная идентичность пользовательского ввода
@@ -52,8 +55,10 @@
 - Измерение производительности (NFR-01, NFR-03, NFR-06, NFR-07, NFR-08, AR-34):
   `tests/performance/test_performance.py`, запуск `FINTRACKER_PERF=1`.
 - Учение по восстановлению (AR-33, NFR-10): `.planning/tools/restore_drill.py`.
-- Остаток P0: AI-04, AI-07, ADR-16, QA-02, QA-04, часть сценариев A.
-- P1: FR-43, FR-44, FR-48, FR-68, FORM-04.
+- Реестр: 481 verified, 8 planned, 9 blocked, 2 implemented из 500.
+- Не завершённые требования P1: FR-43, FR-68, FORM-04, A43, A44, A104,
+  A105, A107; B7 и FR-31 реализованы, но не verified.
+- QA-04 — внешний пилот, blocked до BL-03.
 - Эталонный набор ТЗ §25.1 собран частично: 36 размеченных текстов и 19
   защитных входов вместо 250/100/100/50. Голос и чеки требуют BL-02 и BL-01.
   Текущее покрытие и разрыв записаны в `.planning/evidence/extraction_accuracy.json`.
