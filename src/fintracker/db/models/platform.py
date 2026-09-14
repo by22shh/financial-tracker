@@ -162,6 +162,27 @@ class PendingAction(Base):
     )
 
 
+class HistoryQueryState(Base):
+    """Server-side continuation for a journal query that cannot fit Telegram's 64 bytes."""
+
+    __tablename__ = "history_query_states"
+
+    id: Mapped[uuid.UUID] = pk_uuid()
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    workspace_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    token: Mapped[str] = mapped_column(String(16), nullable=False)
+    query: Mapped[str] = mapped_column(Text, nullable=False)
+    expires_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[dt.datetime] = now_server()
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "workspace_id", "token"),
+        Index("ix_history_query_states_expiry", "expires_at"),
+    )
+
+
 class Draft(Base):
     """Черновик ввода (FR-20). Личный до проведения."""
 

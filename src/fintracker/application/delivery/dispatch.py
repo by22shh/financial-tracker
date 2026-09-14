@@ -310,7 +310,14 @@ async def reserve_daily_slot(
 
 
 async def _delivery_authority(
-    session: AsyncSession, job: LeasedJob, workspace_id: uuid.UUID
+    session: AsyncSession,
+    job: LeasedJob,
+    workspace_id: uuid.UUID,
+    *,
+    delivery_id: uuid.UUID | None = None,
+    recipient_id: uuid.UUID | None = None,
+    membership_generation: uuid.UUID | None = None,
+    delivery_class: str | None = None,
 ) -> bool:
     """Есть ли право отправлять уведомления этого бюджета прямо сейчас (G-03).
 
@@ -337,10 +344,44 @@ async def _delivery_authority(
             quarantined=bool(quarantined),
         )
         return False
+    terminal = delivery_class == "terminal"
     if state in {WorkspaceState.DELETING.value, WorkspaceState.DELETED.value}:
-        # Терминальные сообщения удаляемого бюджета идут отдельным классом.
+        if not terminal:
+            return False
+    elif state != WorkspaceState.ACTIVE.value:
+        return False
+    if delivery_id is None:
         return True
-    return bool(state == WorkspaceState.ACTIVE.value)
+    delivery = (
+        await session.execute(
+            select(NotificationDelivery).where(
+                NotificationDelivery.id == delivery_id,
+                NotificationDelivery.event_id == job.payload["event_id"],
+                NotificationDelivery.state.in_(("pending", "failed")),
+            )
+        )
+    ).scalar_one_or_none()
+    if delivery is None:
+        return False
+    if (
+        recipient_id is None
+        or membership_generation is None
+        or delivery.recipient_user_id != recipient_id
+        or delivery.membership_generation != membership_generation
+    ):
+        return False
+    membership = (
+        await session.execute(
+            select(Membership).where(
+                Membership.workspace_id == workspace_id,
+                Membership.user_id == recipient_id,
+                Membership.generation == membership_generation,
+            )
+        )
+    ).scalar_one_or_none()
+    return bool(
+        membership is not None and (terminal or membership.status == MembershipStatus.ACTIVE.value)
+    )
 
 
 async def handle_deliver_notification(settings: Settings, job: LeasedJob) -> None:
@@ -482,7 +523,15 @@ async def handle_deliver_notification(settings: Settings, job: LeasedJob) -> Non
                     buttons=buttons,
                 )
 
-            if not await _delivery_authority(session, job, workspace_id):
+            if not await _delivery_authority(
+                session,
+                job,
+                workspace_id,
+                delivery_id=delivery_id,
+                recipient_id=recipient_id,
+                membership_generation=generation,
+                delivery_class=delivery_class,
+            ):
                 await session.execute(
                     update(NotificationDelivery)
                     .where(NotificationDelivery.id == delivery_id)
@@ -496,15 +545,26 @@ async def handle_deliver_notification(settings: Settings, job: LeasedJob) -> Non
             settings, RuntimeRole.WORKER, workspace_id=workspace_id
         ) as session:
             # Результат записывается только при сохранившемся праве (G-03).
-            if not await _delivery_authority(session, job, workspace_id):
+            if not await _delivery_authority(
+                session,
+                job,
+                workspace_id,
+                delivery_id=delivery_id,
+                recipient_id=recipient_id,
+                membership_generation=generation,
+                delivery_class=delivery_class,
+            ):
                 return
             if result.ok:
                 await session.execute(
                     update(NotificationDelivery)
                     .where(
-                        NotificationDelivery.id.in_([delivery_id, *merged_ids])
-                        if merged_ids
-                        else NotificationDelivery.id == delivery_id
+                        (
+                            NotificationDelivery.id.in_([delivery_id, *merged_ids])
+                            if merged_ids
+                            else NotificationDelivery.id == delivery_id
+                        ),
+                        NotificationDelivery.state.in_(("pending", "failed")),
                     )
                     .values(state="sent", telegram_message_id=result.message_id)
                 )
@@ -563,7 +623,9 @@ async def _schedule_unfinished(
         created = await queue.enqueue(
             session,
             job_type="deliver_notification",
-            logical_key=f"deliver:{event_id}:{bucket}",
+            # Каждая попытка получает новый ключ. Иначе долговечный fence
+            # сталкивается с уже завершённым retry и оставляет доставку без job.
+            logical_key=f"deliver:{event_id}:{bucket}:{job.id.hex}",
             queue_class="interactive",
             workspace_id=workspace_id,
             subject_id=event_id,

@@ -492,53 +492,100 @@ async def resume_or_quarantine(
     * доказанной последней версии нет — доступ не открывается.
     """
     journal = security_log or build_security_log(settings.security_log)
-    pending = await journal.pending_operations(workspace_id)
-    last = await journal.last_committed(workspace_id)
 
-    # Recovery uses the same workspace RLS boundary as ordinary worker tasks.
-    # Migration credentials must never be needed by a running API/worker.
-    async with session_scope(settings, RuntimeRole.WORKER, workspace_id=workspace_id) as session:
-        workspace = (
-            await session.execute(
-                select(Workspace).where(Workspace.id == workspace_id).with_for_update()
-            )
-        ).scalar_one_or_none()
-        if workspace is None:
+    # Journal I/O is necessarily outside the database transaction.  Observe a
+    # workspace generation before it, then lock and verify that the generation
+    # did not change while the journal was read.  Without this retry a normal
+    # ACL change that commits between these two reads can be quarantined using a
+    # stale journal snapshot.
+    for attempt in range(2):
+        async with session_scope(
+            settings, RuntimeRole.WORKER, workspace_id=workspace_id
+        ) as session:
+            observed = (
+                await session.execute(
+                    select(Workspace.acl_revision, Workspace.security_fence).where(
+                        Workspace.id == workspace_id
+                    )
+                )
+            ).one_or_none()
+        if observed is None:
+            return []
+        observed_revision, observed_fence = observed
+
+        pending = await journal.pending_operations(workspace_id)
+        last = await journal.last_committed(workspace_id)
+
+        # Recovery uses the same workspace RLS boundary as ordinary worker tasks.
+        # Migration credentials must never be needed by a running API/worker.
+        async with session_scope(
+            settings, RuntimeRole.WORKER, workspace_id=workspace_id
+        ) as session:
+            workspace = (
+                await session.execute(
+                    select(Workspace).where(Workspace.id == workspace_id).with_for_update()
+                )
+            ).scalar_one_or_none()
+            if workspace is None:
+                return pending
+            if (
+                workspace.acl_revision != observed_revision
+                or workspace.security_fence != observed_fence
+            ):
+                if attempt == 0:
+                    # Read the same durable storage through an unwrapped log.
+                    # Besides avoiding a second stale observation, this makes
+                    # reconciliation safe when a caller instruments the public
+                    # facade while an ACL mutation completes.
+                    fresh = SecurityLog(journal._storage)
+                    pending = await fresh.pending_operations(workspace_id)
+                    last = await fresh.last_committed(workspace_id)
+                    if (
+                        workspace.security_fence is None
+                        and last is not None
+                        and workspace.acl_revision == last.proposed_acl_revision
+                        and not pending
+                    ):
+                        return pending
+                    continue
+                # A live mutation is still in progress.  Do not turn it into a
+                # permanent quarantine from an observation we cannot prove.
+                return pending
+
+            quarantine = bool(pending)
+            if last is None and workspace.acl_revision > 0:
+                # У существующего бюджета нет доказанной версии доступа: журнал
+                # недоступен, пуст или подменён. Доступ не открывается (ADR-14, G-04).
+                quarantine = True
+                logger.error(
+                    "access_journal_missing",
+                    workspace_id=str(workspace_id),
+                    database_revision=workspace.acl_revision,
+                )
+            if last is not None and workspace.acl_revision < last.proposed_acl_revision:
+                # База отстала от журнала: применяется доказанная версия доступа.
+                await _apply_proven_access(session, workspace=workspace, record=last)
+                quarantine = True
+                logger.warning(
+                    "restored_acl_replayed",
+                    workspace_id=str(workspace_id),
+                    database_revision=workspace.acl_revision,
+                    journal_revision=last.proposed_acl_revision,
+                )
+            if last is not None and workspace.acl_revision > last.proposed_acl_revision:
+                # Журнал отстал от базы: текущая версия доступа не доказана
+                # независимым носителем, поэтому доступ открывать нельзя.
+                quarantine = True
+                logger.error(
+                    "access_journal_stale",
+                    workspace_id=str(workspace_id),
+                    database_revision=workspace.acl_revision,
+                    journal_revision=last.proposed_acl_revision,
+                )
+            if quarantine:
+                workspace.quarantined = True
             return pending
-
-        quarantine = bool(pending)
-        if last is None and workspace.acl_revision > 0:
-            # У существующего бюджета нет доказанной версии доступа: журнал
-            # недоступен, пуст или подменён. Доступ не открывается (ADR-14, G-04).
-            quarantine = True
-            logger.error(
-                "access_journal_missing",
-                workspace_id=str(workspace_id),
-                database_revision=workspace.acl_revision,
-            )
-        if last is not None and workspace.acl_revision < last.proposed_acl_revision:
-            # База отстала от журнала: применяется доказанная версия доступа.
-            await _apply_proven_access(session, workspace=workspace, record=last)
-            quarantine = True
-            logger.warning(
-                "restored_acl_replayed",
-                workspace_id=str(workspace_id),
-                database_revision=workspace.acl_revision,
-                journal_revision=last.proposed_acl_revision,
-            )
-        if last is not None and workspace.acl_revision > last.proposed_acl_revision:
-            # Журнал отстал от базы: текущая версия доступа не доказана
-            # независимым носителем, поэтому доступ открывать нельзя.
-            quarantine = True
-            logger.error(
-                "access_journal_stale",
-                workspace_id=str(workspace_id),
-                database_revision=workspace.acl_revision,
-                journal_revision=last.proposed_acl_revision,
-            )
-        if quarantine:
-            workspace.quarantined = True
-    return pending
+    return []
 
 
 DELETION_STATES = (WorkspaceState.DELETING.value, WorkspaceState.DELETED.value)

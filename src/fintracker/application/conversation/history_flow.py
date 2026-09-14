@@ -11,6 +11,8 @@ import uuid
 from dataclasses import dataclass, replace
 from zoneinfo import ZoneInfo
 
+from sqlalchemy import select
+
 from fintracker.application.analytics.journal import list_journal
 from fintracker.application.analytics.reports import FilterSpec
 from fintracker.application.conversation import views
@@ -20,6 +22,7 @@ from fintracker.application.conversation.types import Reply
 from fintracker.config import Settings
 from fintracker.core.context import ActorContext
 from fintracker.db.models.access import Workspace
+from fintracker.db.models.platform import HistoryQueryState
 from fintracker.db.session import RuntimeRole, session_scope
 
 PAGE_SIZE = 8
@@ -99,8 +102,6 @@ async def journal_view(
     """Показать страницу журнала с учётом фильтров (FR-07)."""
     # Запрос приходит либо из команды, либо из состояния страницы (G-19).
     note_query = note_query or view.note_query or None
-    if note_query and not view.note_query:
-        view = replace(view, note_query=note_query)
     workspace_id = actor.require_workspace()
     today = dt.datetime.now(ZoneInfo(workspace.timezone)).date()
 
@@ -109,6 +110,32 @@ async def journal_view(
     async with session_scope(
         settings, RuntimeRole.API, user_id=actor.user_id, workspace_id=workspace_id
     ) as session:
+        if note_query and note_query.startswith("~"):
+            stored = (
+                await session.execute(
+                    select(HistoryQueryState.query).where(
+                        HistoryQueryState.user_id == actor.user_id,
+                        HistoryQueryState.workspace_id == workspace_id,
+                        HistoryQueryState.token == note_query[1:],
+                        HistoryQueryState.expires_at > dt.datetime.now(dt.UTC),
+                    )
+                )
+            ).scalar_one_or_none()
+            note_query = stored
+        elif note_query and not view.note_query:
+            # The callback needs a compact opaque continuation, while the full
+            # text remains available for paging, sorting and category filters.
+            token = uuid.uuid4().hex[:12]
+            session.add(
+                HistoryQueryState(
+                    user_id=actor.user_id,
+                    workspace_id=workspace_id,
+                    token=token,
+                    query=note_query,
+                    expires_at=dt.datetime.now(dt.UTC) + dt.timedelta(days=1),
+                )
+            )
+            view = replace(view, note_query=f"~{token}")
         if "p" in view.flags:
             from fintracker.application.planning.periods import period_for_date
 

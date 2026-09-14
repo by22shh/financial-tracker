@@ -186,6 +186,7 @@ async def apply_goal_amount(
     goal_id: uuid.UUID,
     operation: str,
     text: str,
+    idempotency_key: str | None = None,
 ) -> list[Reply]:
     """Применить сумму к резерву цели."""
     from fintracker.application.commitments.goals import allocate_to_goal, release_goal, use_goal
@@ -194,10 +195,20 @@ async def apply_goal_amount(
     from fintracker.db.uow import UnitOfWork
     from fintracker.domain.parsing.amounts import parse_amounts
 
+    if text.strip().startswith("-"):
+        return [Reply(text="Сумма должна быть положительной. Отправьте число больше нуля.")]
     amounts = parse_amounts(text)
     if not amounts:
         return [Reply(text="Не понял сумму. Отправьте число, например 5000.")]
-    amount = Money.from_decimal(Decimal(amounts[0].value), workspace.currency)
+    parsed = amounts[0]
+    if parsed.value <= 0:
+        return [Reply(text="Сумма должна быть положительной. Отправьте число больше нуля.")]
+    if parsed.currency is not None and parsed.currency != workspace.currency:
+        return [Reply(text=f"Валюта суммы должна быть {workspace.currency}.")]
+    if parsed.is_ambiguous:
+        return [Reply(text="Неоднозначная сумма. Напишите, например, 1500 или 1,50.")]
+    amount = Money.from_decimal(Decimal(parsed.value), workspace.currency)
+    reason = f"telegram:{idempotency_key}" if idempotency_key else "telegram"
     workspace_id = actor.require_workspace()
     async with session_scope(
         settings, RuntimeRole.API, user_id=actor.user_id, workspace_id=workspace_id
@@ -207,12 +218,12 @@ async def apply_goal_amount(
         try:
             if operation == "allocate":
                 await allocate_to_goal(
-                    session, uow, actor=actor, goal_id=goal_id, amount=amount, reason="telegram"
+                    session, uow, actor=actor, goal_id=goal_id, amount=amount, reason=reason
                 )
                 verb = "выделено"
             elif operation == "use":
                 await use_goal(
-                    session, uow, actor=actor, goal_id=goal_id, amount=amount, reason="telegram"
+                    session, uow, actor=actor, goal_id=goal_id, amount=amount, reason=reason
                 )
                 verb = "использовано"
             elif operation == "release":
@@ -222,7 +233,7 @@ async def apply_goal_amount(
                     actor=actor,
                     goal_id=goal_id,
                     amount=amount,
-                    reason="telegram",
+                    reason=reason,
                 )
                 verb = "освобождено"
             else:

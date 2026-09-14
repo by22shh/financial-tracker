@@ -440,8 +440,12 @@ async def _continue_pending(
                 goal_id=uuid.UUID(str(pending.payload["goal_id"])),
                 operation=operation,
                 text=text,
+                idempotency_key=message.source_key,
             )
-            clear_after = not any(reply.text.startswith("Не понял") for reply in replies)
+            clear_after = not any(
+                reply.text.startswith(("Не понял", "Сумма", "Валюта", "Неоднозначная"))
+                for reply in replies
+            )
         case "payment_new":
             replies = await payments_flow.create_payment_from_text(
                 settings, actor=actor, workspace=workspace, text=text
@@ -662,7 +666,11 @@ async def record_free_text(
             pending = await peek_pending(
                 settings, user_id=actor.user_id, workspace_id=actor.workspace_id
             )
-            if pending is not None and pending.kind == "occurrence_settle":
+            if (
+                pending is not None
+                and pending.kind == "occurrence_settle"
+                and not pending.payload.get("draft_id")
+            ):
                 await set_pending(
                     settings,
                     user_id=actor.user_id,

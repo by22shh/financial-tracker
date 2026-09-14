@@ -31,9 +31,11 @@ from fintracker.db.models.planning import (
     BudgetLine,
     BudgetPeriod,
     BudgetVersion,
+    PeriodPolicyRow,
     RecurringPlanTemplate,
     Rollover,
 )
+from fintracker.db.models.platform import Job, OutboxEvent
 from fintracker.db.session import RuntimeRole, session_scope
 from fintracker.db.uow import UnitOfWork
 
@@ -286,15 +288,45 @@ async def handle_open_next_period(settings: Settings, job: LeasedJob) -> None:
             .scalars()
             .all()
         )
-        pending: list[tuple[BudgetPeriod, bool, bool]] = []
+        pending: list[tuple[BudgetPeriod, bool, bool, bool, bool, bool]] = []
         for row in periods:
             plan = await current_budget_version(
                 session, workspace_id=workspace_id, period_id=row.id
             )
             needs_plan = plan is None
             closing = row.end_exclusive <= today and row.state != "ended"
-            if needs_plan or closing:
-                pending.append((row, needs_plan, closing))
+            opened = (
+                await session.execute(
+                    select(OutboxEvent.id).where(
+                        OutboxEvent.workspace_id == workspace_id,
+                        OutboxEvent.event_type == "BudgetPeriodOpened",
+                        OutboxEvent.aggregate_id == row.id,
+                    )
+                )
+            ).scalar_one_or_none() is not None
+            policy_mode, policy_interval = (
+                await session.execute(
+                    select(PeriodPolicyRow.mode, PeriodPolicyRow.interval).where(
+                        PeriodPolicyRow.id == row.policy_id
+                    )
+                )
+            ).one()
+            review_required = plan_review_lead_days(
+                (row.end_exclusive - row.start_date).days
+            ) > 0 and not (policy_mode == "fixed_days" and policy_interval == 1)
+            review_scheduled = (
+                await session.execute(
+                    select(Job.id).where(
+                        Job.workspace_id == workspace_id,
+                        Job.job_type == "plan_review",
+                        Job.logical_key == f"plan_review:{workspace_id}:{row.id}",
+                    )
+                )
+            ).scalar_one_or_none() is not None
+            if needs_plan or closing or not opened or (review_required and not review_scheduled):
+                pending.append(
+                    (row, needs_plan, closing, opened, review_scheduled, review_required)
+                )
         if not pending:
             return
 
@@ -303,7 +335,7 @@ async def handle_open_next_period(settings: Settings, job: LeasedJob) -> None:
         by_start = {row.start_date: row for row in periods}
         starts = sorted(by_start)
         previous: BudgetPeriod | None = None
-        for period, needs_plan, closing in pending:
+        for period, needs_plan, closing, opened, review_scheduled, review_required in pending:
             index = starts.index(period.start_date)
             previous = by_start[starts[index - 1]] if index > 0 else None
             next_period = by_start[starts[index + 1]] if index + 1 < len(starts) else None
@@ -361,12 +393,17 @@ async def handle_open_next_period(settings: Settings, job: LeasedJob) -> None:
                     },
                 )
                 continue
+            # A delayed scheduler may be opening the present period while
+            # inspecting an older calendar row.  A review belongs only to an
+            # actually current period; do not revive missed pre-close reviews.
+            if not (period.start_date <= today < period.end_exclusive):
+                continue
             # Обзор плана: для однодневного периода он совмещается с открытием
             # следующего и отдельным заданием не ставится (FORM-10, A228).
             review_on = plan_review_date(
                 start_date=period.start_date, end_exclusive=period.end_exclusive
             )
-            if plan_review_lead_days((period.end_exclusive - period.start_date).days) > 0:
+            if review_required and not review_scheduled:
                 await queue.enqueue(
                     session,
                     job_type="plan_review",
@@ -383,17 +420,18 @@ async def handle_open_next_period(settings: Settings, job: LeasedJob) -> None:
                     ).astimezone(dt.UTC),
                     correlation_id=job.correlation_id,
                 )
-            await uow.emit(
-                workspace_id=workspace_id,
-                event_type="BudgetPeriodOpened",
-                aggregate_type="budget_period",
-                aggregate_id=period.id,
-                payload={
-                    "period_id": str(period.id),
-                    "start_date": period.start_date.isoformat(),
-                    "end_inclusive": (period.end_exclusive - dt.timedelta(days=1)).isoformat(),
-                },
-            )
+            if not opened:
+                await uow.emit(
+                    workspace_id=workspace_id,
+                    event_type="BudgetPeriodOpened",
+                    aggregate_type="budget_period",
+                    aggregate_id=period.id,
+                    payload={
+                        "period_id": str(period.id),
+                        "start_date": period.start_date.isoformat(),
+                        "end_inclusive": (period.end_exclusive - dt.timedelta(days=1)).isoformat(),
+                    },
+                )
 
         await uow.bump_revisions(workspace_id, calendar=True, plan=True)
         logger.info(

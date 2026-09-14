@@ -659,7 +659,7 @@ async def _sync_receivable_origins(
     active: bool,
 ) -> None:
     """Согласовать исходные требования совместной покупки с текущей ревизией."""
-    from fintracker.db.models.ledger import Receivable
+    from fintracker.db.models.ledger import Receivable, ReceivableEntry
 
     rows = (
         (
@@ -683,7 +683,27 @@ async def _sync_receivable_origins(
         if allocation.role is AllocationRole.RECEIVABLE_INCREASE and allocation.stable_line_id
     }
     for receivable in rows:
-        collected = receivable.original_minor - receivable.outstanding_minor
+        active_changes = (
+            (
+                await session.execute(
+                    select(ReceivableEntry.change_minor)
+                    .join(
+                        FinancialEffect,
+                        (FinancialEffect.id == ReceivableEntry.effect_id)
+                        & (FinancialEffect.workspace_id == ReceivableEntry.workspace_id),
+                    )
+                    .where(
+                        ReceivableEntry.workspace_id == workspace_id,
+                        ReceivableEntry.receivable_id == receivable.id,
+                        ReceivableEntry.kind.in_(("settlement", "reversal")),
+                        FinancialEffect.is_active.is_(True),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        collected = -sum(value for value in active_changes if value < 0)
         if not active:
             if collected > 0:
                 raise ConflictError("По этой покупке уже получено возмещение")
@@ -692,6 +712,14 @@ async def _sync_receivable_origins(
             receivable.version += 1
             continue
         new_original = proposed.get(receivable.origin_stable_line_id, 0)
+        if new_original <= 0:
+            # The projection keeps the historical original amount (the schema
+            # deliberately requires it to stay positive), but it ceases to be
+            # collectable once the corresponding share is removed.
+            receivable.outstanding_minor = 0
+            receivable.status = "settled"
+            receivable.version += 1
+            continue
         if collected > new_original:
             raise ConflictError("Новая сумма требования меньше уже полученного возмещения")
         receivable.original_minor = new_original
@@ -730,7 +758,7 @@ async def _sync_receivable_settlement(
                 .where(
                     ReceivableEntry.workspace_id == workspace_id,
                     FinancialEffect.transaction_id == transaction_id,
-                    ReceivableEntry.kind == "settlement",
+                    ReceivableEntry.kind.in_(("settlement", "reversal")),
                 )
             )
         )
@@ -792,7 +820,7 @@ async def _sync_receivable_settlement(
                 .where(
                     ReceivableEntry.workspace_id == workspace_id,
                     ReceivableEntry.receivable_id == receivable_id,
-                    ReceivableEntry.kind == "settlement",
+                    ReceivableEntry.kind.in_(("settlement", "reversal")),
                     FinancialEffect.is_active.is_(True),
                 )
             )
@@ -833,11 +861,14 @@ async def _sync_occurrence_settlements(
     )
     if not rows:
         return
-    current_amount = spec.amount.minor if active else 0
     if active and effect is not None:
         for row in rows:
             row.effect_id = effect.id
-            row.amount_minor = current_amount
+            # A transaction may settle only part of an occurrence.  Its note,
+            # date or category can change without silently turning that partial
+            # payment into the full transaction amount.
+            if row.amount_minor > spec.amount.minor:
+                raise ConflictError("Оплата обязательства превышает сумму операции")
             row.status = "active"
     else:
         for row in rows:

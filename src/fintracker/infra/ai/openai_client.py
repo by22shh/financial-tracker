@@ -11,7 +11,7 @@ import datetime as dt
 import json
 from dataclasses import dataclass, field
 from decimal import Decimal
-from typing import Any, Protocol, TypeVar
+from typing import Any, Protocol, TypeVar, get_args, get_origin
 
 import httpx
 from pydantic import BaseModel, ValidationError
@@ -194,8 +194,12 @@ class OpenAIResponsesProvider:
                 parsed = response_model.model_validate(
                     _normalize_null_defaults(response_model, text)
                 )
-            except ValidationError as exc:
-                last_error = exc.errors()[0]["msg"] if exc.errors() else "схема не совпала"
+            except (ValidationError, json.JSONDecodeError) as exc:
+                last_error = (
+                    exc.errors()[0]["msg"]
+                    if isinstance(exc, ValidationError) and exc.errors()
+                    else "схема не совпала"
+                )
                 logger.info("ai_schema_invalid", attempt=attempt, schema=schema_name)
                 continue
 
@@ -221,19 +225,45 @@ class OpenAIResponsesProvider:
 
 
 def _normalize_null_defaults(model: type[BaseModel], text: str) -> Any:
-    """Convert provider-null optional-default fields to their model defaults."""
-    payload = json.loads(text)
+    """Map provider-permitted null defaults to Pydantic defaults recursively."""
+    return _normalize_model(model, json.loads(text))
+
+
+def _model_type(annotation: Any) -> type[BaseModel] | None:
+    if isinstance(annotation, type) and issubclass(annotation, BaseModel):
+        return annotation
+    for item in get_args(annotation):
+        nested = _model_type(item)
+        if nested is not None:
+            return nested
+    return None
+
+
+def _normalize_value(annotation: Any, value: Any) -> Any:
+    nested = _model_type(annotation)
+    if nested is not None and isinstance(value, dict):
+        return _normalize_model(nested, value)
+    origin = get_origin(annotation)
+    args = get_args(annotation)
+    if origin in (list, tuple) and args and isinstance(value, list):
+        return [_normalize_value(args[0], item) for item in value]
+    return value
+
+
+def _normalize_model(model: type[BaseModel], payload: Any) -> Any:
     if not isinstance(payload, dict):
         return payload
     normalized = dict(payload)
     for name, model_field in model.model_fields.items():
-        if normalized.get(name) is not None:
-            continue
-        if model_field.default is not PydanticUndefined:
-            normalized[name] = model_field.default
-            continue
-        if model_field.default_factory is not None:
-            normalized[name] = model_field.get_default(call_default_factory=True)
+        value = normalized.get(name)
+        if value is None:
+            if model_field.default is not PydanticUndefined:
+                normalized[name] = model_field.default
+                continue
+            if model_field.default_factory is not None:
+                normalized[name] = model_field.get_default(call_default_factory=True)
+                continue
+        normalized[name] = _normalize_value(model_field.annotation, value)
     return normalized
 
 

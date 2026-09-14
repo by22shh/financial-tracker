@@ -123,7 +123,7 @@ async def allocate_to_goal(
         raise ValidationFailed("Сумма выделения должна быть положительной")
 
     if effect_id is not None:
-        existing = (
+        existing_id = (
             await session.execute(
                 select(GoalMovement.id).where(
                     GoalMovement.workspace_id == workspace_id,
@@ -133,11 +133,24 @@ async def allocate_to_goal(
                 )
             )
         ).scalar_one_or_none()
-        if existing is not None:
+        if existing_id is not None:
             # Один перевод не создаёт два вклада в ту же цель (A40).
             return (
-                await session.execute(select(GoalMovement).where(GoalMovement.id == existing))
+                await session.execute(select(GoalMovement).where(GoalMovement.id == existing_id))
             ).scalar_one()
+    if reason is not None:
+        existing_movement = (
+            await session.execute(
+                select(GoalMovement).where(
+                    GoalMovement.workspace_id == workspace_id,
+                    GoalMovement.goal_id == goal_id,
+                    GoalMovement.kind == "allocate",
+                    GoalMovement.reason == reason,
+                )
+            )
+        ).scalar_one_or_none()
+        if existing_movement is not None:
+            return existing_movement
 
     movement = GoalMovement(
         workspace_id=workspace_id,
@@ -179,6 +192,23 @@ async def use_goal(
     """
     workspace_id = actor.require_workspace()
     goal = await _locked_goal(session, workspace_id=workspace_id, goal_id=goal_id)
+    if reason is not None:
+        existing = (
+            await session.execute(
+                select(GoalMovement).where(
+                    GoalMovement.workspace_id == workspace_id,
+                    GoalMovement.goal_id == goal_id,
+                    GoalMovement.kind == "use",
+                    GoalMovement.reason == reason,
+                )
+            )
+        ).scalar_one_or_none()
+        if existing is not None:
+            return existing
+    if amount.currency != goal.currency:
+        raise ValidationFailed("Валюта использования не совпадает с валютой цели")
+    if amount.minor <= 0:
+        raise ValidationFailed("Сумма использования должна быть положительной")
     if amount.minor > goal.allocated_minor:
         raise ConflictError(
             "Использование превышает выделенный остаток цели",
@@ -215,6 +245,22 @@ async def release_goal(
     """Освободить резерв цели по явному действию (FR-51)."""
     workspace_id = actor.require_workspace()
     goal = await _locked_goal(session, workspace_id=workspace_id, goal_id=goal_id)
+    existing = (
+        await session.execute(
+            select(GoalMovement).where(
+                GoalMovement.workspace_id == workspace_id,
+                GoalMovement.goal_id == goal_id,
+                GoalMovement.kind == "release",
+                GoalMovement.reason == reason,
+            )
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        return existing
+    if amount.currency != goal.currency:
+        raise ValidationFailed("Валюта освобождения не совпадает с валютой цели")
+    if amount.minor <= 0:
+        raise ValidationFailed("Сумма освобождения должна быть положительной")
     if amount.minor > goal.allocated_minor:
         raise ConflictError("Освобождение превышает выделенный остаток")
     movement = GoalMovement(

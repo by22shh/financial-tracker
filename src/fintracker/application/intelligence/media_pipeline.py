@@ -39,6 +39,7 @@ from fintracker.core.errors import ProviderUnavailable, ValidationFailed, Versio
 from fintracker.core.logging import get_logger
 from fintracker.core.money import Money
 from fintracker.db.models.access import Workspace
+from fintracker.db.models.platform import PendingAction
 from fintracker.db.session import RuntimeRole, session_scope
 from fintracker.db.uow import UnitOfWork
 from fintracker.domain.ledger.receipt import (
@@ -118,6 +119,20 @@ async def _prepare_media(
                 draft.state = "processing"
                 draft.source_media = {**dict(draft.source_media or {}), **media}
                 draft.version += 1
+                pending = (
+                    await session.execute(
+                        select(PendingAction)
+                        .where(PendingAction.user_id == actor.user_id)
+                        .with_for_update()
+                    )
+                ).scalar_one_or_none()
+                if (
+                    pending is not None
+                    and pending.workspace_id == workspace_id
+                    and pending.kind == "occurrence_settle"
+                    and not pending.payload.get("draft_id")
+                ):
+                    pending.payload = {**dict(pending.payload), "draft_id": str(draft.id)}
                 catalog = await load_catalog(
                     session,
                     workspace_id=workspace_id,
