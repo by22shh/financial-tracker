@@ -146,8 +146,9 @@ async def test_expired_lease_cannot_send_deferred_reply(owner_session, test_sett
     set_sender_override(RecordingSender(fail_for_chats={member.telegram_user_id}))
     try:
         await process_event.handle_process_inbound_event(test_settings, job)
-        claimed = await queue.claim_jobs(test_settings, queue_classes=("interactive",), limit=20)
-        reply_job = next(item for item in claimed if item.job_type == "deliver_reply")
+        from tests.integration.test_audit_regressions import _claim_reply_job
+
+        reply_job = await _claim_reply_job(test_settings)
         async with session_scope(test_settings, RuntimeRole.OWNER) as session:
             await session.execute(
                 update(Job)

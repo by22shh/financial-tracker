@@ -309,6 +309,40 @@ async def reserve_daily_slot(
     return True
 
 
+async def _delivery_authority(
+    session: AsyncSession, job: LeasedJob, workspace_id: uuid.UUID
+) -> bool:
+    """Есть ли право отправлять уведомления этого бюджета прямо сейчас (G-03).
+
+    Проверка выполняется в той же транзакции, где читается состояние доставки,
+    и повторяется перед записью результата.
+    """
+    if not await queue.lease_is_valid(session, job):
+        logger.warning("delivery_lease_lost", job_id=str(job.id))
+        return False
+    row = (
+        await session.execute(
+            select(Workspace.state, Workspace.quarantined, Workspace.security_fence).where(
+                Workspace.id == workspace_id
+            )
+        )
+    ).one_or_none()
+    if row is None:
+        return False
+    state, quarantined, fence = row
+    if quarantined or fence is not None:
+        logger.info(
+            "delivery_paused_by_access_change",
+            workspace_id=str(workspace_id),
+            quarantined=bool(quarantined),
+        )
+        return False
+    if state in {WorkspaceState.DELETING.value, WorkspaceState.DELETED.value}:
+        # Терминальные сообщения удаляемого бюджета идут отдельным классом.
+        return True
+    return bool(state == WorkspaceState.ACTIVE.value)
+
+
 async def handle_deliver_notification(settings: Settings, job: LeasedJob) -> None:
     """Отправить ожидающие доставки события конкретным получателям."""
     from fintracker.infra.telegram.sender import build_sender
@@ -319,6 +353,11 @@ async def handle_deliver_notification(settings: Settings, job: LeasedJob) -> Non
     assert workspace_id is not None
 
     async with session_scope(settings, RuntimeRole.WORKER, workspace_id=workspace_id) as session:
+        # Право исполнителя и доступ к бюджету проверяются до отправки:
+        # потерянная аренда, идущее изменение доступа и карантин её отменяют
+        # (ADR-05, ADR-14, G-03).
+        if not await _delivery_authority(session, job, workspace_id):
+            return
         event = (
             await session.execute(select(OutboxEvent).where(OutboxEvent.id == event_id))
         ).scalar_one_or_none()
@@ -446,6 +485,9 @@ async def handle_deliver_notification(settings: Settings, job: LeasedJob) -> Non
         async with session_scope(
             settings, RuntimeRole.WORKER, workspace_id=workspace_id
         ) as session:
+            # Результат записывается только при сохранившемся праве (G-03).
+            if not await _delivery_authority(session, job, workspace_id):
+                return
             if result.ok:
                 await session.execute(
                     update(NotificationDelivery)
@@ -483,6 +525,48 @@ async def handle_deliver_notification(settings: Settings, job: LeasedJob) -> Non
                         last_error=(result.error or "Ошибка отправки")[:300],
                     )
                 )
+
+    await _schedule_unfinished(settings, job, event_id, workspace_id)
+
+
+async def _schedule_unfinished(
+    settings: Settings, job: LeasedJob, event_id: uuid.UUID, workspace_id: uuid.UUID
+) -> None:
+    """Оставить задачу, которая доведёт незавершённые доставки (ADR-05, G-20).
+
+    Доставка, отложенная тихими часами, дневным пределом или сбоем отправки,
+    не должна остаться без исполнителя: следующая попытка ставится на её время.
+    """
+    async with session_scope(settings, RuntimeRole.WORKER, workspace_id=workspace_id) as session:
+        rows = (
+            await session.execute(
+                select(NotificationDelivery.available_at).where(
+                    NotificationDelivery.event_id == event_id,
+                    NotificationDelivery.state.in_(("pending", "failed")),
+                )
+            )
+        ).all()
+        if not rows:
+            return
+        available_at = min(row[0] for row in rows)
+        bucket = int(available_at.timestamp())
+        created = await queue.enqueue(
+            session,
+            job_type="deliver_notification",
+            logical_key=f"deliver:{event_id}:{bucket}",
+            queue_class="interactive",
+            workspace_id=workspace_id,
+            subject_id=event_id,
+            payload={"event_id": str(event_id), "schema_version": 1},
+            available_at=available_at,
+            correlation_id=job.correlation_id,
+        )
+    if created is not None:
+        logger.info(
+            "delivery_retry_scheduled",
+            event_id=str(event_id),
+            available_at=available_at.isoformat(),
+        )
 
 
 async def _merge_pending_digest(

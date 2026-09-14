@@ -453,6 +453,15 @@ async def resume_or_quarantine(
             return pending
 
         quarantine = bool(pending)
+        if last is None and workspace.acl_revision > 0:
+            # У существующего бюджета нет доказанной версии доступа: журнал
+            # недоступен, пуст или подменён. Доступ не открывается (ADR-14, G-04).
+            quarantine = True
+            logger.error(
+                "access_journal_missing",
+                workspace_id=str(workspace_id),
+                database_revision=workspace.acl_revision,
+            )
         if last is not None and workspace.acl_revision < last.proposed_acl_revision:
             # База отстала от журнала: применяется доказанная версия доступа.
             await _apply_proven_access(session, workspace=workspace, record=last)

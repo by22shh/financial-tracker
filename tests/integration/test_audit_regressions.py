@@ -242,13 +242,7 @@ async def test_aud11_failed_reply_remains_retryable(owner_session, test_settings
     set_sender_override(failing)
     try:
         await process_event.handle_process_inbound_event(test_settings, job)
-        delivery = next(
-            item
-            for item in await queue.claim_jobs(
-                test_settings, queue_classes=("interactive",), limit=20
-            )
-            if item.job_type == "deliver_reply"
-        )
+        delivery = await _claim_reply_job(test_settings)
         from fintracker.core.errors import TemporarilyUnavailable
 
         with pytest.raises(TemporarilyUnavailable):
@@ -305,3 +299,29 @@ async def test_aud16_invite_secret_is_not_retained_in_job(
     assert job is not None
     assert not job.payload.get("invite_code")
     assert "ABCD" not in str(job.payload)
+
+
+async def _claim_reply_job(settings):
+    """Задача доставки, ждущая повтора после неудачной немедленной отправки.
+
+    Немедленная отправка и исполнитель делят одну строку задачи (G-21), поэтому
+    после неудачи она ждёт по backoff: проверка сдвигает её срок, не меняя
+    проверяемый инвариант.
+    """
+    import datetime as _dt
+
+    from sqlalchemy import update as _update
+
+    from fintracker.application.platform import queue as _queue
+    from fintracker.db.models.platform import Job as _Job
+    from fintracker.db.session import RuntimeRole as _Role
+    from fintracker.db.session import session_scope as _scope
+
+    async with _scope(settings, _Role.OWNER) as session:
+        await session.execute(
+            _update(_Job)
+            .where(_Job.job_type == "deliver_reply", _Job.state.in_(("queued", "retry_wait")))
+            .values(available_at=_dt.datetime.now(_dt.UTC) - _dt.timedelta(seconds=1))
+        )
+    claimed = await _queue.claim_jobs(settings, queue_classes=("interactive",), limit=20)
+    return next(item for item in claimed if item.job_type == "deliver_reply")

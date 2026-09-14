@@ -298,8 +298,9 @@ async def test_deferred_reply_is_not_sent_after_member_removal(
     try:
         job = await leased(test_settings, incoming(member_fixture, "/history"))
         await process_event.handle_process_inbound_event(test_settings, job)
-        jobs = await queue.claim_jobs(test_settings, queue_classes=("interactive",), limit=20)
-        reply_job = next(item for item in jobs if item.job_type == "deliver_reply")
+        from tests.integration.test_audit_regressions import _claim_reply_job
+
+        reply_job = await _claim_reply_job(test_settings)
         await remove_member(
             test_settings,
             workspace_id=f.workspace.id,

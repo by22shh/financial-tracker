@@ -202,6 +202,52 @@ async def claim_jobs(
     return claimed
 
 
+async def claim_specific(settings: Settings, job_id: uuid.UUID) -> LeasedJob | None:
+    """Атомарно захватить конкретную задачу, если её ещё никто не взял.
+
+    Немедленный ответ и фоновый исполнитель соревнуются за одну строку: тот же
+    захват, что и в ``claim_jobs``, исключает две отправки одного текста (G-21).
+    """
+    lease_seconds = settings.limits.job_lease_seconds
+    async with session_scope(settings, RuntimeRole.WORKER) as session:
+        now = (await session.execute(text("SELECT now()"))).scalar_one()
+        row = (
+            await session.execute(
+                select(Job)
+                .where(
+                    Job.id == job_id,
+                    Job.state.in_(("queued", "retry_wait")),
+                    Job.attempts < Job.max_attempts,
+                )
+                .with_for_update(skip_locked=True)
+            )
+        ).scalar_one_or_none()
+        if row is None:
+            return None
+        token = uuid.uuid4()
+        lease_until = now + dt.timedelta(seconds=lease_seconds)
+        row.state = "running"
+        row.lease_token = token
+        row.lease_until = lease_until
+        row.attempts += 1
+        return LeasedJob(
+            id=row.id,
+            job_type=row.job_type,
+            queue_class=row.queue_class,
+            workspace_id=row.workspace_id,
+            subject_id=row.subject_id,
+            payload=dict(row.payload),
+            payload_version=row.payload_version,
+            attempts=row.attempts,
+            max_attempts=row.max_attempts,
+            lease_token=token,
+            lease_until=lease_until,
+            deadline_at=row.deadline_at,
+            correlation_id=row.correlation_id,
+            logical_key=row.logical_key,
+        )
+
+
 async def renew_lease(settings: Settings, job: LeasedJob) -> bool:
     """Продлить действующую аренду; False означает её утрату (AR-04, R-02).
 

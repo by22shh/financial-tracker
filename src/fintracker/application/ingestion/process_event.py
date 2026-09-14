@@ -394,6 +394,39 @@ async def _send_now(
     return delivered
 
 
+async def _deliver_claimed(
+    settings: Settings,
+    *,
+    context: _EventContext,
+    event_id: uuid.UUID,
+    reply_job: uuid.UUID | None,
+) -> None:
+    """Показать ответ сразу, если удалось захватить его задачу доставки (G-21).
+
+    Немедленная отправка и фоновый исполнитель соревнуются за одну строку
+    задачи: сообщение уходит ровно один раз. Проигравший путь ничего не
+    отправляет, а незавершённая доставка остаётся к повтору.
+    """
+    if reply_job is None:
+        await _settle_delivery(settings, event_id=event_id, reply_job_id=None)
+        return
+    claimed = await queue.claim_specific(settings, reply_job)
+    if claimed is None:
+        # Задачу уже выполняет исполнитель: второй отправки не будет.
+        logger.info("reply_delivery_taken_by_worker", event_id=str(event_id))
+        return
+    try:
+        await handle_deliver_reply(settings, claimed)
+    except DomainError as exc:
+        await queue.fail(settings, claimed, error=exc.message, retry_after=exc.retry_after)
+        logger.warning("reply_deferred_to_delivery_job", event_id=str(event_id))
+        return
+    except Exception as exc:
+        await queue.fail(settings, claimed, error=str(exc)[:300])
+        raise
+    await queue.complete(settings, claimed)
+
+
 async def _settle_delivery(
     settings: Settings, *, event_id: uuid.UUID, reply_job_id: uuid.UUID | None
 ) -> None:
@@ -592,15 +625,7 @@ async def handle_process_inbound_event(settings: Settings, job: LeasedJob) -> No
                 chat_id=context.chat_id,
                 replies=hint,
             )
-        if await _send_now(
-            settings,
-            chat_id=context.chat_id,
-            replies=hint,
-            context=context,
-            event_id=event_id,
-            job=job,
-        ):
-            await _settle_delivery(settings, event_id=event_id, reply_job_id=hint_job)
+        await _deliver_claimed(settings, context=context, event_id=event_id, reply_job=hint_job)
         return
 
     async with session_scope(settings, RuntimeRole.WORKER) as session:
@@ -657,20 +682,8 @@ async def handle_process_inbound_event(settings: Settings, job: LeasedJob) -> No
 
     if context.chat_id is None or not replies:
         await _settle_delivery(settings, event_id=event_id, reply_job_id=None)
-    elif await _send_now(
-        settings,
-        chat_id=context.chat_id,
-        replies=replies,
-        context=context,
-        event_id=event_id,
-        job=job,
-    ):
-        # Ответ показан сразу: долговечная задача больше не нужна.
-        await _settle_delivery(settings, event_id=event_id, reply_job_id=reply_job)
     else:
-        # Ответ не доставлен: событие остаётся незавершённым, а повтор идёт
-        # отдельной задачей доставки без повторной финансовой команды.
-        logger.warning("reply_deferred_to_delivery_job", event_id=str(event_id))
+        await _deliver_claimed(settings, context=context, event_id=event_id, reply_job=reply_job)
     logger.info(
         "inbound_processed",
         event_id=str(event_id),
