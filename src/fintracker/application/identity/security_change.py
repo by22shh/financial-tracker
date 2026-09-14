@@ -526,6 +526,16 @@ async def resume_or_quarantine(
                 database_revision=workspace.acl_revision,
                 journal_revision=last.proposed_acl_revision,
             )
+        if last is not None and workspace.acl_revision > last.proposed_acl_revision:
+            # Журнал отстал от базы: текущая версия доступа не доказана
+            # независимым носителем, поэтому доступ открывать нельзя.
+            quarantine = True
+            logger.error(
+                "access_journal_stale",
+                workspace_id=str(workspace_id),
+                database_revision=workspace.acl_revision,
+                journal_revision=last.proposed_acl_revision,
+            )
         if quarantine:
             workspace.quarantined = True
     return pending

@@ -230,9 +230,12 @@ async def build_weekly_review(
         completeness = status.completeness
         observed = (today - period.start_date).days + 1
         remaining = (period.end_exclusive - dt.timedelta(days=1) - today).days
-        risky = tuple(
-            early_risk_lines(lines=status.lines, observed_days=observed, remaining_days=remaining)
-        )
+        if completeness != "incomplete":
+            risky = tuple(
+                early_risk_lines(
+                    lines=status.lines, observed_days=observed, remaining_days=remaining
+                )
+            )
 
     if risky:
         action = f"Проверьте лимит: {risky[0].line.category_name} — прогноз выше плана"

@@ -257,6 +257,9 @@ async def _cancel_active(
     settings: Settings, *, user_id: uuid.UUID, workspace_id: uuid.UUID | None
 ) -> list[Reply]:
     """`/cancel` отменяет активный диалог или черновик, но не проведённую запись."""
+    from fintracker.application.conversation.pending import clear_pending
+
+    await clear_pending(settings, user_id=user_id, workspace_id=workspace_id)
     if workspace_id is None:
         return [Reply(text="Отменять нечего.")]
     async with session_scope(
@@ -291,7 +294,7 @@ async def _cancel_active(
                 .values(state="cancelled")
             )
     if not drafts:
-        return [Reply(text="Активных незавершённых записей нет.")]
+        return [Reply(text="Незавершённое действие отменено.")]
     return [
         Reply(
             text=(
@@ -375,20 +378,31 @@ async def _continue_pending(
     settings: Settings, *, actor: ActorContext, workspace: Workspace, message: IncomingMessage
 ) -> list[Reply] | None:
     """Применить ввод, обещанный нажатой кнопкой (FR-21, FR-45, G-13…G-16)."""
-    from fintracker.application.conversation.pending import take_pending
+    from fintracker.application.conversation.pending import clear_pending, peek_pending
 
     text = (message.text or "").strip()
     if not text:
         return None
-    pending = await take_pending(settings, user_id=actor.user_id, workspace_id=actor.workspace_id)
+    pending = await peek_pending(settings, user_id=actor.user_id, workspace_id=actor.workspace_id)
     if pending is None:
         return None
+    if pending.workspace_id is not None and pending.workspace_id != actor.workspace_id:
+        await clear_pending(settings, user_id=actor.user_id, workspace_id=pending.workspace_id)
+        return [
+            Reply(
+                text=(
+                    "Предыдущее действие относилось к другому бюджету и отменено. "
+                    "Повторите команду в текущем бюджете."
+                )
+            )
+        ]
 
     from fintracker.application.conversation import category_flow, goals_flow, payments_flow
 
+    clear_after = True
     match pending.kind:
         case "category_rename":
-            return await category_flow.apply_pending_rename(
+            replies = await category_flow.apply_pending_rename(
                 settings,
                 actor=actor,
                 workspace=workspace,
@@ -396,15 +410,16 @@ async def _continue_pending(
                 name=text,
             )
         case "category_limit":
-            return await category_flow.apply_pending_limit(
+            replies = await category_flow.apply_pending_limit(
                 settings,
                 actor=actor,
                 workspace=workspace,
                 category_id=uuid.UUID(str(pending.payload["category_id"])),
                 text=text,
             )
+            clear_after = not any(reply.text.startswith("Не понял") for reply in replies)
         case "draft_edit":
-            return await sections.apply_draft_edit(
+            replies = await sections.apply_draft_edit(
                 settings,
                 actor=actor,
                 workspace=workspace,
@@ -412,13 +427,26 @@ async def _continue_pending(
                 text=text,
             )
         case "goal_new":
-            return await goals_flow.create_goal_from_text(
+            replies = await goals_flow.create_goal_from_text(
                 settings, actor=actor, workspace=workspace, text=text
             )
+            clear_after = not any(reply.text.startswith("Не понял") for reply in replies)
+        case "goal_allocate" | "goal_use" | "goal_release":
+            operation = pending.kind.removeprefix("goal_")
+            replies = await goals_flow.apply_goal_amount(
+                settings,
+                actor=actor,
+                workspace=workspace,
+                goal_id=uuid.UUID(str(pending.payload["goal_id"])),
+                operation=operation,
+                text=text,
+            )
+            clear_after = not any(reply.text.startswith("Не понял") for reply in replies)
         case "payment_new":
-            return await payments_flow.create_payment_from_text(
+            replies = await payments_flow.create_payment_from_text(
                 settings, actor=actor, workspace=workspace, text=text
             )
+            clear_after = not any(reply.text.startswith("Не понял") for reply in replies)
         case "occurrence_settle":
             # Ожидание оплаты сохраняется до подтверждения самой траты.
             from fintracker.application.conversation.pending import set_pending
@@ -431,7 +459,11 @@ async def _continue_pending(
                 payload=pending.payload,
             )
             return None
-    return None
+        case _:
+            replies = [Reply(text="Кнопка устарела. Повторите действие из меню.")]
+    if clear_after:
+        await clear_pending(settings, user_id=actor.user_id, workspace_id=actor.workspace_id)
+    return replies
 
 
 async def _existing_message_reply(
@@ -625,6 +657,19 @@ async def record_free_text(
             conflicting = clash
         else:
             draft_id = draft.id
+            from fintracker.application.conversation.pending import peek_pending, set_pending
+
+            pending = await peek_pending(
+                settings, user_id=actor.user_id, workspace_id=actor.workspace_id
+            )
+            if pending is not None and pending.kind == "occurrence_settle":
+                await set_pending(
+                    settings,
+                    user_id=actor.user_id,
+                    workspace_id=actor.workspace_id,
+                    kind="occurrence_settle",
+                    payload={**pending.payload, "draft_id": str(draft_id)},
+                )
             candidate_fields = [
                 CandidateFields.from_payload(dict(row.fields)) for row in candidates
             ]

@@ -357,6 +357,7 @@ async def handle_deliver_notification(settings: Settings, job: LeasedJob) -> Non
         # потерянная аренда, идущее изменение доступа и карантин её отменяют
         # (ADR-05, ADR-14, G-03).
         if not await _delivery_authority(session, job, workspace_id):
+            await _schedule_unfinished(settings, job, event_id, workspace_id)
             return
         event = (
             await session.execute(select(OutboxEvent).where(OutboxEvent.id == event_id))
@@ -480,6 +481,15 @@ async def handle_deliver_notification(settings: Settings, job: LeasedJob) -> Non
                     text=text,
                     buttons=buttons,
                 )
+
+            if not await _delivery_authority(session, job, workspace_id):
+                await session.execute(
+                    update(NotificationDelivery)
+                    .where(NotificationDelivery.id == delivery_id)
+                    .values(state="pending", last_error="Доставка отложена из-за изменения доступа")
+                )
+                await _schedule_unfinished(settings, job, event_id, workspace_id)
+                return
 
         result = await sender.send_message(chat_id=telegram_user_id, text=text, buttons=buttons)
         async with session_scope(

@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import struct
+import zlib
 from dataclasses import dataclass
 
 JPEG_MAGIC = b"\xff\xd8\xff"
@@ -92,9 +93,42 @@ def _jpeg_size(data: bytes) -> tuple[int, int]:
 
 
 def _png_size(data: bytes) -> tuple[int, int]:
-    if len(data) < 24 or data[12:16] != b"IHDR":
+    if len(data) < 33 or data[12:16] != b"IHDR":
         raise InvalidImage("Повреждённый заголовок PNG")
+    ihdr_length = struct.unpack(">I", data[8:12])[0]
+    if ihdr_length != 13:
+        raise InvalidImage("Повреждённый заголовок PNG")
+    ihdr_end = 8 + 12 + ihdr_length
+    expected_crc = struct.unpack(">I", data[ihdr_end - 4 : ihdr_end])[0]
+    actual_crc = zlib.crc32(data[12 : ihdr_end - 4]) & 0xFFFFFFFF
+    if expected_crc != actual_crc:
+        raise InvalidImage("Повреждённая контрольная сумма PNG")
     width, height = struct.unpack(">II", data[16:24])
+    offset = ihdr_end
+    seen_idat = False
+    seen_iend = False
+    while offset + 12 <= len(data):
+        length = struct.unpack(">I", data[offset : offset + 4])[0]
+        chunk_type = data[offset + 4 : offset + 8]
+        data_start = offset + 8
+        data_end = data_start + length
+        crc_end = data_end + 4
+        if crc_end > len(data):
+            raise InvalidImage("Повреждённая структура PNG")
+        expected_crc = struct.unpack(">I", data[data_end:crc_end])[0]
+        actual_crc = zlib.crc32(chunk_type + data[data_start:data_end]) & 0xFFFFFFFF
+        if expected_crc != actual_crc:
+            raise InvalidImage("Повреждённая контрольная сумма PNG")
+        if chunk_type == b"IDAT":
+            seen_idat = True
+        elif chunk_type == b"IEND":
+            seen_iend = True
+            if crc_end != len(data):
+                raise InvalidImage("Лишние данные после PNG")
+            break
+        offset = crc_end
+    if not seen_idat or not seen_iend:
+        raise InvalidImage("PNG не содержит полного изображения")
     return int(width), int(height)
 
 

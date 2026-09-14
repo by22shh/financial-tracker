@@ -19,7 +19,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fintracker.core.context import ActorContext
 from fintracker.core.errors import ConflictError, NotFound, ValidationFailed
 from fintracker.core.money import Money
+from fintracker.db.models.access import Workspace
 from fintracker.db.models.catalog import Account, Category, TransactionTag
+from fintracker.db.models.commitments import Occurrence, OccurrenceSettlement
 from fintracker.db.models.ledger import (
     AccountEntry,
     Allocation,
@@ -289,6 +291,20 @@ async def _active_effect(
     ).scalar_one_or_none()
 
 
+async def _mark_analysis_stale(session: AsyncSession, *, workspace_id: uuid.UUID) -> None:
+    """Денежная основа поменялась: предложенные рекомендации больше не текущие."""
+    from fintracker.application.intelligence.analysis import mark_stale_recommendations
+
+    workspace = (
+        await session.execute(
+            select(Workspace)
+            .where(Workspace.id == workspace_id)
+            .execution_options(populate_existing=True)
+        )
+    ).scalar_one()
+    await mark_stale_recommendations(session, workspace=workspace)
+
+
 async def post_transaction(
     session: AsyncSession,
     uow: UnitOfWork,
@@ -367,7 +383,9 @@ async def post_transaction(
         spec=spec,
         replaced_effect_id=None,
     )
+    await _invalidate_reconciliations(session, workspace_id=workspace_id, specs=(spec,))
     await uow.bump_revisions(workspace_id, data=True)
+    await _mark_analysis_stale(session, workspace_id=workspace_id)
     await uow.emit(
         workspace_id=workspace_id,
         event_type="TransactionPosted",
@@ -588,6 +606,316 @@ async def _guard_linked_settlements(
         )
 
 
+async def _guard_receivable_origin_change(
+    session: AsyncSession,
+    *,
+    workspace_id: uuid.UUID,
+    transaction_id: uuid.UUID,
+    new_spec: TransactionSpec,
+) -> None:
+    """Нельзя уменьшить исходное требование ниже уже полученных возмещений."""
+    from fintracker.db.models.ledger import Receivable
+
+    rows = (
+        (
+            await session.execute(
+                select(Receivable).where(
+                    Receivable.workspace_id == workspace_id,
+                    Receivable.origin_transaction_id == transaction_id,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if not rows:
+        return
+    proposed = {
+        allocation.stable_line_id: allocation.amount.minor
+        for allocation in new_spec.allocations
+        if allocation.role is AllocationRole.RECEIVABLE_INCREASE and allocation.stable_line_id
+    }
+    for receivable in rows:
+        collected = receivable.original_minor - receivable.outstanding_minor
+        new_original = proposed.get(receivable.origin_stable_line_id, 0)
+        if collected > new_original:
+            raise ConflictError(
+                "По этой покупке уже получено возмещение: сначала отмените возмещение "
+                "или согласуйте изменение связанных записей",
+                details={
+                    "receivable_id": str(receivable.id),
+                    "collected_minor": collected,
+                    "proposed_original_minor": new_original,
+                },
+            )
+
+
+async def _sync_receivable_origins(
+    session: AsyncSession,
+    *,
+    workspace_id: uuid.UUID,
+    transaction_id: uuid.UUID,
+    spec: TransactionSpec,
+    active: bool,
+) -> None:
+    """Согласовать исходные требования совместной покупки с текущей ревизией."""
+    from fintracker.db.models.ledger import Receivable
+
+    rows = (
+        (
+            await session.execute(
+                select(Receivable)
+                .where(
+                    Receivable.workspace_id == workspace_id,
+                    Receivable.origin_transaction_id == transaction_id,
+                )
+                .with_for_update()
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if not rows:
+        return
+    proposed = {
+        allocation.stable_line_id: allocation.amount.minor
+        for allocation in spec.allocations
+        if allocation.role is AllocationRole.RECEIVABLE_INCREASE and allocation.stable_line_id
+    }
+    for receivable in rows:
+        collected = receivable.original_minor - receivable.outstanding_minor
+        if not active:
+            if collected > 0:
+                raise ConflictError("По этой покупке уже получено возмещение")
+            receivable.outstanding_minor = 0
+            receivable.status = "settled"
+            receivable.version += 1
+            continue
+        new_original = proposed.get(receivable.origin_stable_line_id, 0)
+        if collected > new_original:
+            raise ConflictError("Новая сумма требования меньше уже полученного возмещения")
+        receivable.original_minor = new_original
+        receivable.outstanding_minor = new_original - collected
+        receivable.status = "settled" if receivable.outstanding_minor == 0 else "open"
+        receivable.version += 1
+    await session.flush()
+
+
+async def _sync_receivable_settlement(
+    session: AsyncSession,
+    *,
+    workspace_id: uuid.UUID,
+    transaction_id: uuid.UUID,
+    effect: FinancialEffect | None,
+    spec: TransactionSpec,
+    active: bool,
+) -> None:
+    """Согласовать погашение требования с активным эффектом операции."""
+    from fintracker.db.models.ledger import Receivable, ReceivableEntry
+
+    receivable_ids = {
+        allocation.related_object_id
+        for allocation in spec.allocations
+        if allocation.role is AllocationRole.RECEIVABLE_DECREASE and allocation.related_object_id
+    }
+    old_ids = (
+        (
+            await session.execute(
+                select(ReceivableEntry.receivable_id)
+                .join(
+                    FinancialEffect,
+                    (FinancialEffect.id == ReceivableEntry.effect_id)
+                    & (FinancialEffect.workspace_id == ReceivableEntry.workspace_id),
+                )
+                .where(
+                    ReceivableEntry.workspace_id == workspace_id,
+                    FinancialEffect.transaction_id == transaction_id,
+                    ReceivableEntry.kind == "settlement",
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    receivable_ids.update(old_ids)
+    if not receivable_ids:
+        return
+    if active and effect is not None:
+        for allocation in spec.allocations:
+            if (
+                allocation.role is not AllocationRole.RECEIVABLE_DECREASE
+                or allocation.related_object_id is None
+            ):
+                continue
+            existing = (
+                await session.execute(
+                    select(ReceivableEntry).where(
+                        ReceivableEntry.workspace_id == workspace_id,
+                        ReceivableEntry.receivable_id == allocation.related_object_id,
+                        ReceivableEntry.effect_id == effect.id,
+                    )
+                )
+            ).scalar_one_or_none()
+            if existing is None:
+                session.add(
+                    ReceivableEntry(
+                        workspace_id=workspace_id,
+                        receivable_id=allocation.related_object_id,
+                        effect_id=effect.id,
+                        change_minor=-allocation.amount.minor,
+                        kind="settlement",
+                    )
+                )
+            else:
+                existing.change_minor = -allocation.amount.minor
+                existing.kind = "settlement"
+    await session.flush()
+
+    for receivable_id in receivable_ids:
+        receivable = (
+            await session.execute(
+                select(Receivable)
+                .where(Receivable.workspace_id == workspace_id, Receivable.id == receivable_id)
+                .with_for_update()
+            )
+        ).scalar_one_or_none()
+        if receivable is None:
+            continue
+        settled = (
+            await session.execute(
+                select(ReceivableEntry.change_minor)
+                .join(
+                    FinancialEffect,
+                    (FinancialEffect.id == ReceivableEntry.effect_id)
+                    & (FinancialEffect.workspace_id == ReceivableEntry.workspace_id),
+                )
+                .where(
+                    ReceivableEntry.workspace_id == workspace_id,
+                    ReceivableEntry.receivable_id == receivable_id,
+                    ReceivableEntry.kind == "settlement",
+                    FinancialEffect.is_active.is_(True),
+                )
+            )
+        ).scalars()
+        settled_minor = -sum(value for value in settled if value < 0)
+        if settled_minor > receivable.original_minor:
+            raise ConflictError(
+                "Погашения превышают сумму требования",
+                details={"receivable_id": str(receivable.id)},
+            )
+        receivable.outstanding_minor = receivable.original_minor - settled_minor
+        receivable.status = "settled" if receivable.outstanding_minor == 0 else "open"
+        receivable.version += 1
+    await session.flush()
+
+
+async def _sync_occurrence_settlements(
+    session: AsyncSession,
+    *,
+    workspace_id: uuid.UUID,
+    transaction_id: uuid.UUID,
+    effect: FinancialEffect | None,
+    spec: TransactionSpec,
+    active: bool,
+) -> None:
+    """Согласовать оплату обязательства с активным эффектом операции."""
+    rows = (
+        (
+            await session.execute(
+                select(OccurrenceSettlement).where(
+                    OccurrenceSettlement.workspace_id == workspace_id,
+                    OccurrenceSettlement.transaction_id == transaction_id,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if not rows:
+        return
+    current_amount = spec.amount.minor if active else 0
+    if active and effect is not None:
+        for row in rows:
+            row.effect_id = effect.id
+            row.amount_minor = current_amount
+            row.status = "active"
+    else:
+        for row in rows:
+            row.status = "cancelled"
+    await session.flush()
+
+    occurrence_ids = {row.occurrence_id for row in rows}
+    from fintracker.domain.schedule import OccurrenceState
+
+    for occurrence_id in occurrence_ids:
+        occurrence = (
+            await session.execute(
+                select(Occurrence)
+                .where(Occurrence.workspace_id == workspace_id, Occurrence.id == occurrence_id)
+                .with_for_update()
+            )
+        ).scalar_one_or_none()
+        if occurrence is None:
+            continue
+        values = (
+            await session.execute(
+                select(OccurrenceSettlement.amount_minor).where(
+                    OccurrenceSettlement.workspace_id == workspace_id,
+                    OccurrenceSettlement.occurrence_id == occurrence_id,
+                    OccurrenceSettlement.status == "active",
+                )
+            )
+        ).scalars()
+        settled = sum(values)
+        if occurrence.expected_minor is not None and settled > occurrence.expected_minor:
+            raise ConflictError(
+                "Оплата превышает ожидаемую сумму платежа",
+                details={"occurrence_id": str(occurrence.id)},
+            )
+        occurrence.settled_minor = settled
+        occurrence.state = OccurrenceState(
+            expected_minor=occurrence.expected_minor,
+            settled_minor=settled,
+            due_date=occurrence.due_date,
+        ).next_state()
+        occurrence.version += 1
+    await session.flush()
+
+
+async def _sync_money_dependents(
+    session: AsyncSession,
+    *,
+    workspace_id: uuid.UUID,
+    transaction_id: uuid.UUID,
+    effect: FinancialEffect | None,
+    spec: TransactionSpec,
+    active: bool,
+) -> None:
+    await _sync_receivable_origins(
+        session,
+        workspace_id=workspace_id,
+        transaction_id=transaction_id,
+        spec=spec,
+        active=active,
+    )
+    await _sync_receivable_settlement(
+        session,
+        workspace_id=workspace_id,
+        transaction_id=transaction_id,
+        effect=effect,
+        spec=spec,
+        active=active,
+    )
+    await _sync_occurrence_settlements(
+        session,
+        workspace_id=workspace_id,
+        transaction_id=transaction_id,
+        effect=effect,
+        spec=spec,
+        active=active,
+    )
+
+
 async def revise_transaction(
     session: AsyncSession,
     uow: UnitOfWork,
@@ -601,7 +929,7 @@ async def revise_transaction(
 ) -> PostedTransaction:
     """Создать новую ревизию с точными обратными и новыми движениями (ADR-03)."""
     workspace_id = actor.require_workspace()
-    transaction, current, _ = await load_current_spec(
+    transaction, current, current_spec = await load_current_spec(
         session, workspace_id=workspace_id, transaction_id=transaction_id
     )
     uow.check_expected_version(transaction.entity_version, expected_version, label="Операция")
@@ -610,13 +938,23 @@ async def revise_transaction(
 
     new_spec.validate()
     await _validate_references(session, workspace_id=workspace_id, spec=new_spec)
+    old_cash = tuple(
+        (leg.account_id, leg.signed.minor, leg.coverage.value) for leg in current_spec.cash_legs
+    )
+    new_cash = tuple(
+        (leg.account_id, leg.signed.minor, leg.coverage.value) for leg in new_spec.cash_legs
+    )
     money_changed = (
         new_spec.amount.minor != current.amount_minor
         or new_spec.occurred_date != current.occurred_date
         or new_spec.transaction_type.value != current.transaction_type
+        or new_cash != old_cash
     )
     if money_changed or change_kind == "amended":
         await _guard_linked_refunds(
+            session, workspace_id=workspace_id, transaction_id=transaction_id, new_spec=new_spec
+        )
+        await _guard_receivable_origin_change(
             session, workspace_id=workspace_id, transaction_id=transaction_id, new_spec=new_spec
         )
 
@@ -654,6 +992,14 @@ async def revise_transaction(
     transaction.entity_version += 1
     transaction.status = "posted"
     await session.flush()
+    await _sync_money_dependents(
+        session,
+        workspace_id=workspace_id,
+        transaction_id=transaction_id,
+        effect=effect,
+        spec=new_spec,
+        active=True,
+    )
 
     if money_changed and new_spec.transaction_type.value == "refund":
         # Изменённая сумма возврата меняет и занятую долю покупки (FR-29, R-05).
@@ -664,23 +1010,15 @@ async def revise_transaction(
             new_amount_minor=new_spec.amount.minor,
         )
 
-    if money_changed:
+    if money_changed or change_kind == "restored":
         # Денежная правка до cutoff делает затронутую сверку требующей
         # повторной проверки; правка заметки — нет (AR-20, RV04).
-        from fintracker.application.analytics.coverage import mark_stale_reconciliations
-
-        for leg in new_spec.cash_legs:
-            if leg.account_id is None:
-                continue
-            await mark_stale_reconciliations(
-                session,
-                workspace_id=workspace_id,
-                account_id=leg.account_id,
-                changed_date=min(new_spec.occurred_date, current.occurred_date),
-                money_changed=True,
-            )
+        await _invalidate_reconciliations(
+            session, workspace_id=workspace_id, specs=(current_spec, new_spec)
+        )
 
     await uow.bump_revisions(workspace_id, data=True)
+    await _mark_analysis_stale(session, workspace_id=workspace_id)
     await uow.emit(
         workspace_id=workspace_id,
         event_type="TransactionRevised",
@@ -810,21 +1148,27 @@ async def _sync_dependent_state(
 
 
 async def _invalidate_reconciliations(
-    session: AsyncSession, *, workspace_id: uuid.UUID, spec: TransactionSpec
+    session: AsyncSession, *, workspace_id: uuid.UUID, specs: tuple[TransactionSpec, ...]
 ) -> None:
     """Денежное изменение делает принятую сверку требующей проверки (RV04, G-11)."""
     from fintracker.application.analytics.coverage import mark_stale_reconciliations
 
-    for leg in spec.cash_legs:
-        if leg.account_id is None:
-            continue
-        await mark_stale_reconciliations(
-            session,
-            workspace_id=workspace_id,
-            account_id=leg.account_id,
-            changed_date=spec.occurred_date,
-            money_changed=True,
-        )
+    seen: set[tuple[uuid.UUID, dt.date]] = set()
+    for spec in specs:
+        for leg in spec.cash_legs:
+            if leg.account_id is None:
+                continue
+            key = (leg.account_id, spec.occurred_date)
+            if key in seen:
+                continue
+            seen.add(key)
+            await mark_stale_reconciliations(
+                session,
+                workspace_id=workspace_id,
+                account_id=leg.account_id,
+                changed_date=spec.occurred_date,
+                money_changed=True,
+            )
 
 
 async def void_transaction(
@@ -885,14 +1229,21 @@ async def void_transaction(
     await _sync_links_with_status(
         session, workspace_id=workspace_id, transaction_id=transaction_id, active=False
     )
-    # Возмещения и оплаты обязательств возвращаются в открытое состояние.
-    await _sync_dependent_state(
-        session, workspace_id=workspace_id, transaction_id=transaction_id, active=False
+    # Возмещения, исходные требования и оплаты обязательств возвращаются в
+    # состояние, соответствующее отсутствию активного эффекта.
+    await _sync_money_dependents(
+        session,
+        workspace_id=workspace_id,
+        transaction_id=transaction_id,
+        effect=None,
+        spec=spec,
+        active=False,
     )
-    await _invalidate_reconciliations(session, workspace_id=workspace_id, spec=spec)
+    await _invalidate_reconciliations(session, workspace_id=workspace_id, specs=(spec,))
     await session.flush()
 
     await uow.bump_revisions(workspace_id, data=True)
+    await _mark_analysis_stale(session, workspace_id=workspace_id)
     await uow.emit(
         workspace_id=workspace_id,
         event_type="TransactionVoided",

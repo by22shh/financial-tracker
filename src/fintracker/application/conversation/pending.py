@@ -64,10 +64,14 @@ async def set_pending(
         )
 
 
-async def take_pending(
+async def peek_pending(
     settings: Settings, *, user_id: uuid.UUID, workspace_id: uuid.UUID | None
 ) -> Pending | None:
-    """Забрать ожидание: повторное сообщение не применяет действие дважды."""
+    """Прочитать ожидание без удаления.
+
+    Ожидание удаляется только после успешного применения действия. Невалидный
+    ввод просит повтор и не превращает следующее сообщение в расход.
+    """
     async with session_scope(
         settings, RuntimeRole.API, user_id=user_id, workspace_id=workspace_id
     ) as session:
@@ -79,13 +83,21 @@ async def take_pending(
         if row is None:
             return None
         expired = row.expires_at <= dt.datetime.now(dt.UTC)
-        result = (
-            None
-            if expired
-            else Pending(kind=row.kind, workspace_id=row.workspace_id, payload=dict(row.payload))
-        )
-        await session.execute(delete(PendingAction).where(PendingAction.id == row.id))
-        return result
+        if expired:
+            await session.execute(delete(PendingAction).where(PendingAction.id == row.id))
+            return None
+        return Pending(kind=row.kind, workspace_id=row.workspace_id, payload=dict(row.payload))
+
+
+async def take_pending(
+    settings: Settings, *, user_id: uuid.UUID, workspace_id: uuid.UUID | None
+) -> Pending | None:
+    """Забрать ожидание, когда действие уже точно должно завершиться."""
+    pending = await peek_pending(settings, user_id=user_id, workspace_id=workspace_id)
+    if pending is None:
+        return None
+    await clear_pending(settings, user_id=user_id, workspace_id=workspace_id)
+    return pending
 
 
 async def clear_pending(

@@ -58,9 +58,9 @@ class JournalView:
         return cls(flags=flags, sort=sort, offset=offset, category=category, note_query=note)
 
     def parts(self, *, offset: int | None = None) -> tuple[str, ...]:
-        # Данные кнопки ограничены по длине: запрос укорачивается, а разделитель
-        # из него убирается. Показ полного запроса остаётся в тексте страницы.
-        note = self.note_query.replace(":", " ")[:16].strip() if self.note_query else ""
+        # Данные кнопки ограничены Telegram, но обычный пользовательский поиск
+        # должен переживать paging/sort. Двоеточие убирается как разделитель.
+        note = self.note_query.replace(":", " ")[:40].strip() if self.note_query else ""
         note = note or "-"
         return (
             self.flags or "-",
@@ -305,6 +305,7 @@ async def history_action(
                 sort="d" if current.sort == "o" else "o",
                 offset=0,
                 category=current.category,
+                note_query=current.note_query,
             )
             return await journal_view(settings, actor=actor, workspace=workspace, view=flipped)
         case "flag" if rest:
@@ -324,7 +325,13 @@ async def history_action(
                 settings,
                 actor=actor,
                 workspace=workspace,
-                view=JournalView(flags=current.flags, sort=current.sort, offset=0, category=chosen),
+                view=JournalView(
+                    flags=current.flags,
+                    sort=current.sort,
+                    offset=0,
+                    category=chosen,
+                    note_query=current.note_query,
+                ),
             )
         case _:
             return [Reply(text="Кнопка устарела. Откройте журнал заново.")]

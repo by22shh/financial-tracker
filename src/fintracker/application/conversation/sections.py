@@ -503,6 +503,7 @@ async def confirm_draft(
                 uow,
                 actor=actor,
                 workspace=workspace,
+                draft_id=draft_id,
                 transaction_ids=posted,
             )
     if not posted:
@@ -533,18 +534,21 @@ async def _settle_pending_occurrence(
     *,
     actor: ActorContext,
     workspace: Workspace,
+    draft_id: uuid.UUID,
     transaction_ids: list[uuid.UUID],
 ) -> str | None:
     """Закрыть ожидаемый платёж, выбранный кнопкой «Оплачено» (FR-46, G-15)."""
     from fintracker.application.commitments.schedules import settle_occurrence
-    from fintracker.application.conversation.pending import take_pending
+    from fintracker.application.conversation.pending import clear_pending, peek_pending
     from fintracker.db.models.commitments import Occurrence
     from fintracker.db.models.ledger import FinancialEffect
 
     if len(transaction_ids) != 1:
         return None
-    pending = await take_pending(settings, user_id=actor.user_id, workspace_id=actor.workspace_id)
+    pending = await peek_pending(settings, user_id=actor.user_id, workspace_id=actor.workspace_id)
     if pending is None or pending.kind != "occurrence_settle":
+        return None
+    if pending.payload.get("draft_id") != str(draft_id):
         return None
 
     workspace_id = actor.require_workspace()
@@ -594,6 +598,7 @@ async def _settle_pending_occurrence(
         )
     except DomainError as exc:
         return f"Платёж не закрыт: {exc.message}"
+    await clear_pending(settings, user_id=actor.user_id, workspace_id=actor.workspace_id)
     return f"Ожидаемый платёж закрыт на {amount.format()}."
 
 

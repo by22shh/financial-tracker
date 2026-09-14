@@ -863,7 +863,7 @@ async def mark_stale_recommendations(session: AsyncSession, *, workspace: Worksp
             await session.execute(
                 select(Recommendation).where(
                     Recommendation.workspace_id == workspace.id,
-                    Recommendation.status == "proposed",
+                    Recommendation.status.in_(("proposed", "stale")),
                 )
             )
         )
@@ -877,7 +877,8 @@ async def mark_stale_recommendations(session: AsyncSession, *, workspace: Worksp
         # Изменение заметки не сбрасывает сверку, но денежная правка делает
         # текстовую рекомендацию неактуальной (ADR-09).
         if any(current.get(key) != value for key, value in vector.items()):
-            row.status = "stale"
+            if row.status == "proposed":
+                row.status = "stale"
             stale += 1
     await session.flush()
     return stale

@@ -286,14 +286,15 @@ async def handle_open_next_period(settings: Settings, job: LeasedJob) -> None:
             .scalars()
             .all()
         )
-        pending: list[BudgetPeriod] = []
+        pending: list[tuple[BudgetPeriod, bool, bool]] = []
         for row in periods:
             plan = await current_budget_version(
                 session, workspace_id=workspace_id, period_id=row.id
             )
+            needs_plan = plan is None
             closing = row.end_exclusive <= today and row.state != "ended"
-            if plan is None or closing:
-                pending.append(row)
+            if needs_plan or closing:
+                pending.append((row, needs_plan, closing))
         if not pending:
             return
 
@@ -302,14 +303,17 @@ async def handle_open_next_period(settings: Settings, job: LeasedJob) -> None:
         by_start = {row.start_date: row for row in periods}
         starts = sorted(by_start)
         previous: BudgetPeriod | None = None
-        for period in pending:
+        for period, needs_plan, closing in pending:
             index = starts.index(period.start_date)
             previous = by_start[starts[index - 1]] if index > 0 else None
-            await apply_plan_for_period(session, uow, workspace_id=workspace_id, period=period)
+            next_period = by_start[starts[index + 1]] if index + 1 < len(starts) else None
+            if needs_plan:
+                await apply_plan_for_period(session, uow, workspace_id=workspace_id, period=period)
             if (
                 previous is not None
                 and previous.state != "ended"
                 and previous.end_exclusive <= today
+                and needs_plan
             ):
                 previous.state = "ended"
                 # Календарное закрытие не подтверждает полноту истории (FR-39).
@@ -333,6 +337,30 @@ async def handle_open_next_period(settings: Settings, job: LeasedJob) -> None:
                         "completeness": previous.completeness,
                     },
                 )
+            if closing:
+                period.state = "ended"
+                period.closed_at = dt.datetime.now(dt.UTC)
+                await session.flush()
+                if next_period is not None:
+                    await propose_rollovers(
+                        session,
+                        workspace_id=workspace_id,
+                        closed_period=period,
+                        next_period=next_period,
+                        currency=workspace.currency,
+                        today=today,
+                    )
+                await uow.emit(
+                    workspace_id=workspace_id,
+                    event_type="BudgetPeriodEnded",
+                    aggregate_type="budget_period",
+                    aggregate_id=period.id,
+                    payload={
+                        "period_id": str(period.id),
+                        "completeness": period.completeness,
+                    },
+                )
+                continue
             # Обзор плана: для однодневного периода он совмещается с открытием
             # следующего и отдельным заданием не ставится (FORM-10, A228).
             review_on = plan_review_date(

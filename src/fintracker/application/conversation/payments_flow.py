@@ -229,8 +229,16 @@ async def create_payment_from_text(
     anchor = today
     if len(parts) > 2 and parts[2]:
         parsed = resolve_date_expression(parts[2], reference=today)
-        if parsed is not None:
-            anchor = parsed.value
+        if parsed is None:
+            return [
+                Reply(
+                    text=(
+                        "Не понял дату платежа. Отправьте «Название = сумма = дата», "
+                        "например «Интернет = 1000 = 25 сентября»."
+                    )
+                )
+            ]
+        anchor = parsed.value
     async with session_scope(
         settings, RuntimeRole.API, user_id=actor.user_id, workspace_id=workspace_id
     ) as session:

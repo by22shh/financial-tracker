@@ -15,6 +15,7 @@ from typing import Any, Protocol, TypeVar
 
 import httpx
 from pydantic import BaseModel, ValidationError
+from pydantic_core import PydanticUndefined
 
 from fintracker.config import AI_PROFILE_VERSION, AISettings
 from fintracker.core.errors import ProviderUnavailable, ValidationFailed
@@ -190,7 +191,9 @@ class OpenAIResponsesProvider:
                 last_error = "пустой ответ"
                 continue
             try:
-                parsed = response_model.model_validate_json(text)
+                parsed = response_model.model_validate(
+                    _normalize_null_defaults(response_model, text)
+                )
             except ValidationError as exc:
                 last_error = exc.errors()[0]["msg"] if exc.errors() else "схема не совпала"
                 logger.info("ai_schema_invalid", attempt=attempt, schema=schema_name)
@@ -215,6 +218,23 @@ class OpenAIResponsesProvider:
                 retries=attempt,
             )
         raise ValidationFailed(f"Модель не вернула корректный результат по схеме: {last_error}")
+
+
+def _normalize_null_defaults(model: type[BaseModel], text: str) -> Any:
+    """Convert provider-null optional-default fields to their model defaults."""
+    payload = json.loads(text)
+    if not isinstance(payload, dict):
+        return payload
+    normalized = dict(payload)
+    for name, model_field in model.model_fields.items():
+        if normalized.get(name) is not None:
+            continue
+        if model_field.default is not PydanticUndefined:
+            normalized[name] = model_field.default
+            continue
+        if model_field.default_factory is not None:
+            normalized[name] = model_field.get_default(call_default_factory=True)
+    return normalized
 
 
 def _extract_output_text(data: dict[str, Any]) -> str | None:

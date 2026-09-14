@@ -8,6 +8,7 @@ Liveness показывает состояние процесса; readiness —
 from __future__ import annotations
 
 import pathlib
+import uuid
 from dataclasses import dataclass
 from typing import Any
 
@@ -99,7 +100,7 @@ async def check_readiness(
 
     # Без записываемых каталогов объектов и журнала доступа создание бюджета и
     # выгрузка недоступны, хотя база отвечает (ADR-11, ADR-14, OPS-02, G-28).
-    storage_ok, storage_detail = _writable_backends(settings)
+    storage_ok, storage_detail = await _writable_backends(settings)
     if storage_detail and not detail:
         detail = storage_detail
 
@@ -116,19 +117,30 @@ async def check_readiness(
     )
 
 
-def _writable_backends(settings: Settings) -> tuple[bool, str | None]:
+async def _writable_backends(settings: Settings) -> tuple[bool, str | None]:
     """Доступны ли на запись хранилище объектов и журнал доступа (OPS-02)."""
     from fintracker.infra.security_log import build_security_log
     from fintracker.infra.storage import build_storage
 
-    for name, factory in (
-        ("хранилище объектов", lambda: build_storage(settings.storage)),
-        ("журнал доступа", lambda: build_security_log(settings.security_log)),
-    ):
-        try:
-            factory()
-        except Exception as exc:
-            return False, f"{name} недоступно: {type(exc).__name__}"
+    probe_id = uuid.uuid4().hex
+    try:
+        storage = build_storage(settings.storage)
+        key = f"health/{probe_id}"
+        await storage.put(key, b"ok")
+        if await storage.get(key) != b"ok":
+            return False, "хранилище объектов недоступно: readback mismatch"
+        await storage.delete(key)
+    except Exception as exc:
+        return False, f"хранилище объектов недоступно: {type(exc).__name__}"
+    try:
+        journal = build_security_log(settings.security_log)
+        key = f"health/{probe_id}.json"
+        body = '{"probe":"ok"}'
+        await journal._storage.put_if_absent(key, body)
+        if await journal._storage.get(key) != body:
+            return False, "журнал доступа недоступен: readback mismatch"
+    except Exception as exc:
+        return False, f"журнал доступа недоступен: {type(exc).__name__}"
     return True, None
 
 

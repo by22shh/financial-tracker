@@ -1,5 +1,56 @@
 # Локальная среда: PostgreSQL 17 и приватное хранилище (ADR-13, ADR-02).
 services:
+  api:
+    build: .
+    image: fintracker:local
+    command: ["api", "--port", "8080"]
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      FINTRACKER_STORAGE__ROOT: /var/lib/fintracker/objects
+      FINTRACKER_SECURITY_LOG__ROOT: /var/lib/fintracker/security-log
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${APP_PORT:-8080}:8080"
+    volumes:
+      - appobjects:/var/lib/fintracker/objects
+      - securitylog:/var/lib/fintracker/security-log
+
+  worker:
+    image: fintracker:local
+    command: ["worker"]
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      FINTRACKER_STORAGE__ROOT: /var/lib/fintracker/objects
+      FINTRACKER_SECURITY_LOG__ROOT: /var/lib/fintracker/security-log
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - appobjects:/var/lib/fintracker/objects
+      - securitylog:/var/lib/fintracker/security-log
+
+  scheduler:
+    image: fintracker:local
+    command: ["scheduler"]
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      FINTRACKER_STORAGE__ROOT: /var/lib/fintracker/objects
+      FINTRACKER_SECURITY_LOG__ROOT: /var/lib/fintracker/security-log
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - appobjects:/var/lib/fintracker/objects
+      - securitylog:/var/lib/fintracker/security-log
+
   postgres:
     image: postgres:17.2-alpine
     container_name: fintracker_pg
@@ -57,6 +108,8 @@ services:
       retries: 20
 
 volumes:
+  appobjects:
+  securitylog:
   pgdata:
   pgwal:
   miniodata:

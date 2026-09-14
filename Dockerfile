@@ -2,9 +2,12 @@
 # одной командой с разным аргументом (ADR-01, OPS-01).
 #
 # Сборка:  docker build -t fintracker:local .
-# Запуск:  docker run --rm --env-file .env fintracker:local api --port 8080
-#          docker run --rm --env-file .env fintracker:local worker
-#          docker run --rm --env-file .env fintracker:local scheduler
+# Запуск с filesystem backend требует общих именованных томов:
+#          docker volume create fintracker_objects
+#          docker volume create fintracker_security_log
+#          docker run --rm --env-file .env -v fintracker_objects:/var/lib/fintracker/objects -v fintracker_security_log:/var/lib/fintracker/security-log fintracker:local api --port 8080
+#          docker run --rm --env-file .env -v fintracker_objects:/var/lib/fintracker/objects -v fintracker_security_log:/var/lib/fintracker/security-log fintracker:local worker
+#          docker run --rm --env-file .env -v fintracker_objects:/var/lib/fintracker/objects -v fintracker_security_log:/var/lib/fintracker/security-log fintracker:local scheduler
 
 FROM python:3.13-slim AS builder
 

@@ -320,7 +320,9 @@ async def apply_pending_limit(
     """Применить новый лимит статьи из ответа участника (FR-21, G-13)."""
     from fintracker.application.planning.periods import period_for_date
     from fintracker.application.planning.plan import (
+        PlanLineSpec,
         change_line_limit,
+        create_budget_version,
         current_budget_version,
         line_key,
     )
@@ -356,20 +358,63 @@ async def apply_pending_limit(
         ).scalar_one_or_none()
         if line is None:
             stable_line_id = uuid.uuid5(uuid.NAMESPACE_URL, line_key(category_id, None))
+            payload = [
+                PlanLineSpec(
+                    category_id=row.category_id,
+                    beneficiary_id=row.beneficiary_id,
+                    limit_minor=row.limit_minor,
+                    rollover_mode=row.rollover_mode,
+                    is_protected=row.is_protected,
+                    stable_line_id=row.stable_line_id,
+                )
+                for row in (
+                    (
+                        await session.execute(
+                            select(BudgetLine).where(
+                                BudgetLine.workspace_id == workspace_id,
+                                BudgetLine.budget_version_id == version.id,
+                            )
+                        )
+                    )
+                    .scalars()
+                    .all()
+                )
+            ]
+            payload.append(
+                PlanLineSpec(
+                    category_id=category_id,
+                    beneficiary_id=None,
+                    limit_minor=limit.minor,
+                    stable_line_id=stable_line_id,
+                )
+            )
+            await create_budget_version(
+                session,
+                workspace_id=workspace_id,
+                period_id=period.id,
+                kind="working",
+                plan_status="approved",
+                origin="manual",
+                lines=payload,
+                overall_limit_minor=version.overall_limit_minor,
+                approved_by=actor.user_id,
+                reason="Добавление лимита новой статьи в текущий период",
+            )
+            await uow.bump_revisions(workspace_id, plan=True)
         else:
             stable_line_id = line.stable_line_id
-        try:
-            await change_line_limit(
-                session,
-                uow,
-                actor=actor,
-                period_id=period.id,
-                stable_line_id=stable_line_id,
-                new_limit_minor=limit.minor,
-                expected_version=version.version,
-            )
-        except DomainError as exc:
-            return [Reply(text=exc.message)]
+            try:
+                await change_line_limit(
+                    session,
+                    uow,
+                    actor=actor,
+                    period_id=period.id,
+                    stable_line_id=stable_line_id,
+                    new_limit_minor=limit.minor,
+                    expected_version=version.version,
+                )
+            except DomainError as exc:
+                return [Reply(text=exc.message)]
     return [
         Reply(
             text=f"Лимит статьи обновлён: {limit.format()}.",
