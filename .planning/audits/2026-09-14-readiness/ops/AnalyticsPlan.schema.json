@@ -1,0 +1,144 @@
+{
+  "additionalProperties": false,
+  "description": "\u0420\u0430\u0437\u0440\u0435\u0448\u0451\u043d\u043d\u044b\u0439 \u043f\u043b\u0430\u043d \u0437\u0430\u043f\u0440\u043e\u0441\u0430 \u0430\u043d\u0430\u043b\u0438\u0442\u0438\u043a\u0438 (AI-06).\n\n\u041f\u0440\u043e\u0438\u0437\u0432\u043e\u043b\u044c\u043d\u044b\u0439 SQL, \u0434\u043e\u0441\u0442\u0443\u043f \u043a \u0447\u0443\u0436\u043e\u043c\u0443 \u043f\u0440\u043e\u0441\u0442\u0440\u0430\u043d\u0441\u0442\u0432\u0443 \u0438 \u0441\u0435\u0442\u0435\u0432\u043e\u0439 \u0434\u043e\u0441\u0442\u0443\u043f \u043c\u043e\u0434\u0435\u043b\u0438\n\u043d\u0435 \u043f\u0440\u0435\u0434\u043e\u0441\u0442\u0430\u0432\u043b\u044f\u044e\u0442\u0441\u044f.",
+  "properties": {
+    "schema_version": {
+      "const": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "tool": {
+      "enum": [
+        "get_spending",
+        "get_budget_status",
+        "list_transactions",
+        "get_upcoming_payments",
+        "get_goal_status",
+        "simulate_purchase"
+      ],
+      "title": "Tool",
+      "type": "string"
+    },
+    "period": {
+      "default": "current",
+      "enum": [
+        "current",
+        "previous",
+        "custom",
+        "calendar_month"
+      ],
+      "title": "Period",
+      "type": "string"
+    },
+    "date_from": {
+      "anyOf": [
+        {
+          "maxLength": 10,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Date From"
+    },
+    "date_to": {
+      "anyOf": [
+        {
+          "maxLength": 10,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Date To"
+    },
+    "category_ids": {
+      "items": {
+        "maxLength": 64,
+        "type": "string"
+      },
+      "maxItems": 20,
+      "title": "Category Ids",
+      "type": "array"
+    },
+    "beneficiary_ids": {
+      "items": {
+        "maxLength": 64,
+        "type": "string"
+      },
+      "maxItems": 20,
+      "title": "Beneficiary Ids",
+      "type": "array"
+    },
+    "spender_person_ids": {
+      "items": {
+        "maxLength": 64,
+        "type": "string"
+      },
+      "maxItems": 20,
+      "title": "Spender Person Ids",
+      "type": "array"
+    },
+    "actor_user_id": {
+      "anyOf": [
+        {
+          "maxLength": 64,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Actor User Id"
+    },
+    "note_query": {
+      "anyOf": [
+        {
+          "maxLength": 120,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Note Query"
+    },
+    "group_by": {
+      "default": "none",
+      "enum": [
+        "category",
+        "beneficiary",
+        "spender",
+        "day",
+        "none"
+      ],
+      "title": "Group By",
+      "type": "string"
+    },
+    "clarification": {
+      "anyOf": [
+        {
+          "maxLength": 300,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Clarification"
+    }
+  },
+  "required": [
+    "schema_version",
+    "tool"
+  ],
+  "title": "AnalyticsPlan",
+  "type": "object"
+}

@@ -134,6 +134,37 @@ class ReceiptResponse(BaseModel):
     ambiguities: list[Ambiguity] = Field(default_factory=list, max_length=8)
 
 
+class EffectTerm(BaseModel):
+    """Слагаемое расчёта эффекта: доля конкретного показателя снимка.
+
+    Свободная формула строкой сервером не исполняется: эффект должен быть
+    воспроизводим по разрешённым показателям и долям (AI-08, G-24).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    metric_ref: Annotated[str, Field(max_length=80)]
+    field: Literal[
+        "fact_minor",
+        "limit_minor",
+        "remaining_minor",
+        "commitments_minor",
+        "available_minor",
+        "total_fact_minor",
+        "total_limit_minor",
+    ]
+    # Доля показателя: от -1 до 1, не более четырёх знаков.
+    share_decimal: Annotated[str, Field(pattern=r"^-?(0(\.\d{1,4})?|1(\.0{1,4})?)$")]
+
+
+class EffectBasis(BaseModel):
+    """Проверяемое сервером основание заявленной экономии."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    terms: list[EffectTerm] = Field(default_factory=list, max_length=6)
+
+
 class RecommendationCard(BaseModel):
     """Карточка рекомендации с обязательным основанием (FR-75, AI-08)."""
 
@@ -162,7 +193,9 @@ class RecommendationCard(BaseModel):
         default_factory=list, max_length=10
     )
     estimated_effect_decimal: Annotated[str, Field(pattern=_DECIMAL_PATTERN)] | None = None
+    # Пояснение для человека; числовое основание — в effect_basis.
     effect_formula: Annotated[str, Field(max_length=500)] | None = None
+    effect_basis: EffectBasis | None = None
     effect_unavailable_reason: Annotated[str, Field(max_length=300)] | None = None
     conditions: list[Annotated[str, Field(max_length=300)]] = Field(
         default_factory=list, max_length=6
@@ -217,8 +250,56 @@ class AnalyticsPlan(BaseModel):
     clarification: Annotated[str, Field(max_length=300)] | None = None
 
 
+def _strictify(node: Any) -> Any:
+    """Привести схему к контракту Structured Outputs (G-25).
+
+    Контракт провайдера требует, чтобы **все** properties объекта входили в
+    ``required``, а необязательность выражалась допустимым ``null``. Pydantic
+    выносит поля со значением по умолчанию из ``required``, поэтому схема
+    нормализуется рекурсивно перед отправкой.
+    """
+    if isinstance(node, list):
+        return [_strictify(item) for item in node]
+    if not isinstance(node, dict):
+        return node
+
+    result = {key: _strictify(value) for key, value in node.items()}
+    if result.get("type") == "object" or "properties" in result:
+        properties = result.get("properties") or {}
+        result["required"] = list(properties)
+        result["additionalProperties"] = False
+        for name, definition in properties.items():
+            if name in set(node.get("required") or []):
+                continue
+            properties[name] = _nullable(definition)
+    return result
+
+
+def _nullable(definition: dict[str, Any]) -> dict[str, Any]:
+    """Разрешить null для поля, которое модель вправе не заполнять."""
+    if "anyOf" in definition:
+        variants = definition["anyOf"]
+        if not any(item.get("type") == "null" for item in variants):
+            definition = {**definition, "anyOf": [*variants, {"type": "null"}]}
+        return definition
+    if "$ref" in definition:
+        # Ссылку нельзя дополнять соседними ключами: оборачиваем в anyOf.
+        rest = {key: value for key, value in definition.items() if key != "$ref"}
+        return {**rest, "anyOf": [{"$ref": definition["$ref"]}, {"type": "null"}]}
+    kind = definition.get("type")
+    if kind is None:
+        return definition
+    if isinstance(kind, list):
+        if "null" not in kind:
+            definition = {**definition, "type": [*kind, "null"]}
+        return definition
+    if kind == "null":
+        return definition
+    return {**definition, "type": [kind, "null"]}
+
+
 def json_schema_for(model: type[BaseModel]) -> dict[str, Any]:
     """JSON Schema для строгого структурированного вывода провайдера."""
-    schema = model.model_json_schema()
-    schema["additionalProperties"] = False
+    schema = _strictify(model.model_json_schema())
+    assert isinstance(schema, dict)
     return schema

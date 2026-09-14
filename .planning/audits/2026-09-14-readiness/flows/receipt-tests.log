@@ -1,0 +1,15 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+__________ test_mixed_receipt_is_one_transaction_with_two_allocations __________
+.planning/audits/2026-09-14-readiness/flows/test_flow_readiness.py:318: in test_mixed_receipt_is_one_transaction_with_two_allocations
+    assert len(transactions) == 1 and len(allocations) == 2, (user.text(), transactions, allocations)
+E   AssertionError: ('Записано операций: 2 на 1\xa0400,00\xa0₽.
+E     Откройте список, чтобы проверить каждую.', [UUID('e040d191-18ed-4cf2-b4b7...5d')], [(UUID('e040d191-18ed-4cf2-b4b7-55910cb3e7f2'), 100000), (UUID('57e675f6-26c7-4f9c-ae56-1094fdd6bf5d'), 40000)])
+E   assert (2 == 1)
+E    +  where 2 = len([UUID('e040d191-18ed-4cf2-b4b7-55910cb3e7f2'), UUID('57e675f6-26c7-4f9c-ae56-1094fdd6bf5d')])
+----------------------------- Captured stdout call -----------------------------
+2026-09-14 02:07:40 [info     ] security_change_completed      acl_revision=2 kind=workspace_create operation_id=0f77c92d-d639-484b-a92c-2e684dc8d9c7
+- generated xml file: /Users/Bayramov_N/Desktop/Other/financial-tracker/.planning/audits/2026-09-14-readiness/flows/receipt-junit.xml -
+=========================== short test summary info ============================
+FAILED .planning/audits/2026-09-14-readiness/flows/test_flow_readiness.py::test_mixed_receipt_is_one_transaction_with_two_allocations
+1 failed, 15 deselected in 2.04s

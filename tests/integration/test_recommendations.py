@@ -51,15 +51,23 @@ def ai_settings(test_settings: Settings) -> Settings:
             os.environ[key] = value
 
 
+def effect_basis(metric_ref: str, *, field: str = "total_fact_minor", share: str = "0.1"):
+    """Проверяемое сервером основание эффекта (AI-08, G-24)."""
+    return {"terms": [{"metric_ref": metric_ref, "field": field, "share_decimal": share}]}
+
+
 def recommendation_json(**overrides) -> str:
+    # По умолчанию карточка без числового эффекта: заявленная сумма требует
+    # основания, воспроизводимого сервером по снимку.
     card = {
         "direction": "flexible_spend",
         "observation": "Расходы на рестораны растут быстрее плана",
         "action_kind": "reduce_flexible",
         "metric_refs": [],
-        "estimated_effect_decimal": "1100.00",
-        "effect_formula": "2 × (900 − 350)",
-        "effect_unavailable_reason": None,
+        "estimated_effect_decimal": None,
+        "effect_formula": None,
+        "effect_basis": None,
+        "effect_unavailable_reason": "Цена альтернативы неизвестна",
         "conditions": ["Известны четыре доставки по 900 ₽"],
         "alternative_group": None,
         "stable_line_id": None,
@@ -280,7 +288,15 @@ async def test_ai08_unknown_metric_and_missing_formula_rejected(
 
     valid_metric = str(metrics["metric_id"])
     no_formula = RecommendationResponse.model_validate_json(
-        recommendation_json(card={"metric_refs": [valid_metric], "effect_formula": None})
+        recommendation_json(
+            card={
+                "metric_refs": [valid_metric],
+                "estimated_effect_decimal": "1100.00",
+                "effect_formula": None,
+                "effect_basis": None,
+                "effect_unavailable_reason": None,
+            }
+        )
     )
     accepted, rejected = validate_cards(
         no_formula,
@@ -291,7 +307,7 @@ async def test_ai08_unknown_metric_and_missing_formula_rejected(
         currency="RUB",
     )
     assert accepted == []
-    assert any("без формулы" in reason for reason in rejected)
+    assert any("без проверяемого основания" in reason for reason in rejected)
 
 
 async def test_a94_protected_line_is_not_offered_for_cut(
@@ -354,17 +370,25 @@ async def test_a135_alternatives_share_group(
     )
     metric = str(metrics["metric_id"])
     payload = json.loads(recommendation_json())
+    total = int(metrics["total_fact_minor"])
     payload["cards"] = [
         {
             **payload["cards"][0],
             "metric_refs": [metric],
             "alternative_group": "restaurants",
+            "estimated_effect_decimal": f"{total // 10 / 100:.2f}",
+            "effect_formula": "10% учтённых расходов",
+            "effect_basis": effect_basis(metric),
+            "effect_unavailable_reason": None,
         },
         {
             **payload["cards"][0],
             "metric_refs": [metric],
             "alternative_group": "restaurants",
-            "estimated_effect_decimal": "800.00",
+            "estimated_effect_decimal": f"{total // 5 / 100:.2f}",
+            "effect_formula": "20% учтённых расходов",
+            "effect_basis": effect_basis(metric, share="0.2"),
+            "effect_unavailable_reason": None,
         },
     ]
     response = RecommendationResponse.model_validate(payload)
@@ -510,11 +534,16 @@ async def test_a131_alternative_effect_names_conditions_and_horizon(
     _, metrics = await build_snapshot_row(
         owner_session, workspace=fixture.workspace, period_id=fixture.period.id, today=TODAY
     )
+    metric = str(metrics["metric_id"])
+    # Эффект — доля учтённых расходов снимка: сервер пересчитывает его сам.
+    expected_minor = int(metrics["total_fact_minor"]) // 10
     card = {
-        "metric_refs": [str(metrics["metric_id"])],
+        "metric_refs": [metric],
         "observation": "Две доставки по 900 ₽ за неделю",
-        "estimated_effect_decimal": "1100.00",
-        "effect_formula": "2 × (900 − 350) ₽ за оставшиеся недели периода",
+        "estimated_effect_decimal": f"{expected_minor / 100:.2f}",
+        "effect_formula": "10% учтённых расходов периода",
+        "effect_basis": effect_basis(metric),
+        "effect_unavailable_reason": None,
         "conditions": ["Сохраняется прежняя частота", "Альтернатива доступна по 350 ₽"],
     }
     provider = ScriptedAIProvider(responses=[recommendation_json(card=card)])
@@ -536,7 +565,7 @@ async def test_a131_alternative_effect_names_conditions_and_horizon(
             select(Recommendation).where(Recommendation.workspace_id == fixture.workspace.id)
         )
     ).scalar_one()
-    assert row.estimated_effect_minor == 110_000, "эффект переведён в minor units сервером"
+    assert row.estimated_effect_minor == expected_minor, "эффект пересчитан сервером"
     assert row.effect_formula, "расчёт эффекта указан"
     assert row.conditions, "условия расчёта перечислены"
     assert row.horizon_period_id == fixture.period.id, "горизонт указан"

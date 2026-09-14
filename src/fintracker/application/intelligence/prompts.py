@@ -10,7 +10,7 @@ from typing import Final
 
 EXTRACTION_PROMPT_VERSION: Final[str] = "extraction-1.0"
 RECEIPT_PROMPT_VERSION: Final[str] = "receipt-1.0"
-RECOMMENDATION_PROMPT_VERSION: Final[str] = "recommendation-1.0"
+RECOMMENDATION_PROMPT_VERSION: Final[str] = "recommendation-1.1"
 ANALYTICS_PLAN_PROMPT_VERSION: Final[str] = "analytics-plan-1.0"
 
 _UNTRUSTED_DATA_RULE = """
@@ -97,8 +97,11 @@ RECOMMENDATION_INSTRUCTIONS = f"""
 - Если данных недостаточно или полнота учёта не подтверждена, верни пустой
   список карточек и заполни abstained_reason. Не выдумывай частоту покупок,
   средний чек и гарантированную экономию.
-- estimated_effect_decimal заполняется только когда все слагаемые известны из
-  снимка; иначе заполни effect_unavailable_reason.
+- estimated_effect_decimal заполняется только вместе с effect_basis: слагаемые
+  «показатель снимка × доля от -1 до 1». Сервер пересчитывает сумму сам и
+  отклоняет карточку при несовпадении. Если эффект так не выражается, оставь
+  сумму пустой и заполни effect_unavailable_reason.
+- effect_formula — только пояснение для человека; на неё сервер не опирается.
 - Перекрывающиеся варианты по одной статье помечай одинаковым
   alternative_group: их эффекты не складываются.
 - Не предполагай, что подписка не используется, не придумывай более дешёвый

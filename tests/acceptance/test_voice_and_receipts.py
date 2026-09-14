@@ -113,7 +113,9 @@ def stub_download(monkeypatch: pytest.MonkeyPatch):
     """Загрузка файла Telegram подменяется: токен не нужен (BL-03)."""
 
     async def _download(settings, *, file_id: str) -> bytes:
-        return b"\x89PNG\r\n\x1a\n" + file_id.encode()
+        from tests.images import png_bytes
+
+        return png_bytes(marker=file_id.encode())
 
     monkeypatch.setattr(
         "fintracker.application.intelligence.media_pipeline.download_attachment", _download

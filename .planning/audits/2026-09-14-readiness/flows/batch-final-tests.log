@@ -1,0 +1,17 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+_____________ test_confirm_incomplete_batch_never_partially_posts ______________
+.planning/audits/2026-09-14-readiness/flows/test_flow_readiness.py:299: in test_confirm_incomplete_batch_never_partially_posts
+    assert transactions == [], (user.text(), transactions, states)
+E   AssertionError: ('У кандидата нет суммы или даты
+E     Запись не проведена, черновик сохранён.', [UUID('18241d22-0c6f-4e63-acd6-ab52ffa019b4')], ['needs_clarification', 'posted'])
+E   assert [UUID('18241d...b52ffa019b4')] == []
+E     
+E     Left contains one more item: UUID('18241d22-0c6f-4e63-acd6-ab52ffa019b4')
+E     Use -v to get more diff
+----------------------------- Captured stdout call -----------------------------
+2026-09-14 02:07:16 [info     ] security_change_completed      acl_revision=2 kind=workspace_create operation_id=6f5e77a4-d8a1-4c5c-b028-c57c9c95948a
+- generated xml file: /Users/Bayramov_N/Desktop/Other/financial-tracker/.planning/audits/2026-09-14-readiness/flows/batch-final-junit.xml -
+=========================== short test summary info ============================
+FAILED .planning/audits/2026-09-14-readiness/flows/test_flow_readiness.py::test_confirm_incomplete_batch_never_partially_posts
+1 failed, 14 deselected in 2.12s

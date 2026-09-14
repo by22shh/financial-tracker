@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="8" skipped="0" tests="8" time="10.005" timestamp="2026-09-14T02:04:42.450210+07:00" hostname="Bayramov-N-mb"><testcase classname="tests.integration.test_money_readiness" name="test_read_opened_period_still_gets_plan_and_closure" time="1.546"><failure message="AssertionError: ('period created by normal read; worker failed to finish initialization', None, 'open')&#10;assert (False, 'open') == (True, 'ended')&#10;  &#10;  At index 0 diff: False != True&#10;  Use -v to get more diff">tests/integration/test_money_readiness.py:53: in test_read_opened_period_still_gets_plan_and_closure
+    assert (plan is not None, previous.state) == (True, "ended"), ("period created by normal read; worker failed to finish initialization", plan, previous.state)
+E   AssertionError: ('period created by normal read; worker failed to finish initialization', None, 'open')
+E   assert (False, 'open') == (True, 'ended')
+E     
+E     At index 0 diff: False != True
+E     Use -v to get more diff</failure></testcase><testcase classname="tests.integration.test_money_readiness" name="test_void_settlement_reopens_receivable" time="0.278"><failure message="AssertionError: assert (0, 'settled', -300000) == (150000, 'open', -300000)&#10;  &#10;  At index 0 diff: 0 != 150000&#10;  Use -v to get more diff">tests/integration/test_money_readiness.py:67: in test_void_settlement_reopens_receivable
+    assert (remaining.outstanding_minor, remaining.status, balance) == (150000, "open", -300000)
+E   AssertionError: assert (0, 'settled', -300000) == (150000, 'open', -300000)
+E     
+E     At index 0 diff: 0 != 150000
+E     Use -v to get more diff</failure></testcase><testcase classname="tests.integration.test_money_readiness" name="test_void_paid_purchase_cannot_leave_collected_receivable" time="0.215"><failure message="Failed: DID NOT RAISE &lt;class 'fintracker.core.errors.ConflictError'&gt;">tests/integration/test_money_readiness.py:76: in test_void_paid_purchase_cannot_leave_collected_receivable
+    with pytest.raises(ConflictError, match="."):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   Failed: DID NOT RAISE &lt;class 'fintracker.core.errors.ConflictError'&gt;</failure></testcase><testcase classname="tests.integration.test_money_readiness" name="test_void_scheduled_payment_reopens_obligation" time="0.240"><failure message="AssertionError: assert ('settled', 100000, 0) == ('planned', 0, 100000)&#10;  &#10;  At index 0 diff: 'settled' != 'planned'&#10;  Use -v to get more diff">tests/integration/test_money_readiness.py:94: in test_void_scheduled_payment_reopens_obligation
+    assert (row.state, row.settled_minor, commitment) == ("planned", 0, 100000)
+E   AssertionError: assert ('settled', 100000, 0) == ('planned', 0, 100000)
+E     
+E     At index 0 diff: 'settled' != 'planned'
+E     Use -v to get more diff</failure></testcase><testcase classname="tests.integration.test_money_readiness" name="test_purchase_reallocation_cannot_shrink_refunded_part" time="0.230"><failure message="Failed: DID NOT RAISE &lt;class 'fintracker.core.errors.ConflictError'&gt;">tests/integration/test_money_readiness.py:105: in test_purchase_reallocation_cannot_shrink_refunded_part
+    with pytest.raises(ConflictError, match="."):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   Failed: DID NOT RAISE &lt;class 'fintracker.core.errors.ConflictError'&gt;</failure></testcase><testcase classname="tests.integration.test_money_readiness" name="test_void_transaction_invalidates_accepted_reconciliation" time="0.229"><failure message="assert (False, 0) == (True, 0)&#10;  &#10;  At index 0 diff: False != True&#10;  Use -v to get more diff">tests/integration/test_money_readiness.py:121: in test_void_transaction_invalidates_accepted_reconciliation
+    assert (row.is_stale, balance) == (True, 0)
+E   assert (False, 0) == (True, 0)
+E     
+E     At index 0 diff: False != True
+E     Use -v to get more diff</failure></testcase><testcase classname="tests.integration.test_money_readiness" name="test_reconciliation_accept_revalidates_changed_basis" time="0.216"><failure message="Failed: DID NOT RAISE &lt;class 'fintracker.core.errors.ConflictError'&gt;">tests/integration/test_money_readiness.py:130: in test_reconciliation_accept_revalidates_changed_basis
+    with pytest.raises(ConflictError, match="."):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   Failed: DID NOT RAISE &lt;class 'fintracker.core.errors.ConflictError'&gt;</failure></testcase><testcase classname="tests.integration.test_money_readiness" name="test_incomplete_calendar_days_are_not_observed_forecast_days" time="6.682"><failure message="AssertionError: Период: 1 сентября — 30 сентября&#10;  Итого: 1 000,00 ₽&#10;  Операций: 1&#10;  • Продукты: 1 000,00 ₽&#10;  Полнота учёта: не подтверждена&#10;  &#10;  Прогноз итога периода:&#10;  • Факт: 1 000,00 ₽&#10;  • Неисполненные обязательства: 0,00 ₽&#10;  • Прогноз гибких трат: 1 142,85 ₽&#10;  Прогноз: 2 142,85 ₽&#10;  Ограничения: полнота учёта не подтверждена; оценка при сохранении темпа&#10;assert 'Числовой прогноз не строится' in 'Период: 1 сентября — 30 сентября\nИтого: 1\xa0000,00\xa0₽\nОпераций: 1\n• Продукты: 1\xa0000,00\xa0₽\nПолнота учёта: ...: 1\xa0142,85\xa0₽\nПрогноз: 2\xa0142,85\xa0₽\nОграничения: полнота учёта не подтверждена; оценка при сохранении темпа'">tests/integration/test_money_readiness.py:140: in test_incomplete_calendar_days_are_not_observed_forecast_days
+    assert "Числовой прогноз не строится" in text, text
+E   AssertionError: Период: 1 сентября — 30 сентября
+E     Итого: 1 000,00 ₽
+E     Операций: 1
+E     • Продукты: 1 000,00 ₽
+E     Полнота учёта: не подтверждена
+E     
+E     Прогноз итога периода:
+E     • Факт: 1 000,00 ₽
+E     • Неисполненные обязательства: 0,00 ₽
+E     • Прогноз гибких трат: 1 142,85 ₽
+E     Прогноз: 2 142,85 ₽
+E     Ограничения: полнота учёта не подтверждена; оценка при сохранении темпа
+E   assert 'Числовой прогноз не строится' in 'Период: 1 сентября — 30 сентября\nИтого: 1\xa0000,00\xa0₽\nОпераций: 1\n• Продукты: 1\xa0000,00\xa0₽\nПолнота учёта: ...: 1\xa0142,85\xa0₽\nПрогноз: 2\xa0142,85\xa0₽\nОграничения: полнота учёта не подтверждена; оценка при сохранении темпа'</failure></testcase></testsuite></testsuites>

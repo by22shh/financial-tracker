@@ -188,6 +188,17 @@ async def sweep_finished_jobs(session: AsyncSession, now: dt.datetime) -> int:
     return len(result.scalars().all())
 
 
+# Резервация AI, брошенная упавшим процессом, освобождается позже своего
+# запроса с запасом: живой вызов не должен быть закрыт как брошенный.
+RESERVATION_MAX_AGE = dt.timedelta(minutes=30)
+
+
+async def _sweep_reservations(settings: Settings, now: dt.datetime) -> int:
+    from fintracker.application.intelligence import quota
+
+    return await quota.settle_abandoned(settings, now=now, older_than=RESERVATION_MAX_AGE)
+
+
 async def handle_retention_sweep(settings: Settings, job: LeasedJob) -> None:
     """Периодическая очистка по срокам хранения."""
     async with session_scope(settings, RuntimeRole.WORKER) as session:
@@ -201,6 +212,7 @@ async def handle_retention_sweep(settings: Settings, job: LeasedJob) -> None:
             "exports": await sweep_exports(session, settings, now),
             "stale_deliveries": await sweep_stale_deliveries(session, now),
             "finished_jobs": await sweep_finished_jobs(session, now),
+            "abandoned_reservations": await _sweep_reservations(settings, now),
         }
         stats["attachments"] = await sweep_attachments(session, settings, now)
         stats["purged_workspaces"] = await purge_deleted_workspaces(session, settings, now)

@@ -43,6 +43,7 @@ from fintracker.domain.ledger.receipt import (
     parse_decimal,
     reconcile_to_total,
 )
+from fintracker.domain.media.image import InvalidImage, inspect_image
 from fintracker.domain.parsing.dates import resolve_date_expression
 from fintracker.domain.parsing.intent import Intent
 from fintracker.infra.asr.provider import build_asr
@@ -245,10 +246,36 @@ async def _process_image(
     except ProviderUnavailable as exc:
         return [Reply(text=f"Не удалось загрузить изображение: {exc.message}")]
 
+    # Проверяются настоящие байты, а не заявленные Telegram тип и размеры:
+    # текст под видом JPEG не должен дойти до платной модели (SEC-07, G-26).
+    try:
+        facts = inspect_image(
+            image,
+            max_bytes=settings.limits.max_attachment_bytes,
+            max_pixels=settings.limits.max_image_pixels,
+            max_side=settings.limits.max_image_side,
+            declared_media_type=attachment.mime_type,
+        )
+    except InvalidImage as exc:
+        logger.info("image_rejected", reason=str(exc), file_id=attachment.file_id)
+        return [
+            Reply(
+                text=(
+                    f"Файл не удалось прочитать как изображение: {exc}. "
+                    "Пришлите фото чека ещё раз или введите сумму текстом."
+                )
+            )
+        ]
+
+    if not facts.declared_type_matches:
+        # Провайдеру уходит определённый по содержимому тип, а не заявленный.
+        logger.info(
+            "image_type_mismatch",
+            declared=attachment.mime_type,
+            detected=facts.media_type,
+        )
     fingerprint = hashlib.sha256(image).hexdigest()
-    data_url = (
-        f"data:{attachment.mime_type or 'image/jpeg'};base64,{base64.b64encode(image).decode()}"
-    )
+    data_url = f"data:{facts.media_type};base64,{base64.b64encode(image).decode()}"
 
     # Альбом из нескольких снимков одного чека разбирается одним пакетом (A28).
     extra_urls: list[str] = []
@@ -257,11 +284,22 @@ async def _process_image(
             extra = await download_attachment(settings, file_id=item.file_id)
         except ProviderUnavailable:
             continue
+        try:
+            extra_facts = inspect_image(
+                extra,
+                max_bytes=settings.limits.max_attachment_bytes,
+                max_pixels=settings.limits.max_image_pixels,
+                max_side=settings.limits.max_image_side,
+                declared_media_type=item.mime_type,
+            )
+        except InvalidImage as exc:
+            logger.info("image_rejected", reason=str(exc), file_id=item.file_id)
+            continue
         fingerprint = hashlib.sha256(
             (fingerprint + hashlib.sha256(extra).hexdigest()).encode()
         ).hexdigest()
         extra_urls.append(
-            f"data:{item.mime_type or 'image/jpeg'};base64,{base64.b64encode(extra).decode()}"
+            f"data:{extra_facts.media_type};base64,{base64.b64encode(extra).decode()}"
         )
 
     prepared = await _prepare_media(

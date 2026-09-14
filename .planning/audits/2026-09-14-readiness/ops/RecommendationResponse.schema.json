@@ -1,0 +1,177 @@
+{
+  "$defs": {
+    "RecommendationCard": {
+      "additionalProperties": false,
+      "description": "\u041a\u0430\u0440\u0442\u043e\u0447\u043a\u0430 \u0440\u0435\u043a\u043e\u043c\u0435\u043d\u0434\u0430\u0446\u0438\u0438 \u0441 \u043e\u0431\u044f\u0437\u0430\u0442\u0435\u043b\u044c\u043d\u044b\u043c \u043e\u0441\u043d\u043e\u0432\u0430\u043d\u0438\u0435\u043c (FR-75, AI-08).",
+      "properties": {
+        "direction": {
+          "enum": [
+            "flexible_spend",
+            "repeated_overspend",
+            "known_recurring",
+            "irregular_payments",
+            "savings_goals",
+            "budget_imbalance"
+          ],
+          "title": "Direction",
+          "type": "string"
+        },
+        "observation": {
+          "maxLength": 1000,
+          "title": "Observation",
+          "type": "string"
+        },
+        "action_kind": {
+          "enum": [
+            "reduce_flexible",
+            "adjust_plan",
+            "check_tariff",
+            "start_fund",
+            "adjust_contribution",
+            "reallocate_limit",
+            "review_completeness"
+          ],
+          "title": "Action Kind",
+          "type": "string"
+        },
+        "metric_refs": {
+          "items": {
+            "maxLength": 80,
+            "type": "string"
+          },
+          "maxItems": 10,
+          "title": "Metric Refs",
+          "type": "array"
+        },
+        "estimated_effect_decimal": {
+          "anyOf": [
+            {
+              "pattern": "^-?\\d{1,15}(\\.\\d{1,4})?$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Estimated Effect Decimal"
+        },
+        "effect_formula": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Effect Formula"
+        },
+        "effect_unavailable_reason": {
+          "anyOf": [
+            {
+              "maxLength": 300,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Effect Unavailable Reason"
+        },
+        "conditions": {
+          "items": {
+            "maxLength": 300,
+            "type": "string"
+          },
+          "maxItems": 6,
+          "title": "Conditions",
+          "type": "array"
+        },
+        "alternative_group": {
+          "anyOf": [
+            {
+              "maxLength": 60,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Alternative Group"
+        },
+        "stable_line_id": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stable Line Id"
+        },
+        "priority": {
+          "default": 100,
+          "maximum": 1000,
+          "minimum": 1,
+          "title": "Priority",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "direction",
+        "observation",
+        "action_kind"
+      ],
+      "title": "RecommendationCard",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "summary": {
+      "maxLength": 1000,
+      "title": "Summary",
+      "type": "string"
+    },
+    "abstained_reason": {
+      "anyOf": [
+        {
+          "maxLength": 300,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Abstained Reason"
+    },
+    "cards": {
+      "items": {
+        "$ref": "#/$defs/RecommendationCard"
+      },
+      "maxItems": 5,
+      "title": "Cards",
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema_version",
+    "summary"
+  ],
+  "title": "RecommendationResponse",
+  "type": "object"
+}

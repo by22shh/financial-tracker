@@ -1,0 +1,136 @@
+FFFFFFFFFFF                                                              [100%]
+=================================== FAILURES ===================================
+_____________ test_category_archive_is_accessible_and_can_restore ______________
+.planning/audits/2026-09-14-readiness/flows/test_flow_readiness.py:46: in test_category_archive_is_accessible_and_can_restore
+    assert "Рестораны" in user.text(), user.text()
+E   AssertionError: Действие недоступно.
+E   assert 'Рестораны' in 'Действие недоступно.'
+E    +  where 'Действие недоступно.' = text()
+E    +    where text = BotUser(settings=Settings(env=<Environment.TEST: 'test'>, app_name='fintracker', db=DatabaseSettings(owner_dsn='postgr...12, 9, 0, tzinfo=datetime.timezone.utc), last_replies=[Reply(text='Действие недоступно.', buttons=(), immediate=True)]).text
+----------------------------- Captured stdout call -----------------------------
+2026-09-14 02:05:01 [info     ] security_change_completed      acl_revision=2 kind=workspace_create operation_id=bb1a50ae-ca7b-4162-b1a3-3da2c5da41d4
+____________________ test_category_rename_button_saves_name ____________________
+.planning/audits/2026-09-14-readiness/flows/test_flow_readiness.py:60: in test_category_rename_button_saves_name
+    assert "Кафе" in names and "Рестораны" not in names, (user.text(), names)
+E   AssertionError: ('Не понял сообщение. Отправьте /help, чтобы увидеть примеры.', ['Продукты', 'Рестораны', 'Транспорт', 'Жильё'])
+E   assert ('Кафе' in ['Продукты', 'Рестораны', 'Транспорт', 'Жильё'])
+----------------------------- Captured stdout call -----------------------------
+2026-09-14 02:05:01 [info     ] security_change_completed      acl_revision=2 kind=workspace_create operation_id=aebc1da4-7946-44f7-a937-75a06b16c317
+___________________ test_goal_creation_button_enters_wizard ____________________
+.planning/audits/2026-09-14-readiness/flows/test_flow_readiness.py:68: in test_goal_creation_button_enters_wizard
+    assert "Кнопка устарела" not in user.text() and "Действие недоступно" not in user.text(), user.text()
+E   AssertionError: Кнопка устарела. Откройте нужный раздел заново.
+E   assert ('Кнопка устарела' not in 'Кнопка уста...здел заново.'
+E     
+E     'Кнопка устарела' is contained here:
+E       Кнопка устарела. Откройте нужный раздел заново.
+E     ? +++++++++++++++)
+----------------------------- Captured stdout call -----------------------------
+2026-09-14 02:05:02 [info     ] security_change_completed      acl_revision=2 kind=workspace_create operation_id=7be8cc0b-234a-4b64-ae6c-003902899aad
+_____________________ test_new_payment_button_enters_form ______________________
+.planning/audits/2026-09-14-readiness/flows/test_flow_readiness.py:76: in test_new_payment_button_enters_form
+    assert "Кнопка устарела" not in user.text(), user.text()
+E   AssertionError: Кнопка устарела. Откройте раздел «Платежи».
+E   assert 'Кнопка устарела' not in 'Кнопка уста...л «Платежи».'
+E     
+E     'Кнопка устарела' is contained here:
+E       Кнопка устарела. Откройте раздел «Платежи».
+E     ? +++++++++++++++
+----------------------------- Captured stdout call -----------------------------
+2026-09-14 02:05:02 [info     ] security_change_completed      acl_revision=2 kind=workspace_create operation_id=c098cb61-4693-4328-a291-c0aa6885a56e
+_________________ test_wizard_keeps_commitment_and_goal_inputs _________________
+.planning/audits/2026-09-14-readiness/flows/test_flow_readiness.py:97: in test_wizard_keeps_commitment_and_goal_inputs
+    assert "Аренда" in schedules and "Отпуск" in goals, (user.text(), schedules, goals)
+E   AssertionError: ('Бюджет «Аудит мастера» создан.
+E     Постоянный ID: 9F2864DC
+E     Текущий период: 2026-09-10 — 2026-10-09
+E     Следующий период начнётся 2026-10-10
+E     Ваша роль: администратор', [], [])
+E   assert ('Аренда' in [])
+----------------------------- Captured stdout call -----------------------------
+2026-09-14 02:05:03 [info     ] security_change_completed      acl_revision=2 kind=workspace_create operation_id=6c3b1deb-fe8b-4565-b060-8ff6f4194d44
+_______________ test_media_retry_button_reprocesses_saved_draft ________________
+.planning/audits/2026-09-14-readiness/flows/test_flow_readiness.py:135: in test_media_retry_button_reprocesses_saved_draft
+    assert len(provider.calls) > calls and user.has_button("Записать"), (user.text(), states)
+E   AssertionError: ('Отправьте уточнение сообщением — например, сумму числом или название категории.', ['failed_retryable'])
+E   assert (1 > 1)
+E    +  where 1 = len([{'input': [{'content': [{'text': "Справочник пространства (только эти ID допустимы):\n{'categories': [{'id': '7266a8d... и суммы.\n- category_id только из переданного справочника.', 'prompt_version': 'receipt-1.0', 'schema': 'receipt_v1'}])
+E    +    where [{'input': [{'content': [{'text': "Справочник пространства (только эти ID допустимы):\n{'categories': [{'id': '7266a8d... и суммы.\n- category_id только из переданного справочника.', 'prompt_version': 'receipt-1.0', 'schema': 'receipt_v1'}] = ScriptedAIProvider(responses=['{"schema_version": "1.0", "document_kind": "receipt", "payment_confirmed": true, "total...0'}], fail_with=None, usage=AIUsage(input_tokens=1200, cached_input_tokens=0, output_tokens=300, reasoning_tokens=120)).calls
+----------------------------- Captured stdout call -----------------------------
+2026-09-14 02:05:03 [info     ] security_change_completed      acl_revision=2 kind=workspace_create operation_id=b27d6ff3-c7bd-4a39-b5b9-c06d7574f3af
+2026-09-14 02:05:03 [warning  ] ai_cost_unknown                request_key=receipt:b1108d07-ebb4-491a-a28e-24a0995ed68a:2
+_____________ test_invoice_paid_button_produces_confirmable_record _____________
+.planning/audits/2026-09-14-readiness/flows/test_flow_readiness.py:148: in test_invoice_paid_button_produces_confirmable_record
+    assert user.has_button("Записать") and candidates, (user.text(), states, candidates)
+E   AssertionError: ('Отправьте уточнение сообщением — например, сумму числом или название категории.', ['needs_clarification'], [])
+E   assert (False)
+E    +  where False = has_button('Записать')
+E    +    where has_button = BotUser(settings=Settings(env=<Environment.TEST: 'test'>, app_name='fintracker', db=DatabaseSettings(owner_dsn='postgr...y(text='Отправьте уточнение сообщением — например, сумму числом или название категории.', buttons=(), immediate=True)]).has_button
+----------------------------- Captured stdout call -----------------------------
+2026-09-14 02:05:03 [info     ] security_change_completed      acl_revision=2 kind=workspace_create operation_id=7b3d0265-34fc-4178-8fe6-fc1439255714
+___________________ test_ready_draft_edit_updates_same_draft ___________________
+.planning/audits/2026-09-14-readiness/flows/test_flow_readiness.py:162: in test_ready_draft_edit_updates_same_draft
+    assert amounts == [60000], (user.text(), amounts, drafts)
+E   AssertionError: ('Бюджет: Наш общий бюджет
+E     Записано 450,00\xa0₽ — Продукты
+E     12 сентября 2026
+E     Период: 10 сентября — 9 октября
+E     По статье: Лимит не задан', [45000], ['ready', 'posted'])
+E   assert [45000] == [60000]
+E     
+E     At index 0 diff: 45000 != 60000
+E     Use -v to get more diff
+----------------------------- Captured stdout call -----------------------------
+2026-09-14 02:05:04 [info     ] security_change_completed      acl_revision=2 kind=workspace_create operation_id=2736107e-94a3-4966-8c66-30f6c423d92f
+_________________ test_payment_done_links_record_to_occurrence _________________
+.planning/audits/2026-09-14-readiness/flows/test_flow_readiness.py:181: in test_payment_done_links_record_to_occurrence
+    assert value.state == "settled" and value.settled_minor == 100000, (value.state, value.settled_minor, user.text())
+E   AssertionError: ('planned', 0, 'Бюджет: Тестовый бюджет
+E     Записано 1\xa0000,00\xa0₽ — Без категории
+E     12 сентября 2026
+E     Период: 10 сентября — 9 октября')
+E   assert ('planned' == 'settled'
+E     
+E     - settled
+E     + planned)
+_________________ test_comment_search_survives_page_navigation _________________
+.planning/audits/2026-09-14-readiness/flows/test_flow_readiness.py:193: in test_comment_search_survives_page_navigation
+    assert "из 9" in user.text() and "Поиск по комментарию" in user.text(), user.text()
+E   AssertionError: Фильтры: без ограничений · по дате операции
+E     Записи 9–10 из 10:
+E     12 сентября — 101,00 ₽ · Продукты 💬
+E     12 сентября — 100,00 ₽ · Продукты 💬
+E   assert ('из 9' in 'Фильтры: без ограничений · по дате операции\nЗаписи 9–10 из 10:\n12 сентября — 101,00\xa0₽ · Продукты 💬\n12 сентября — 100,00\xa0₽ · Продукты 💬')
+E    +  where 'Фильтры: без ограничений · по дате операции\nЗаписи 9–10 из 10:\n12 сентября — 101,00\xa0₽ · Продукты 💬\n12 сентября — 100,00\xa0₽ · Продукты 💬' = text()
+E    +    where text = BotUser(settings=Settings(env=<Environment.TEST: 'test'>, app_name='fintracker', db=DatabaseSettings(owner_dsn='postgr...ext='Последние добавленные', data='hist:sort:-:o:0:-')), (Button(text='← Меню', data='menu:main'),)), immediate=True)]).text
+----------------------------- Captured stdout call -----------------------------
+2026-09-14 02:05:05 [info     ] security_change_completed      acl_revision=2 kind=workspace_create operation_id=501762d2-23ab-4e57-a519-8b92657d3f66
+__________ test_reply_to_old_author_card_does_not_edit_latest_record ___________
+.planning/audits/2026-09-14-readiness/flows/test_flow_readiness.py:218: in test_reply_to_old_author_card_does_not_edit_latest_record
+    assert rows == [(45000, "первая покупка"), (80000, None)], rows
+E   AssertionError: [(45000, None), (80000, 'первая покупка')]
+E   assert [(45000, None...вая покупка')] == [(45000, 'пер...(80000, None)]
+E     
+E     At index 0 diff: (45000, None) != (45000, 'первая покупка')
+E     Use -v to get more diff
+----------------------------- Captured stdout call -----------------------------
+2026-09-14 02:05:06 [info     ] inbound_accepted               correlation_id=bd70346a7fad48e6916e6297c48802cd event_type=message has_workspace=True update_id=4001
+2026-09-14 02:05:06 [info     ] inbound_processed              event_id=96dd9c35-3b67-4793-9ca3-cff22afaa1a7 processed_at=2026-09-13T19:05:06.504147+00:00 replies=1
+2026-09-14 02:05:06 [info     ] inbound_accepted               correlation_id=68f43b2b09274d0fad7ebd2863eb5fe7 event_type=message has_workspace=True update_id=4002
+2026-09-14 02:05:06 [info     ] inbound_processed              event_id=5cf406e1-3f56-4893-901e-18ad6add36b6 processed_at=2026-09-13T19:05:06.623115+00:00 replies=1
+2026-09-14 02:05:06 [info     ] inbound_accepted               correlation_id=08b1a5cfaee441a280f5a3abcd2cf761 event_type=message has_workspace=True update_id=4003
+2026-09-14 02:05:06 [info     ] inbound_processed              event_id=7826cffc-cc5c-4444-a5ec-de471f2eca5b processed_at=2026-09-13T19:05:06.744616+00:00 replies=1
+- generated xml file: /Users/Bayramov_N/Desktop/Other/financial-tracker/.planning/audits/2026-09-14-readiness/flows/junit.xml -
+=========================== short test summary info ============================
+FAILED .planning/audits/2026-09-14-readiness/flows/test_flow_readiness.py::test_category_archive_is_accessible_and_can_restore
+FAILED .planning/audits/2026-09-14-readiness/flows/test_flow_readiness.py::test_category_rename_button_saves_name
+FAILED .planning/audits/2026-09-14-readiness/flows/test_flow_readiness.py::test_goal_creation_button_enters_wizard
+FAILED .planning/audits/2026-09-14-readiness/flows/test_flow_readiness.py::test_new_payment_button_enters_form
+FAILED .planning/audits/2026-09-14-readiness/flows/test_flow_readiness.py::test_wizard_keeps_commitment_and_goal_inputs
+FAILED .planning/audits/2026-09-14-readiness/flows/test_flow_readiness.py::test_media_retry_button_reprocesses_saved_draft
+FAILED .planning/audits/2026-09-14-readiness/flows/test_flow_readiness.py::test_invoice_paid_button_produces_confirmable_record
+FAILED .planning/audits/2026-09-14-readiness/flows/test_flow_readiness.py::test_ready_draft_edit_updates_same_draft
+FAILED .planning/audits/2026-09-14-readiness/flows/test_flow_readiness.py::test_payment_done_links_record_to_occurrence
+FAILED .planning/audits/2026-09-14-readiness/flows/test_flow_readiness.py::test_comment_search_survives_page_navigation
+FAILED .planning/audits/2026-09-14-readiness/flows/test_flow_readiness.py::test_reply_to_old_author_card_does_not_edit_latest_record
+11 failed in 8.15s

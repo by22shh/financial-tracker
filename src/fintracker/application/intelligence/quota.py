@@ -9,8 +9,10 @@
 
 from __future__ import annotations
 
+import contextlib
 import datetime as dt
 import uuid
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from decimal import Decimal
 
@@ -170,6 +172,45 @@ async def reserve(
     )
 
 
+@dataclass
+class _Settlement:
+    """Фактическая стоимость вызова, известная к моменту выхода."""
+
+    actual: Decimal | None = None
+    done: bool = False
+
+
+@contextlib.asynccontextmanager
+async def reserved(
+    settings: Settings,
+    *,
+    request_key: str,
+    upper_bound: Decimal,
+    workspace_id: uuid.UUID | None,
+    purpose: str,
+) -> AsyncIterator[_Settlement]:
+    """Резервация, которая закрывается при любом исходе вызова (AR-29, G-22).
+
+    Отмена задачи или непредвиденный сбой освобождают слот одновременности;
+    стоимость при этом остаётся неопределённой до сверки с провайдером, а не
+    теряется молча.
+    """
+    reservation = await reserve(
+        settings,
+        request_key=request_key,
+        upper_bound=upper_bound,
+        workspace_id=workspace_id,
+        purpose=purpose,
+    )
+    state = _Settlement()
+    try:
+        yield state
+    finally:
+        if not state.done:
+            state.done = True
+            await settle(settings, reservation, actual=state.actual)
+
+
 async def settle(settings: Settings, reservation: Reservation, *, actual: Decimal | None) -> None:
     """Закрыть резервацию фактической стоимостью.
 
@@ -225,6 +266,43 @@ async def settle(settings: Settings, reservation: Reservation, *, actual: Decima
                 Decimal(0), workspace_counter.reserved_total - reservation.reserved
             )
             workspace_counter.settled_total = workspace_counter.settled_total + actual
+
+
+async def settle_abandoned(
+    settings: Settings, *, now: dt.datetime, older_than: dt.timedelta
+) -> int:
+    """Закрыть резервации, брошенные упавшим процессом (AR-29, G-22).
+
+    Внутрипроцессная отмена закрывается контекстом ``reserved``; аварийная
+    остановка процесса оставляет строку ``reserved`` и занятый слот
+    одновременности. Обслуживание освобождает слот, сохраняя стоимость
+    неопределённой до сверки с провайдером.
+    """
+    cutoff = now - older_than
+    async with session_scope(settings, RuntimeRole.WORKER) as session:
+        rows = (
+            await session.scalars(
+                select(AICostReservation).where(
+                    AICostReservation.state == "reserved",
+                    AICostReservation.created_at <= cutoff,
+                )
+            )
+        ).all()
+        stale = [
+            Reservation(
+                row.request_key,
+                row.reserved_amount,
+                row.currency,
+                row.quota_month,
+                row.workspace_id,
+            )
+            for row in rows
+        ]
+    for reservation in stale:
+        await settle(settings, reservation, actual=None)
+    if stale:
+        logger.warning("ai_reservations_abandoned", count=len(stale))
+    return len(stale)
 
 
 async def monthly_usage(

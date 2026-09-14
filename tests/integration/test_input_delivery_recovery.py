@@ -196,7 +196,9 @@ async def test_repeated_media_event_reuses_its_draft(
     )
 
     async def download_fixture(settings, *, file_id):
-        return b"local receipt bytes; provider is scripted"
+        from tests.images import png_bytes
+
+        return png_bytes(marker=file_id.encode())
 
     monkeypatch.setattr(media_pipeline, "download_attachment", download_fixture)
     if kind == "voice":

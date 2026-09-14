@@ -15,7 +15,7 @@ import hashlib
 import json
 import uuid
 from dataclasses import dataclass
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -232,6 +232,32 @@ async def _protected_lines(
     return {str(item) for item in rows}
 
 
+def _recompute_effect(
+    card: Any, *, metrics: dict[str, dict[str, object]]
+) -> tuple[int | None, str | None]:
+    """Пересчитать эффект карточки по показателям снимка (AI-08, G-24).
+
+    Строка формулы сервером не исполняется: расчёт идёт по типизированным
+    слагаемым «показатель × доля». Отсутствие основания — отказ.
+    """
+    basis = getattr(card, "effect_basis", None)
+    if basis is None or not basis.terms:
+        return None, "эффект без проверяемого основания"
+    total = Decimal(0)
+    for term in basis.terms:
+        source = metrics.get(term.metric_ref)
+        if source is None:
+            return None, f"показатель {term.metric_ref} отсутствует в снимке"
+        raw = source.get(term.field)
+        if not isinstance(raw, int):
+            return None, f"у показателя {term.metric_ref} нет значения {term.field}"
+        total += Decimal(raw) * Decimal(term.share_decimal)
+    value = int(total.to_integral_value(rounding=ROUND_HALF_UP))
+    if value <= 0:
+        return None, "расчёт по снимку не даёт положительного эффекта"
+    return value, None
+
+
 def validate_cards(
     response: RecommendationResponse,
     *,
@@ -249,7 +275,7 @@ def validate_cards(
     metric_ids: set[str] = {str(snapshot.get("metric_id"))}
     raw_lines = snapshot.get("lines", [])
     assert isinstance(raw_lines, list)
-    line_ids: dict[str, dict[str, object]] = {}
+    line_ids: dict[str, dict[str, object]] = {str(snapshot.get("metric_id")): snapshot}
     for item in raw_lines:
         assert isinstance(item, dict)
         metric_ids.add(str(item["metric_id"]))
@@ -279,15 +305,24 @@ def validate_cards(
             continue
         effect_minor: int | None = None
         if card.estimated_effect_decimal is not None:
-            if not card.effect_formula:
-                rejected.append(f"{card.direction}: эффект без формулы расчёта")
-                continue
-            effect_minor = Money.from_decimal(
-                Decimal(card.estimated_effect_decimal), currency
-            ).minor
-            if effect_minor <= 0:
+            declared = Money.from_decimal(Decimal(card.estimated_effect_decimal), currency).minor
+            if declared <= 0:
                 rejected.append(f"{card.direction}: неположительный эффект")
                 continue
+            computed, problem = _recompute_effect(card, metrics=line_ids)
+            if problem is not None:
+                rejected.append(f"{card.direction}: {problem}")
+                continue
+            assert computed is not None
+            # Заявленная величина принимается только если сервер получил ту же
+            # сумму по разрешённым показателям снимка (AI-08, G-24).
+            if abs(computed - declared) > 1:
+                rejected.append(
+                    f"{card.direction}: заявленный эффект {declared} не совпадает "
+                    f"с расчётом по снимку {computed}"
+                )
+                continue
+            effect_minor = computed
         elif not card.effect_unavailable_reason:
             rejected.append(f"{card.direction}: нет ни эффекта, ни объяснения")
             continue
@@ -395,6 +430,17 @@ async def _checked_run(
     if not await _attempt_is_live(session, run, await uow.now()):
         raise TemporarilyUnavailable("Право на сохранение анализа истекло")
     return uow, run
+
+
+def current_revision_vector(workspace: Workspace) -> dict[str, int]:
+    """Вектор версий основы анализа (ADR-09)."""
+    return {
+        "data": workspace.data_revision,
+        "plan": workspace.plan_revision,
+        "calendar": workspace.calendar_revision,
+        "catalog": workspace.catalog_revision,
+        "coverage": workspace.coverage_revision,
+    }
 
 
 async def _prepare_analysis(
@@ -613,7 +659,14 @@ async def _store_analysis(
         if rejected:
             logger.info("recommendations_rejected", count=len(rejected), reasons=rejected[:3])
 
-        run.status = "succeeded"
+        # Основа могла измениться, пока работала модель: результат на прежнем
+        # снимке не выдаётся и не доставляется как действующий (ADR-09, G-23).
+        workspace = await session.get(Workspace, preparation.workspace_id)
+        assert workspace is not None
+        current = current_revision_vector(workspace)
+        stale = any(current.get(key) != value for key, value in preparation.revision_vector.items())
+
+        run.status = "no_new_data" if stale else "succeeded"
         run.profile_version = result.profile_version
         run.requested_model = result.requested_model
         run.returned_model = result.returned_model
@@ -649,13 +702,31 @@ async def _store_analysis(
                 else None,
                 revision_vector=preparation.revision_vector,
                 priority=int(card["priority"]) if isinstance(card["priority"], int) else 100,
-                status="proposed",
+                status="stale" if stale else "proposed",
             )
             session.add(row)
             await session.flush()
             created.append(row.id)
 
+        if stale:
+            run.summary = "Данные бюджета изменились во время анализа: обзор будет повторён."
+            run.abstained_reason = "Основа анализа устарела"
+            logger.info(
+                "analysis_result_stale",
+                workspace_id=str(preparation.workspace_id),
+                run_id=str(run.id),
+            )
         await _publish(session, uow, run)
+        summary, abstained = run.summary, run.abstained_reason
+    if stale:
+        return AnalysisOutcome(
+            run_id=preparation.run_id,
+            status="no_new_data",
+            summary=summary or "",
+            recommendations=(),
+            abstained_reason=abstained,
+            fallback_used=False,
+        )
     return AnalysisOutcome(
         run_id=preparation.run_id,
         status="succeeded",
@@ -799,13 +870,7 @@ async def mark_stale_recommendations(session: AsyncSession, *, workspace: Worksp
         .scalars()
         .all()
     )
-    current = {
-        "data": workspace.data_revision,
-        "plan": workspace.plan_revision,
-        "calendar": workspace.calendar_revision,
-        "catalog": workspace.catalog_revision,
-        "coverage": workspace.coverage_revision,
-    }
+    current = current_revision_vector(workspace)
     stale = 0
     for row in rows:
         vector = dict(row.revision_vector)

@@ -47,6 +47,11 @@ line-length = 100
 target-version = "py313"
 src = ["src", "tests"]
 
+[tool.ruff.format]
+# Диагностики аудита сохраняются в исходном виде: форматирование изменило бы
+# файлы, сверяемые с материалами внешней проверки.
+exclude = ["tests/readiness/test_flow_readiness.py", "tests/readiness/test_money_readiness.py", "tests/readiness/test_contract_readiness.py"]
+
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "UP", "B", "C4", "SIM", "RUF", "ASYNC", "S"]
 ignore = ["RUF001", "RUF002", "RUF003", "S101", "B008", "N818"]
@@ -54,6 +59,11 @@ ignore = ["RUF001", "RUF002", "RUF003", "S101", "B008", "N818"]
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S", "N806"]
 "src/fintracker/db/migrations/**" = ["E501", "N999"]
+# Диагностики внешнего аудита перенесены в набор как есть: проверяемые
+# утверждения важнее стиля, а переписывание изменило бы сам сценарий.
+"tests/readiness/test_flow_readiness.py" = ["S", "N806", "E501", "E701", "E702", "RUF043"]
+"tests/readiness/test_money_readiness.py" = ["S", "N806", "E501", "E701", "E702", "RUF043"]
+"tests/readiness/test_contract_readiness.py" = ["S", "N806", "E501", "E701", "E702", "RUF043"]
 
 [tool.mypy]
 python_version = "3.13"

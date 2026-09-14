@@ -1,0 +1,234 @@
+{
+  "count": 500,
+  "states": {
+    "verified": 481,
+    "planned": 8,
+    "blocked": 9,
+    "implemented": 2
+  },
+  "not_verified": {
+    "A43": {
+      "id": "A43",
+      "title": "\"В P1 покупка по кредитке 2000, затем погашение 2000\"",
+      "source": "docs/ACCEPTANCE.md",
+      "stage": "P1",
+      "status": "planned",
+      "implementation": [],
+      "verification": [],
+      "evidence": []
+    },
+    "A44": {
+      "id": "A44",
+      "title": "\"В P1 платёж по долгу 5500: основная сумма 5000, проценты 500\"",
+      "source": "docs/ACCEPTANCE.md",
+      "stage": "P1",
+      "status": "planned",
+      "implementation": [],
+      "verification": [],
+      "evidence": []
+    },
+    "A104": {
+      "id": "A104",
+      "title": "\"Истёк доступ Google Sheets\"",
+      "source": "docs/ACCEPTANCE.md",
+      "stage": "P1",
+      "status": "planned",
+      "implementation": [],
+      "verification": [],
+      "evidence": []
+    },
+    "A105": {
+      "id": "A105",
+      "title": "\"Повтор выгрузки после таймаута\"",
+      "source": "docs/ACCEPTANCE.md",
+      "stage": "P1",
+      "status": "planned",
+      "implementation": [],
+      "verification": [],
+      "evidence": []
+    },
+    "A107": {
+      "id": "A107",
+      "title": "\"Неверная подпись или устаревший initData\"",
+      "source": "docs/ACCEPTANCE.md",
+      "stage": "P1",
+      "status": "planned",
+      "implementation": [],
+      "verification": [],
+      "evidence": []
+    },
+    "ADR-13": {
+      "id": "ADR-13",
+      "title": "\"Один регион, управляемая PostgreSQL с PITR, контейнерные процессы\"",
+      "source": "docs/ARCHITECTURE.md",
+      "stage": "P0",
+      "status": "blocked",
+      "blocker": "\"BL-04: управляемая PostgreSQL с PITR и регион выбираются вместе со средой\"",
+      "implementation": [
+        ".env.example",
+        "docker-compose.yml",
+        "src/fintracker/api/app.py",
+        "src/fintracker/config.py",
+        "src/fintracker/core/logging.py",
+        "src/fintracker/runtime/health.py",
+        "src/fintracker/runtime/scheduler.py",
+        "src/fintracker/runtime/worker.py"
+      ],
+      "verification": [],
+      "evidence": []
+    },
+    "AR-33": {
+      "id": "AR-33",
+      "title": "\"Полный restore из реально доступного backup/WAL и проверка ссылок на вложения\"",
+      "source": "docs/ARCHITECTURE_REVIEW.md",
+      "stage": "P0",
+      "status": "blocked",
+      "blocker": "\"BL-04: учение восстанавливает локальный дамп с проверкой инвариантов, restore из WAL/PITR требует выбранной среды\"",
+      "implementation": [],
+      "verification": [],
+      "evidence": []
+    },
+    "B7": {
+      "id": "B7",
+      "title": "\"Консервативные доступные деньги\"",
+      "source": "docs/ACCEPTANCE.md",
+      "stage": "P1",
+      "note": "\"Раздел 11.2 ТЗ отнесён к P1: свободные деньги и их формула.\"",
+      "status": "implemented",
+      "implementation": [
+        "src/fintracker/application/commitments/goals.py",
+        "src/fintracker/db/models/commitments.py"
+      ],
+      "verification": [],
+      "evidence": []
+    },
+    "FR-31": {
+      "id": "FR-31",
+      "title": "\"Кредитные карты P1\"",
+      "source": "docs/TZ.md",
+      "stage": "P1",
+      "status": "implemented",
+      "implementation": [
+        "src/fintracker/application/catalog/directory.py",
+        "src/fintracker/db/models/catalog.py"
+      ],
+      "verification": [],
+      "evidence": []
+    },
+    "FR-43": {
+      "id": "FR-43",
+      "title": "\"Условия расчёта\"",
+      "source": "docs/TZ.md",
+      "stage": "P1",
+      "status": "planned",
+      "implementation": [],
+      "verification": [],
+      "evidence": []
+    },
+    "FR-68": {
+      "id": "FR-68",
+      "title": "\"Sheets P1\"",
+      "source": "docs/TZ.md",
+      "stage": "P1",
+      "status": "planned",
+      "implementation": [],
+      "verification": [],
+      "evidence": []
+    },
+    "QA-03": {
+      "id": "QA-03",
+      "title": "\"Интерфейс\"",
+      "source": "docs/TZ.md",
+      "stage": "P0",
+      "status": "blocked",
+      "blocker": "\"BL-03: проверка на реальных клиентах Telegram требует токена и HTTPS\"",
+      "implementation": [
+        "src/fintracker/application/conversation/types.py"
+      ],
+      "verification": [],
+      "evidence": []
+    },
+    "QA-04": {
+      "id": "QA-04",
+      "title": "\"Пилот\"",
+      "source": "docs/TZ.md",
+      "stage": "P0",
+      "status": "blocked",
+      "blocker": "\"BL-03, BL-04: пилот требует реальных участников и среды размещения\"",
+      "implementation": [],
+      "verification": [],
+      "evidence": []
+    },
+    "NFR-04": {
+      "id": "NFR-04",
+      "title": "\"Голос p95 <= 20 с для записи до 30 с\"",
+      "source": "docs/TZ.md §23",
+      "stage": "P0",
+      "status": "blocked",
+      "blocker": "\"BL-02: измеренная задержка голоса требует выбранной модели ASR\"",
+      "implementation": [],
+      "verification": [],
+      "evidence": []
+    },
+    "NFR-05": {
+      "id": "NFR-05",
+      "title": "\"Чек p95 <= 30 с для читаемого изображения\"",
+      "source": "docs/TZ.md §23",
+      "stage": "P0",
+      "status": "blocked",
+      "blocker": "\"BL-01: измеренная задержка разбора чека требует ключа OpenAI\"",
+      "implementation": [],
+      "verification": [],
+      "evidence": []
+    },
+    "NFR-09": {
+      "id": "NFR-09",
+      "title": "\"Доступность собственного API 99,5% в месяц\"",
+      "source": "docs/TZ.md §23",
+      "stage": "P0",
+      "status": "blocked",
+      "blocker": "\"BL-04: доступность 99,5% измеряется на выбранной среде размещения\"",
+      "implementation": [],
+      "verification": [],
+      "evidence": []
+    },
+    "NFR-10": {
+      "id": "NFR-10",
+      "title": "\"Восстановление RPO <= 1 ч, RTO <= 4 ч\"",
+      "source": "docs/TZ.md §23",
+      "stage": "P0",
+      "status": "blocked",
+      "blocker": "\"BL-04: RTO измерен учением, RPO без непрерывного архива WAL и управляемой PostgreSQL не доказывается\"",
+      "implementation": [
+        "src/fintracker/db/migrations/versions/0007_money_join_indexes.py"
+      ],
+      "verification": [],
+      "evidence": []
+    },
+    "RET-06": {
+      "id": "RET-06",
+      "title": "\"Резервные копии — окно 30 дней\"",
+      "source": "docs/TZ.md §24",
+      "stage": "P0",
+      "status": "blocked",
+      "blocker": "\"BL-04: окно резервных копий 30 дней задаётся управляемой средой\"",
+      "implementation": [
+        "src/fintracker/application/maintenance/retention.py"
+      ],
+      "verification": [],
+      "evidence": []
+    },
+    "FORM-04": {
+      "id": "FORM-04",
+      "title": "\"Свободные деньги по формуле раздела 11.2 (P1)\"",
+      "source": "docs/TZ.md §10–11, §9.1.1",
+      "stage": "P1",
+      "note": "\"Раздел 11.2 ТЗ отнесён к P1: свободные деньги и их формула.\"",
+      "status": "planned",
+      "implementation": [],
+      "verification": [],
+      "evidence": []
+    }
+  },
+  "caution": "Registry states are claims, not readiness percentages."
+}

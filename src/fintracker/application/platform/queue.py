@@ -118,11 +118,42 @@ async def claim_jobs(
     claimed: list[LeasedJob] = []
     async with session_scope(settings, RuntimeRole.WORKER) as session:
         now = (await session.execute(text("SELECT now()"))).scalar_one()
-        # Просроченная running возвращается в доступные после проверки аренды.
+        # Просроченная running возвращается в доступные, но только если у неё
+        # ещё остались попытки: сбой процесса не обходит предел (ADR-05, G-27).
         await session.execute(
             update(Job)
-            .where(Job.state == "running", Job.lease_until.is_not(None), Job.lease_until < now)
+            .where(
+                Job.state == "running",
+                Job.lease_until.is_not(None),
+                Job.lease_until < now,
+                Job.attempts < Job.max_attempts,
+            )
             .values(state="retry_wait", lease_token=None, lease_until=None)
+        )
+        await session.execute(
+            update(Job)
+            .where(
+                Job.state == "running",
+                Job.lease_until.is_not(None),
+                Job.lease_until < now,
+                Job.attempts >= Job.max_attempts,
+            )
+            .values(
+                state="failed",
+                lease_token=None,
+                lease_until=None,
+                last_error="Исполнитель не завершил задачу, попытки исчерпаны",
+            )
+        )
+        # Истёкший срок задачи закрывает её вместо выдачи исполнителю.
+        await session.execute(
+            update(Job)
+            .where(
+                Job.state.in_(("queued", "retry_wait")),
+                Job.deadline_at.is_not(None),
+                Job.deadline_at <= now,
+            )
+            .values(state="failed", last_error="Срок выполнения задачи истёк")
         )
         rows = (
             (
@@ -132,6 +163,7 @@ async def claim_jobs(
                         Job.queue_class.in_(queue_classes),
                         Job.state.in_(("queued", "retry_wait")),
                         Job.available_at <= now,
+                        Job.attempts < Job.max_attempts,
                         or_(Job.deadline_at.is_(None), Job.deadline_at > now),
                     )
                     .order_by(Job.available_at, Job.id)
