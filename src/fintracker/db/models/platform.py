@@ -134,6 +134,34 @@ class MessagePart(Base):
     )
 
 
+class PendingAction(Base):
+    """Ожидаемый ввод участника после нажатия кнопки (FR-21, FR-45, G-13…G-16).
+
+    Кнопка, обещающая продолжение диалога, сохраняет здесь свой контекст:
+    следующее сообщение участника относится к обещанному действию, а не
+    разбирается как новая трата.
+    """
+
+    __tablename__ = "pending_actions"
+
+    id: Mapped[uuid.UUID] = pk_uuid()
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    workspace_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    payload: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
+    created_at: Mapped[dt.datetime] = now_server()
+    expires_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("user_id", name="uq_pending_actions_user"),
+        Index("ix_pending_actions_expiry", "expires_at"),
+    )
+
+
 class Draft(Base):
     """Черновик ввода (FR-20). Личный до проведения."""
 

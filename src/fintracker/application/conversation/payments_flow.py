@@ -81,9 +81,27 @@ async def payment_action(
     rest: list[str],
 ) -> list[Reply]:
     """Кнопки напоминания: «Оплачено», «Перенести», «Пропустить» (FR-46)."""
+    workspace_id = actor.require_workspace()
+    if action == "new":
+        from fintracker.application.conversation.pending import set_pending
+
+        await set_pending(
+            settings,
+            user_id=actor.user_id,
+            workspace_id=workspace_id,
+            kind="payment_new",
+            payload={},
+        )
+        return [
+            Reply(
+                text=(
+                    "Опишите платёж одним сообщением: название, сумма и дата.\n"
+                    "Например: «Интернет = 900 = 20.09»."
+                )
+            )
+        ]
     if not rest:
         return [Reply(text="Кнопка устарела. Откройте раздел «Платежи».")]
-    workspace_id = actor.require_workspace()
     prefix = rest[0]
     async with session_scope(
         settings, RuntimeRole.API, user_id=actor.user_id, workspace_id=workspace_id
@@ -152,6 +170,17 @@ async def payment_action(
 
     remaining = (expected or 0) - settled
     amount_hint = money(remaining, workspace.currency) if expected is not None else "сумму"
+    if action == "paid":
+        # Следующая подтверждённая трата закроет именно этот экземпляр (FR-46).
+        from fintracker.application.conversation.pending import set_pending
+
+        await set_pending(
+            settings,
+            user_id=actor.user_id,
+            workspace_id=workspace_id,
+            kind="occurrence_settle",
+            payload={"occurrence_id": str(occurrence_id)},
+        )
     return [
         Reply(
             text=(
@@ -166,5 +195,67 @@ async def payment_action(
                     Button("← Платежи", callback("menu", "payments")),
                 ),
             ),
+        )
+    ]
+
+
+async def create_payment_from_text(
+    settings: Settings, *, actor: ActorContext, workspace: Workspace, text: str
+) -> list[Reply]:
+    """Создать ожидаемый платёж из ответа участника (FR-45, G-15).
+
+    Формат «Название = сумма = дата»: дата необязательна, сумма нужна для
+    напоминания и плана.
+    """
+    from decimal import Decimal
+
+    from fintracker.application.commitments.schedules import create_schedule
+    from fintracker.core.money import Money
+    from fintracker.domain.parsing.amounts import parse_amounts
+    from fintracker.domain.parsing.dates import resolve_date_expression
+    from fintracker.domain.schedule import ScheduleKind, ScheduleRule
+
+    parts = [item.strip() for item in text.split("=")]
+    name = parts[0] if parts and parts[0] else None
+    if not name:
+        return [Reply(text="Не понял название платежа. Отправьте «Название = сумма = дата».")]
+    amounts = parse_amounts(parts[1]) if len(parts) > 1 else parse_amounts(text)
+    if not amounts:
+        return [Reply(text="Не понял сумму платежа. Отправьте «Название = сумма = дата».")]
+    expected = Money.from_decimal(Decimal(amounts[0].value), workspace.currency)
+
+    workspace_id = actor.require_workspace()
+    today = dt.datetime.now(ZoneInfo(workspace.timezone)).date()
+    anchor = today
+    if len(parts) > 2 and parts[2]:
+        parsed = resolve_date_expression(parts[2], reference=today)
+        if parsed is not None:
+            anchor = parsed.value
+    async with session_scope(
+        settings, RuntimeRole.API, user_id=actor.user_id, workspace_id=workspace_id
+    ) as session:
+        uow = UnitOfWork(session=session, correlation_id=actor.correlation_id)
+        await uow.lock_workspace(workspace_id, actor=actor)
+        try:
+            item = await create_schedule(
+                session,
+                uow,
+                actor=actor,
+                name=name[:120],
+                direction="payment",
+                rule=ScheduleRule(kind=ScheduleKind.MONTHLY, anchor_date=anchor),
+                currency=workspace.currency,
+                expected=expected,
+            )
+        except DomainError as exc:
+            return [Reply(text=exc.message)]
+        item_name = item.name
+    return [
+        Reply(
+            text=(
+                f"Платёж «{item_name}» на {expected.format()} создан, "
+                f"ближайший срок {anchor.isoformat()}. Расход появится после записи оплаты."
+            ),
+            buttons=((Button("Платежи", callback("menu", "payments")),),),
         )
     ]

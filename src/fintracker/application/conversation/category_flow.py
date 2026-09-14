@@ -2,21 +2,28 @@
 
 from __future__ import annotations
 
+import datetime as dt
 import re
 import uuid
+from decimal import Decimal
+from zoneinfo import ZoneInfo
+
+from sqlalchemy import select
 
 from fintracker.application.catalog.categories import (
     create_category,
     list_categories,
     removal_preview,
     remove_category,
+    rename_category,
     restore_category,
 )
 from fintracker.application.conversation.keyboards import Button, callback, short
 from fintracker.application.conversation.types import Reply
 from fintracker.config import Settings
 from fintracker.core.context import ActorContext
-from fintracker.core.errors import ConflictError, ValidationFailed
+from fintracker.core.errors import ConflictError, DomainError, ValidationFailed
+from fintracker.core.money import Money
 from fintracker.db.models.access import Workspace
 from fintracker.db.session import RuntimeRole, session_scope
 from fintracker.db.uow import UnitOfWork
@@ -239,3 +246,133 @@ async def choose_reassign_target(
     ]
     rows.append((Button("← Категория", callback("cat", "open", source)),))
     return [Reply(text="\n".join(lines), buttons=tuple(rows))]
+
+
+async def archived_categories(
+    settings: Settings, *, actor: ActorContext, workspace: Workspace
+) -> list[Reply]:
+    """Архив статей с возможностью восстановления (FR-22, G-13)."""
+    workspace_id = actor.require_workspace()
+    async with session_scope(
+        settings, RuntimeRole.API, user_id=actor.user_id, workspace_id=workspace_id
+    ) as session:
+        archived = [
+            item
+            for item in await list_categories(
+                session, workspace_id=workspace_id, include_archived=True
+            )
+            if item.archived
+        ]
+    if not archived:
+        return [
+            Reply(
+                text="В архиве нет статей.",
+                buttons=((Button("← Категории", callback("cat", "manage")),),),
+            )
+        ]
+    lines = ["Архив статей:"]
+    lines.extend(f"• {item.full_path}" for item in archived[:20])
+    rows: list[tuple[Button, ...]] = [
+        (Button(f"Вернуть {item.name[:16]}", callback("cat", "restore", short(item.id))),)
+        for item in archived[:8]
+    ]
+    rows.append((Button("← Категории", callback("cat", "manage")),))
+    return [Reply(text="\n".join(lines), buttons=tuple(rows))]
+
+
+async def apply_pending_rename(
+    settings: Settings,
+    *,
+    actor: ActorContext,
+    workspace: Workspace,
+    category_id: uuid.UUID,
+    name: str,
+) -> list[Reply]:
+    """Применить новое название статьи из ответа участника (FR-22, G-13)."""
+    workspace_id = actor.require_workspace()
+    async with session_scope(
+        settings, RuntimeRole.API, user_id=actor.user_id, workspace_id=workspace_id
+    ) as session:
+        uow = UnitOfWork(session=session, correlation_id=actor.correlation_id)
+        await uow.lock_workspace(workspace_id, actor=actor)
+        try:
+            view = await rename_category(
+                session, uow, actor=actor, category_id=category_id, name=name
+            )
+        except DomainError as exc:
+            return [Reply(text=exc.message)]
+    return [
+        Reply(
+            text=f"Статья переименована: «{view.full_path}». Записи и лимит сохранены.",
+            buttons=((Button("Категории", callback("menu", "categories")),),),
+        )
+    ]
+
+
+async def apply_pending_limit(
+    settings: Settings,
+    *,
+    actor: ActorContext,
+    workspace: Workspace,
+    category_id: uuid.UUID,
+    text: str,
+) -> list[Reply]:
+    """Применить новый лимит статьи из ответа участника (FR-21, G-13)."""
+    from fintracker.application.planning.periods import period_for_date
+    from fintracker.application.planning.plan import (
+        change_line_limit,
+        current_budget_version,
+        line_key,
+    )
+    from fintracker.db.models.planning import BudgetLine
+    from fintracker.domain.parsing.amounts import parse_amounts
+
+    amounts = parse_amounts(text)
+    if not amounts:
+        return [Reply(text="Не понял сумму лимита. Отправьте число, например 8000.")]
+    limit = Money.from_decimal(Decimal(amounts[0].value), workspace.currency)
+
+    workspace_id = actor.require_workspace()
+    today = dt.datetime.now(ZoneInfo(workspace.timezone)).date()
+    async with session_scope(
+        settings, RuntimeRole.API, user_id=actor.user_id, workspace_id=workspace_id
+    ) as session:
+        uow = UnitOfWork(session=session, correlation_id=actor.correlation_id)
+        await uow.lock_workspace(workspace_id, actor=actor)
+        period = await period_for_date(session, workspace_id=workspace_id, day=today)
+        version = await current_budget_version(
+            session, workspace_id=workspace_id, period_id=period.id
+        )
+        if version is None:
+            return [Reply(text="План периода ещё не создан: задайте лимит через «Бюджет».")]
+        line = (
+            await session.execute(
+                select(BudgetLine).where(
+                    BudgetLine.workspace_id == workspace_id,
+                    BudgetLine.budget_version_id == version.id,
+                    BudgetLine.category_id == category_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if line is None:
+            stable_line_id = uuid.uuid5(uuid.NAMESPACE_URL, line_key(category_id, None))
+        else:
+            stable_line_id = line.stable_line_id
+        try:
+            await change_line_limit(
+                session,
+                uow,
+                actor=actor,
+                period_id=period.id,
+                stable_line_id=stable_line_id,
+                new_limit_minor=limit.minor,
+                expected_version=version.version,
+            )
+        except DomainError as exc:
+            return [Reply(text=exc.message)]
+    return [
+        Reply(
+            text=f"Лимит статьи обновлён: {limit.format()}.",
+            buttons=((Button("Категории", callback("menu", "categories")),),),
+        )
+    ]

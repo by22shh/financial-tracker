@@ -318,6 +318,11 @@ async def _handle_free_text(
         )
         return [Reply(text=f"Бюджет «{workspace.name}» удалён.")]
 
+    # Кнопка, обещавшая продолжение, получает следующее сообщение (G-13…G-16).
+    continued = await _continue_pending(settings, actor=actor, workspace=workspace, message=message)
+    if continued is not None:
+        return continued
+
     from fintracker.application.conversation.clarify import try_answer_open_question
 
     answered = await try_answer_open_question(
@@ -342,6 +347,61 @@ async def _handle_free_text(
         )
 
     return await record_free_text(settings, actor=actor, workspace=workspace, message=message)
+
+
+async def _continue_pending(
+    settings: Settings, *, actor: ActorContext, workspace: Workspace, message: IncomingMessage
+) -> list[Reply] | None:
+    """Применить ввод, обещанный нажатой кнопкой (FR-21, FR-45, G-13…G-16)."""
+    from fintracker.application.conversation.pending import take_pending
+
+    text = (message.text or "").strip()
+    if not text:
+        return None
+    pending = await take_pending(settings, user_id=actor.user_id, workspace_id=actor.workspace_id)
+    if pending is None:
+        return None
+
+    from fintracker.application.conversation import category_flow, goals_flow, payments_flow
+
+    match pending.kind:
+        case "category_rename":
+            return await category_flow.apply_pending_rename(
+                settings,
+                actor=actor,
+                workspace=workspace,
+                category_id=uuid.UUID(str(pending.payload["category_id"])),
+                name=text,
+            )
+        case "category_limit":
+            return await category_flow.apply_pending_limit(
+                settings,
+                actor=actor,
+                workspace=workspace,
+                category_id=uuid.UUID(str(pending.payload["category_id"])),
+                text=text,
+            )
+        case "goal_new":
+            return await goals_flow.create_goal_from_text(
+                settings, actor=actor, workspace=workspace, text=text
+            )
+        case "payment_new":
+            return await payments_flow.create_payment_from_text(
+                settings, actor=actor, workspace=workspace, text=text
+            )
+        case "occurrence_settle":
+            # Ожидание оплаты сохраняется до подтверждения самой траты.
+            from fintracker.application.conversation.pending import set_pending
+
+            await set_pending(
+                settings,
+                user_id=actor.user_id,
+                workspace_id=actor.workspace_id,
+                kind="occurrence_settle",
+                payload=pending.payload,
+            )
+            return None
+    return None
 
 
 async def _existing_message_reply(

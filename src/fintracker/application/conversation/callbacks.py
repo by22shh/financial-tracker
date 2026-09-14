@@ -204,6 +204,12 @@ async def dispatch_callback(
             return await clarify_action(
                 settings, actor=actor, workspace=workspace, action=argument, rest=rest
             )
+        case "goal":
+            from fintracker.application.conversation.goals_flow import goal_action
+
+            return await goal_action(
+                settings, actor=actor, workspace=workspace, action=argument, rest=rest
+            )
         case "pay":
             from fintracker.application.conversation.payments_flow import payment_action
 
@@ -376,6 +382,23 @@ async def _category_action(
     workspace_id = actor.require_workspace()
     if action == "manage":
         return await manage_categories(settings, actor=actor, workspace=workspace)
+    if action == "archive":
+        from fintracker.application.conversation.category_flow import archived_categories
+
+        return await archived_categories(settings, actor=actor, workspace=workspace)
+    if action == "restore" and rest:
+        from fintracker.application.conversation.category_flow import apply_category_restore
+
+        category_id = await _resolve_uuid(
+            settings,
+            workspace_id=workspace_id,
+            user_id=user_id,
+            table="categories",
+            prefix=rest[0],
+        )
+        return await apply_category_restore(
+            settings, actor=actor, workspace=workspace, category_id=category_id
+        )
     if action == "new":
         return [
             Reply(
@@ -444,13 +467,23 @@ async def _category_action(
             return await choose_reassign_target(
                 settings, actor=actor, workspace=workspace, category_id=category_id
             )
-        return [
-            Reply(
-                text=(
-                    "Отправьте новое значение сообщением. Действие применится после подтверждения."
-                )
-            )
-        ]
+        # Обещанное продолжение диалога сохраняется: следующее сообщение
+        # применяется к этой статье, а не разбирается как трата (G-13).
+        from fintracker.application.conversation.pending import set_pending
+
+        await set_pending(
+            settings,
+            user_id=user_id,
+            workspace_id=workspace_id,
+            kind=f"category_{action}",
+            payload={"category_id": str(category_id)},
+        )
+        prompt = (
+            "Отправьте новое название статьи сообщением."
+            if action == "rename"
+            else "Отправьте новый лимит статьи сообщением, например 8000."
+        )
+        return [Reply(text=prompt)]
     return [Reply(text="Действие недоступно.")]
 
 

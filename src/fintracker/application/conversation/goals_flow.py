@@ -79,3 +79,77 @@ async def goals_view(
         )
     )
     return [Reply(text="\n".join(lines), buttons=tuple(rows))]
+
+
+async def create_goal_from_text(
+    settings: Settings, *, actor: ActorContext, workspace: Workspace, text: str
+) -> list[Reply]:
+    """Создать цель из ответа участника: «Название = сумма» (FR-48, G-14)."""
+    from decimal import Decimal
+
+    from fintracker.application.commitments.goals import create_goal
+    from fintracker.core.errors import DomainError
+    from fintracker.core.money import Money
+    from fintracker.db.uow import UnitOfWork
+    from fintracker.domain.parsing.amounts import parse_amounts
+
+    parts = [item.strip() for item in text.split("=")]
+    name = parts[0] if parts and parts[0] else None
+    if not name:
+        return [Reply(text="Не понял название цели. Отправьте «Название = сумма».")]
+    amounts = parse_amounts(parts[1]) if len(parts) > 1 else parse_amounts(text)
+    target = Money.from_decimal(Decimal(amounts[0].value), workspace.currency) if amounts else None
+
+    workspace_id = actor.require_workspace()
+    async with session_scope(
+        settings, RuntimeRole.API, user_id=actor.user_id, workspace_id=workspace_id
+    ) as session:
+        uow = UnitOfWork(session=session, correlation_id=actor.correlation_id)
+        await uow.lock_workspace(workspace_id, actor=actor)
+        try:
+            goal = await create_goal(
+                session,
+                uow,
+                actor=actor,
+                name=name[:120],
+                currency=workspace.currency,
+                target=target,
+            )
+        except DomainError as exc:
+            return [Reply(text=exc.message)]
+        goal_name = goal.name
+    suffix = f" на {target.format()}" if target is not None else " без целевой суммы"
+    return [
+        Reply(
+            text=f"Цель «{goal_name}»{suffix} создана. Резерв не списывает деньги со счёта.",
+            buttons=((Button("Цели", callback("menu", "goals")),),),
+        )
+    ]
+
+
+async def goal_action(
+    settings: Settings, *, actor: ActorContext, workspace: Workspace, action: str, rest: list[str]
+) -> list[Reply]:
+    """Кнопки раздела целей (FR-48, G-14)."""
+    from fintracker.application.conversation.pending import set_pending
+
+    workspace_id = actor.require_workspace()
+    if action == "new":
+        await set_pending(
+            settings,
+            user_id=actor.user_id,
+            workspace_id=workspace_id,
+            kind="goal_new",
+            payload={},
+        )
+        return [
+            Reply(
+                text=(
+                    "Опишите цель одним сообщением: название и сумма.\n"
+                    "Например: «Отпуск = 100000». Резерв не списывает деньги со счёта."
+                )
+            )
+        ]
+    if action == "open" and rest:
+        return await goals_view(settings, actor=actor, workspace=workspace)
+    return [Reply(text="Действие недоступно.")]
