@@ -337,12 +337,19 @@ async def test_nfr08_concurrent_workspaces(clean_db: None, test_settings: Settin
         await create_budget(admin, name=f"Бюджет {index}")
         return await issue_invite_code(admin), index
 
+    # Одновременность ограничена пулом соединений: столько команд участников
+    # выполняется в один момент и в работающей системе (ADR-10, NFR-08).
+    concurrency = test_settings.db.api_pool_size + test_settings.db.api_max_overflow
+    gate = asyncio.Semaphore(concurrency)
+
     async def member_session(code: str, index: int, member_index: int) -> None:
         member = make_user(test_settings, 950_000 + index * 10 + member_index + 1)
-        await member.send(f"/join {code}")
-        await member.send("продукты 300")
-        if member.has_button("Записать"):
-            await member.press(member.button_data("Записать"))
+        async with gate:
+            await member.send(f"/join {code}")
+        async with gate:
+            await member.send("продукты 300")
+            if member.has_button("Записать"):
+                await member.press(member.button_data("Записать"))
 
     # Бюджеты создаются последовательно: измеряется одновременная работа
     # участников, а не создание пространств (NFR-08, AR-34, G-30).
@@ -374,9 +381,11 @@ async def test_nfr08_concurrent_workspaces(clean_db: None, test_settings: Settin
             "members_per_workspace": members_per_budget + 1,
             "total_seconds": round(total_seconds, 2),
             "requirement": "10 бюджетов по 5 участников",
+            "concurrency_limit": concurrency,
             "method": (
-                "все участники работают одновременно (asyncio.gather); "
-                "создание бюджетов в измерение не входит"
+                "все участники работают одновременно (asyncio.gather) с "
+                "ограничением по пулу соединений; создание бюджетов в "
+                "измерение не входит"
             ),
         },
     )
