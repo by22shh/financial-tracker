@@ -896,6 +896,32 @@ async def _workspace_action(
             except ConflictError as exc:
                 return [Reply(text=exc.message)]
             return [Reply(text=f"Вы стали администратором бюджета «{workspace.name}».")]
+        case "declineadmin":
+            # Отказ закрывает предложение: администратор остаётся прежним.
+            async with session_scope(
+                settings, RuntimeRole.API, user_id=user_id, workspace_id=workspace_id
+            ) as session:
+                from fintracker.db.models.access import AdminTransferProposal
+
+                declined = (
+                    await session.execute(
+                        select(AdminTransferProposal)
+                        .where(
+                            AdminTransferProposal.workspace_id == workspace_id,
+                            AdminTransferProposal.to_user_id == user_id,
+                            AdminTransferProposal.state == "pending",
+                        )
+                        .with_for_update()
+                    )
+                ).scalar_one_or_none()
+                if declined is None:
+                    return [Reply(text="Активного предложения передачи нет.")]
+                from datetime import UTC, datetime
+
+                declined.state = "declined"
+                declined.resolved_at = datetime.now(UTC)
+                declined.version += 1
+            return [Reply(text="Предложение отклонено: администратор бюджета не изменился.")]
         case "delete":
             if not actor.is_admin:
                 raise PermissionDenied("Удалить бюджет может только администратор")

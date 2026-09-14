@@ -170,7 +170,7 @@ async def payment_action(
 
     remaining = (expected or 0) - settled
     amount_hint = money(remaining, workspace.currency) if expected is not None else "сумму"
-    if action == "paid":
+    if action in {"paid", "done"}:
         # Следующая подтверждённая трата закроет именно этот экземпляр (FR-46).
         from fintracker.application.conversation.pending import set_pending
 

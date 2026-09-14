@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import datetime as dt
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from zoneinfo import ZoneInfo
 
 from fintracker.application.analytics.journal import list_journal
@@ -44,6 +44,9 @@ class JournalView:
     sort: str
     offset: int
     category: str
+    # Поиск по комментарию переносится между страницами: переход «Ещё →» не
+    # должен превращаться в журнал без фильтра (FR-07, G-19).
+    note_query: str = ""
 
     @classmethod
     def parse(cls, rest: list[str]) -> JournalView:
@@ -51,20 +54,30 @@ class JournalView:
         sort = rest[1] if len(rest) > 1 and rest[1] in {"o", "d"} else "o"
         offset = int(rest[2]) if len(rest) > 2 and rest[2].isdigit() else 0
         category = rest[3] if len(rest) > 3 and rest[3] != "-" else ""
-        return cls(flags=flags, sort=sort, offset=offset, category=category)
+        note = rest[4] if len(rest) > 4 and rest[4] != "-" else ""
+        return cls(flags=flags, sort=sort, offset=offset, category=category, note_query=note)
 
     def parts(self, *, offset: int | None = None) -> tuple[str, ...]:
+        # Данные кнопки ограничены по длине: запрос укорачивается, а разделитель
+        # из него убирается. Показ полного запроса остаётся в тексте страницы.
+        note = self.note_query.replace(":", " ")[:16].strip() if self.note_query else ""
+        note = note or "-"
         return (
             self.flags or "-",
             self.sort,
             str(self.offset if offset is None else offset),
             self.category or "-",
+            note,
         )
 
     def toggled(self, flag: str) -> JournalView:
         flags = self.flags.replace(flag, "") if flag in self.flags else self.flags + flag
         return JournalView(
-            flags="".join(sorted(flags)), sort=self.sort, offset=0, category=self.category
+            flags="".join(sorted(flags)),
+            sort=self.sort,
+            offset=0,
+            category=self.category,
+            note_query=self.note_query,
         )
 
     def described(self) -> str:
@@ -84,6 +97,10 @@ async def journal_view(
     note_query: str | None = None,
 ) -> list[Reply]:
     """Показать страницу журнала с учётом фильтров (FR-07)."""
+    # Запрос приходит либо из команды, либо из состояния страницы (G-19).
+    note_query = note_query or view.note_query or None
+    if note_query and not view.note_query:
+        view = replace(view, note_query=note_query)
     workspace_id = actor.require_workspace()
     today = dt.datetime.now(ZoneInfo(workspace.timezone)).date()
 

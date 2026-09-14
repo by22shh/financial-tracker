@@ -427,21 +427,29 @@ async def _process_image(
 
     fields_list: list[CandidateFields] = []
     if check.can_autopost and check.detailed and len(check.distributed) > 1:
+        # Один чек — одна покупка: позиции становятся распределениями, а не
+        # самостоятельными операциями (FR-14, G-17).
         distributed = reconcile_to_total(check)
-        for index, line in enumerate(distributed, start=1):
-            fields_list.append(
-                CandidateFields(
-                    amount_minor=line.amount.minor,
-                    currency=currency,
-                    kind="refund" if receipt.is_refund else "expense",
-                    occurred_date=occurred,
-                    description=line.label,
-                    merchant=receipt.merchant,
-                    category_id=uuid.UUID(line.category_id) if line.category_id else None,
-                    note=message.text,
-                    evidence={"line": line.label, "index": str(index)},
-                )
+        fields_list.append(
+            CandidateFields(
+                amount_minor=total.minor,
+                currency=currency,
+                kind="refund" if receipt.is_refund else "expense",
+                occurred_date=occurred,
+                description=receipt.merchant or "Чек",
+                merchant=receipt.merchant,
+                note=message.text,
+                parts=[
+                    {
+                        "amount_minor": line.amount.minor,
+                        "category_id": line.category_id,
+                        "label": line.label,
+                    }
+                    for line in distributed
+                ],
+                evidence={"lines": str(len(distributed)), "total": receipt.total_decimal or ""},
             )
+        )
     else:
         fields = CandidateFields(
             amount_minor=total.minor,
@@ -465,8 +473,14 @@ async def _process_image(
     summary_lines = [f"Чек на {total.format()}"]
     if receipt.merchant:
         summary_lines.append(f"Продавец: {receipt.merchant}")
-    if len(fields_list) > 1:
-        summary_lines.append(f"Распределение по {len(fields_list)} статьям")
+    parts = list(fields_list[0].parts) if fields_list else []
+    if len(parts) > 1:
+        summary_lines.append(f"Распределение по {len(parts)} статьям")
+        summary_lines.extend(
+            f"• {part.get('label') or 'Позиция'}: "
+            f"{Money(int(part['amount_minor']), currency).format()}"
+            for part in parts
+        )
     if check.reason:
         summary_lines.append(check.reason)
     # Чеки в P0 всегда подтверждаются (FR-19).

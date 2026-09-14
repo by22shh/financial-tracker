@@ -73,11 +73,15 @@ class CandidateFields:
     spender_person_id: uuid.UUID | None = None
     account_id: uuid.UUID | None = None
     quantity: int | None = None
+    # Позиции одного чека: одна покупка с несколькими распределениями, а не
+    # несколько самостоятельных операций (FR-14, G-17).
+    parts: list[dict[str, Any]] = field(default_factory=list)
     ambiguities: list[dict[str, Any]] = field(default_factory=list)
     evidence: dict[str, str] = field(default_factory=dict)
 
     def to_payload(self) -> dict[str, Any]:
         return {
+            "parts": self.parts,
             "amount_minor": self.amount_minor,
             "currency": self.currency,
             "kind": self.kind,
@@ -117,6 +121,7 @@ class CandidateFields:
             spender_person_id=as_uuid(payload.get("spender_person_id")),
             account_id=as_uuid(payload.get("account_id")),
             quantity=payload.get("quantity"),
+            parts=list(payload.get("parts") or []),
             evidence=dict(payload.get("evidence") or {}),
         )
 
@@ -628,6 +633,35 @@ def build_spec(
         )
 
     if kind == "expense":
+        # Чек с несколькими позициями — одна покупка с распределениями (G-17).
+        allocations: tuple[AllocationSpec, ...]
+        if fields.parts:
+            allocations = tuple(
+                AllocationSpec(
+                    role=AllocationRole.EXPENSE,
+                    amount=Money(int(part["amount_minor"]), currency),
+                    category_id=uuid.UUID(str(part["category_id"]))
+                    if part.get("category_id")
+                    else fields.category_id,
+                    beneficiary_id=fields.beneficiary_id,
+                    line_label=str(part.get("label") or "")[:120] or None,
+                )
+                for part in fields.parts
+            )
+            total = sum(item.amount.minor for item in allocations)
+            if total != amount.minor:
+                raise ValidationFailed(
+                    "Сумма позиций чека не совпадает с итогом: запись не проводится"
+                )
+        else:
+            allocations = (
+                AllocationSpec(
+                    role=AllocationRole.EXPENSE,
+                    amount=amount,
+                    category_id=fields.category_id,
+                    beneficiary_id=fields.beneficiary_id,
+                ),
+            )
         return TransactionSpec(
             transaction_type=TransactionType.EXPENSE,
             amount=amount,
@@ -637,14 +671,7 @@ def build_spec(
             merchant=fields.merchant,
             note=fields.note,
             spender_person_id=fields.spender_person_id,
-            allocations=(
-                AllocationSpec(
-                    role=AllocationRole.EXPENSE,
-                    amount=amount,
-                    category_id=fields.category_id,
-                    beneficiary_id=fields.beneficiary_id,
-                ),
-            ),
+            allocations=allocations,
             cash_legs=(
                 CashLegSpec(
                     signed=-amount,

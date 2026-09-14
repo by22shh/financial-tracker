@@ -8,6 +8,7 @@ from collections.abc import Sequence
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from fintracker.application.conversation import views
 from fintracker.application.conversation.context import (
@@ -33,12 +34,15 @@ from fintracker.application.planning.periods import period_for_date
 from fintracker.application.planning.plan import line_key, period_status
 from fintracker.config import Settings
 from fintracker.core.context import ActorContext, Role
-from fintracker.core.errors import NotFound, ValidationFailed
+from fintracker.core.errors import DomainError, NotFound, ValidationFailed
+from fintracker.core.logging import get_logger
 from fintracker.core.money import Money
 from fintracker.db.models.access import Beneficiary, Person, Workspace
 from fintracker.db.models.ledger import Allocation, Transaction, TransactionRevision
 from fintracker.db.session import RuntimeRole, session_scope
 from fintracker.db.uow import UnitOfWork
+
+logger = get_logger("conversation.sections")
 
 
 async def list_budgets_reply(settings: Settings, *, user_id: uuid.UUID) -> list[Reply]:
@@ -153,7 +157,34 @@ async def members_view(
         label = member.display_name
         role = "администратор" if member.role is Role.ADMIN else "участник"
         lines.append(f"• {label} — {role}")
+    # Предложение передать администрирование доступно получателю действием,
+    # а не скрытой командой (FR-82, G-18).
+    async with session_scope(
+        settings, RuntimeRole.API, user_id=actor.user_id, workspace_id=workspace_id
+    ) as session:
+        from fintracker.db.models.access import AdminTransferProposal
+
+        proposal = (
+            await session.execute(
+                select(AdminTransferProposal).where(
+                    AdminTransferProposal.workspace_id == workspace_id,
+                    AdminTransferProposal.to_user_id == actor.user_id,
+                    AdminTransferProposal.state == "pending",
+                )
+            )
+        ).scalar_one_or_none()
+        proposal_id = proposal.id if proposal is not None else None
+
     rows: list[tuple[Button, ...]] = []
+    if proposal_id is not None:
+        lines.append("")
+        lines.append("Вам предложено стать администратором этого бюджета.")
+        rows.append(
+            (
+                Button("Принять роль", callback("ws", "acceptadmin", short(proposal_id))),
+                Button("Отказаться", callback("ws", "declineadmin", short(proposal_id))),
+            )
+        )
     if actor.is_admin:
         rows.append((Button("Пригласить", callback("inv", "new")),))
     rows.append((Button("Выйти из бюджета", callback("ws", "leave")),))
@@ -410,6 +441,7 @@ async def confirm_draft(
 ) -> list[Reply]:
     """Провести подтверждённый черновик и показать карточку (FR-11)."""
     workspace_id = actor.require_workspace()
+    settled_note: str | None = None
     async with session_scope(
         settings, RuntimeRole.API, user_id=actor.user_id, workspace_id=workspace_id
     ) as session:
@@ -463,12 +495,25 @@ async def confirm_draft(
                 period_id=period.id,
                 today=today,
             )
+            # Нажатая ранее кнопка «Оплачено» закрывает свой экземпляр той же
+            # транзакцией: связь с обязательством не теряется (FR-46, G-15).
+            settled_note = await _settle_pending_occurrence(
+                settings,
+                session,
+                uow,
+                actor=actor,
+                workspace=workspace,
+                transaction_ids=posted,
+            )
     if not posted:
         return [Reply(text="Нечего записывать: все кандидаты исключены.")]
     if len(posted) == 1:
-        return await transaction_card_reply(
+        replies = await transaction_card_reply(
             settings, actor=actor, workspace=workspace, transaction_id=posted[0]
         )
+        if settled_note:
+            replies.append(Reply(text=settled_note))
+        return replies
     total = await batch_total(settings, actor=actor, transaction_ids=posted)
     return [
         Reply(
@@ -479,6 +524,77 @@ async def confirm_draft(
             buttons=((Button(f"Открыть {len(posted)} записи", callback("menu", "history")),),),
         )
     ]
+
+
+async def _settle_pending_occurrence(
+    settings: Settings,
+    session: AsyncSession,
+    uow: UnitOfWork,
+    *,
+    actor: ActorContext,
+    workspace: Workspace,
+    transaction_ids: list[uuid.UUID],
+) -> str | None:
+    """Закрыть ожидаемый платёж, выбранный кнопкой «Оплачено» (FR-46, G-15)."""
+    from fintracker.application.commitments.schedules import settle_occurrence
+    from fintracker.application.conversation.pending import take_pending
+    from fintracker.db.models.commitments import Occurrence
+    from fintracker.db.models.ledger import FinancialEffect
+
+    if len(transaction_ids) != 1:
+        return None
+    pending = await take_pending(settings, user_id=actor.user_id, workspace_id=actor.workspace_id)
+    if pending is None or pending.kind != "occurrence_settle":
+        return None
+
+    workspace_id = actor.require_workspace()
+    occurrence_id = uuid.UUID(str(pending.payload["occurrence_id"]))
+    occurrence = await session.get(Occurrence, occurrence_id)
+    if occurrence is None or occurrence.workspace_id != workspace_id:
+        return None
+    revision = (
+        await session.execute(
+            select(TransactionRevision)
+            .join(
+                Transaction,
+                (Transaction.workspace_id == TransactionRevision.workspace_id)
+                & (Transaction.id == TransactionRevision.transaction_id)
+                & (Transaction.current_revision == TransactionRevision.revision),
+            )
+            .where(
+                TransactionRevision.workspace_id == workspace_id,
+                TransactionRevision.transaction_id == transaction_ids[0],
+            )
+        )
+    ).scalar_one()
+    effect = (
+        await session.execute(
+            select(FinancialEffect).where(
+                FinancialEffect.workspace_id == workspace_id,
+                FinancialEffect.transaction_id == transaction_ids[0],
+                FinancialEffect.is_active.is_(True),
+            )
+        )
+    ).scalar_one_or_none()
+    if effect is None:
+        return None
+    remaining = (occurrence.expected_minor or revision.amount_minor) - occurrence.settled_minor
+    amount = Money(min(revision.amount_minor, max(0, remaining)), revision.currency)
+    if amount.minor <= 0:
+        return None
+    try:
+        await settle_occurrence(
+            session,
+            uow,
+            actor=actor,
+            occurrence_id=occurrence_id,
+            effect_id=effect.id,
+            transaction_id=transaction_ids[0],
+            amount=amount,
+        )
+    except DomainError as exc:
+        return f"Платёж не закрыт: {exc.message}"
+    return f"Ожидаемый платёж закрыт на {amount.format()}."
 
 
 async def batch_total(
