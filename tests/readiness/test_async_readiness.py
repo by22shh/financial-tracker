@@ -311,7 +311,9 @@ def test_recommendation_effect_is_verified_by_server() -> None:
 
 
 # --- G-04 -------------------------------------------------------------------
-async def test_missing_security_journal_blocks_workspace(owner_session, test_settings) -> None:
+async def test_missing_security_journal_blocks_workspace(
+    owner_session, test_settings, tmp_path: Path
+) -> None:
     """G-04: пустой журнал доступа не подтверждает доступ к существующему бюджету."""
     from fintracker.application.identity.actor import resolve_actor
     from fintracker.application.identity.security_change import (
@@ -323,7 +325,9 @@ async def test_missing_security_journal_blocks_workspace(owner_session, test_set
 
     fixture = await build_fixture(owner_session)
     await owner_session.commit()
-    root = Path(__file__).parent / ("security-log-" + uuid.uuid4().hex)
+    # Журнал пишется во временный каталог: прогон не меняет исходники и его
+    # доказательства остаются воспроизводимыми.
+    root = tmp_path / ("security-log-" + uuid.uuid4().hex)
     journal = SecurityLog(FilesystemSecurityLog(root / "original"))
 
     async def apply(session, uow, workspace):
