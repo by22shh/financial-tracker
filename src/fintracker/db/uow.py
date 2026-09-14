@@ -30,6 +30,11 @@ from fintracker.db.models.platform import OutboxEvent
 LOCK_ORDER = ("workspace", "membership", "invite", "aggregate")
 
 
+# Кратковременная блокировка на время изменения доступа: команда участника
+# повторяется автоматически, а не отказывает (ADR-14, G-30).
+ACCESS_CHANGE = "access_change"
+
+
 @dataclass(slots=True)
 class LockedWorkspace:
     """Результат блокировки строки бюджета."""
@@ -97,7 +102,8 @@ class UnitOfWork:
             raise PermissionDenied(f"Действие недоступно в состоянии бюджета «{row.state}»")
         if row.security_fence is not None and not allow_fenced:
             raise TemporarilyUnavailable(
-                "Идёт изменение доступа к бюджету, повторите через несколько секунд"
+                "Идёт изменение доступа к бюджету, повторите через несколько секунд",
+                details={"reason": ACCESS_CHANGE},
             )
         if row.quarantined and not allow_fenced:
             raise TemporarilyUnavailable("Бюджет находится в карантине после восстановления")

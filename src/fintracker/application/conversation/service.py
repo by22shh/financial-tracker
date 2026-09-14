@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import datetime as dt
 import uuid
 from collections.abc import Sequence
@@ -44,6 +45,7 @@ from fintracker.core.errors import (
     DomainError,
     ProviderUnavailable,
     QuotaExceeded,
+    TemporarilyUnavailable,
     ValidationFailed,
 )
 from fintracker.core.logging import get_logger
@@ -56,17 +58,37 @@ from fintracker.domain.parsing.intent import Intent
 logger = get_logger("conversation")
 
 
+# Команда пользователя не отказывает из-за идущего рядом изменения доступа:
+# короткое ожидание выполняется за него (ADR-14, G-30).
+ACCESS_RETRIES = 5
+ACCESS_RETRY_DELAY = 0.2
+
+
 async def handle(settings: Settings, message: IncomingMessage) -> list[Reply]:
     """Обработать входящее сообщение и вернуть ответы пользователю."""
-    try:
-        return await _route(settings, message)
-    except DomainError as exc:
-        logger.info(
-            "conversation_domain_error",
-            code=exc.code.value,
-            correlation_id=message.correlation_id,
-        )
-        return [Reply(text=exc.message)]
+    from fintracker.db.uow import ACCESS_CHANGE
+
+    for attempt in range(ACCESS_RETRIES):
+        try:
+            return await _route(settings, message)
+        except TemporarilyUnavailable as exc:
+            blocked = (exc.details or {}).get("reason") == ACCESS_CHANGE
+            if not blocked or attempt == ACCESS_RETRIES - 1:
+                logger.info(
+                    "conversation_domain_error",
+                    code=exc.code.value,
+                    correlation_id=message.correlation_id,
+                )
+                return [Reply(text=exc.message)]
+            await asyncio.sleep(ACCESS_RETRY_DELAY * (attempt + 1))
+        except DomainError as exc:
+            logger.info(
+                "conversation_domain_error",
+                code=exc.code.value,
+                correlation_id=message.correlation_id,
+            )
+            return [Reply(text=exc.message)]
+    return [Reply(text="Бюджет занят изменением доступа, повторите через несколько секунд.")]
 
 
 async def _route(settings: Settings, message: IncomingMessage) -> list[Reply]:

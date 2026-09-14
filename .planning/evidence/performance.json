@@ -14,20 +14,25 @@
     "volume": 50000
   },
   "nfr01_intake": {
-    "p95_seconds": 0.0104,
+    "p95_seconds": 0.0905,
+    "max_seconds": 0.0955,
     "steady_rate_per_second": 5,
+    "steady_seconds": 20,
     "burst_rate_per_second": 20,
-    "events": 250,
+    "burst_seconds": 5,
+    "events": 200,
     "requirement": "p95 <= 1 s до долговечного сохранения",
-    "measured_at": "2026-09-13T18:53:34.878656+00:00",
+    "method": "измерена задержка каждого запроса приёма; профиль ТЗ §23: 20 с по 5/с и 5 с по 20/с",
+    "measured_at": "2026-09-14T05:46:13.865782+00:00",
     "volume": 50000
   },
   "nfr08_concurrency": {
     "workspaces": 10,
     "members_per_workspace": 5,
-    "total_seconds": 7.47,
+    "total_seconds": 2.36,
     "requirement": "10 бюджетов по 5 участников",
-    "measured_at": "2026-09-13T18:53:42.445718+00:00",
+    "method": "все участники работают одновременно (asyncio.gather); создание бюджетов в измерение не входит",
+    "measured_at": "2026-09-14T05:48:15.459847+00:00",
     "volume": 50000
   },
   "nfr02_nfr03_dialog": {

@@ -258,51 +258,67 @@ async def test_nfr01_nfr07_intake_rate(clean_db: None, test_settings: Settings) 
             },
         }
 
-    durations: list[float] = []
-    # Устойчивый поток 5 событий в секунду в течение 30 секунд (масштаб NFR-07).
-    steady_seconds = int(os.environ.get("FINTRACKER_PERF_STEADY", "30"))
     update_id = 990_000
+
+    async def timed(payload: dict[str, object]) -> float:
+        """Задержка одного запроса, а не пакета: p95 считается по запросам."""
+        started = time.perf_counter()
+        result = await accept_telegram_update(test_settings, payload)
+        assert not result.duplicate
+        return time.perf_counter() - started
+
+    # Профиль ТЗ §23: устойчивый поток 5 событий в секунду 10 минут и
+    # 30-секундный всплеск 20 в секунду — 3 600 событий (NFR-01, NFR-07).
+    steady_seconds = int(os.environ.get("FINTRACKER_PERF_STEADY", "600"))
+    burst_seconds = int(os.environ.get("FINTRACKER_PERF_BURST", "30"))
+    durations: list[float] = []
     for second in range(steady_seconds):
         started = time.perf_counter()
         batch = []
         for _ in range(5):
             update_id += 1
-            batch.append(accept_telegram_update(test_settings, update(update_id, 7_000 + second)))
-        results = await asyncio.gather(*batch)
-        assert all(not item.duplicate for item in results)
-        durations.append((time.perf_counter() - started) / 5)
+            batch.append(timed(update(update_id, 7_000 + second % 50)))
+        durations.extend(await asyncio.gather(*batch))
         elapsed = time.perf_counter() - started
         if elapsed < 1.0:
             await asyncio.sleep(1.0 - elapsed)
 
-    # Всплеск 20 событий в секунду.
     burst_durations: list[float] = []
-    for _ in range(5):
+    for second in range(burst_seconds):
+        started = time.perf_counter()
         batch = []
         for _ in range(20):
             update_id += 1
-            batch.append(accept_telegram_update(test_settings, update(update_id, 7_500)))
-        started = time.perf_counter()
-        results = await asyncio.gather(*batch)
-        burst_durations.append((time.perf_counter() - started) / 20)
-        assert all(not item.duplicate for item in results)
+            batch.append(timed(update(update_id, 7_500 + second % 10)))
+        burst_durations.extend(await asyncio.gather(*batch))
+        elapsed = time.perf_counter() - started
+        if elapsed < 1.0:
+            await asyncio.sleep(1.0 - elapsed)
 
-    expected = steady_seconds * 5 + 100
+    expected = steady_seconds * 5 + burst_seconds * 20
     async with session_scope(test_settings, RuntimeRole.OWNER) as session:
         stored = (
             await session.execute(select(func.count()).select_from(InboundEvent))
         ).scalar_one()
     assert int(stored) == expected, "нет потерь и дублей при нагрузке"
 
-    p95 = _percentile(durations + burst_durations, 0.95)
+    samples = durations + burst_durations
+    p95 = _percentile(samples, 0.95)
     _record(
         "nfr01_intake",
         {
             "p95_seconds": round(p95, 4),
+            "max_seconds": round(max(samples), 4),
             "steady_rate_per_second": 5,
+            "steady_seconds": steady_seconds,
             "burst_rate_per_second": 20,
+            "burst_seconds": burst_seconds,
             "events": expected,
             "requirement": "p95 <= 1 s до долговечного сохранения",
+            "method": (
+                "измерена задержка каждого запроса приёма; профиль ТЗ §23: "
+                f"{steady_seconds} с по 5/с и {burst_seconds} с по 20/с"
+            ),
         },
     )
     assert p95 <= 1.0, f"p95 приёма {p95:.3f} с превышает 1 с"
@@ -315,17 +331,30 @@ async def test_nfr08_concurrent_workspaces(clean_db: None, test_settings: Settin
 
     budgets = 10
     members_per_budget = 4
-    started = time.perf_counter()
-    for index in range(budgets):
+
+    async def prepare(index: int) -> tuple[str, int]:
         admin = make_user(test_settings, 950_000 + index * 10)
         await create_budget(admin, name=f"Бюджет {index}")
-        code = await issue_invite_code(admin)
-        for member_index in range(members_per_budget):
-            member = make_user(test_settings, 950_000 + index * 10 + member_index + 1)
-            await member.send(f"/join {code}")
-            await member.send("продукты 300")
-            if member.has_button("Записать"):
-                await member.press(member.button_data("Записать"))
+        return await issue_invite_code(admin), index
+
+    async def member_session(code: str, index: int, member_index: int) -> None:
+        member = make_user(test_settings, 950_000 + index * 10 + member_index + 1)
+        await member.send(f"/join {code}")
+        await member.send("продукты 300")
+        if member.has_button("Записать"):
+            await member.press(member.button_data("Записать"))
+
+    # Бюджеты создаются последовательно: измеряется одновременная работа
+    # участников, а не создание пространств (NFR-08, AR-34, G-30).
+    codes = [await prepare(index) for index in range(budgets)]
+    started = time.perf_counter()
+    await asyncio.gather(
+        *(
+            member_session(code, index, member_index)
+            for code, index in codes
+            for member_index in range(members_per_budget)
+        )
+    )
     total_seconds = time.perf_counter() - started
 
     async with session_scope(test_settings, RuntimeRole.OWNER) as session:
@@ -345,6 +374,10 @@ async def test_nfr08_concurrent_workspaces(clean_db: None, test_settings: Settin
             "members_per_workspace": members_per_budget + 1,
             "total_seconds": round(total_seconds, 2),
             "requirement": "10 бюджетов по 5 участников",
+            "method": (
+                "все участники работают одновременно (asyncio.gather); "
+                "создание бюджетов в измерение не входит"
+            ),
         },
     )
 

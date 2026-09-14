@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import datetime as dt
 import uuid
 from collections.abc import Awaitable, Callable
@@ -36,6 +37,11 @@ from fintracker.infra.security_log import (
     SecurityLogConflict,
     build_security_log,
 )
+
+# Занятая очередь изменений доступа: короткое ожидание вместо отказа.
+FENCE_BUSY = "fence_busy"
+FENCE_RETRIES = 6
+FENCE_RETRY_DELAY = 0.25
 
 logger = get_logger("identity.security_change")
 
@@ -119,6 +125,48 @@ async def run_security_change(
     journal = security_log or build_security_log(settings.security_log)
     operation = operation_id or uuid.uuid4()
     progress: dict[str, bool] = {"prepared": False, "applied": False}
+    # Протокол допускает одно изменение доступа за раз (ADR-14). Одновременные
+    # вступления по одному коду не должны отказывать участнику: короткое
+    # ожидание очереди выполняется за него (G-30).
+    for attempt in range(FENCE_RETRIES):
+        try:
+            return await _attempt_change(
+                settings,
+                workspace_id=workspace_id,
+                kind=kind,
+                initiated_by=initiated_by,
+                apply=apply,
+                correlation_id=correlation_id,
+                operation=operation,
+                allow_states=allow_states,
+                journal=journal,
+                acting_user_id=acting_user_id,
+                precheck=precheck,
+                progress=progress,
+            )
+        except TemporarilyUnavailable as exc:
+            busy = (exc.details or {}).get("reason") == FENCE_BUSY
+            if not busy or attempt == FENCE_RETRIES - 1:
+                raise
+            await asyncio.sleep(FENCE_RETRY_DELAY * (attempt + 1))
+    raise TemporarilyUnavailable("Изменение доступа не удалось начать")
+
+
+async def _attempt_change(
+    settings: Settings,
+    *,
+    workspace_id: uuid.UUID,
+    kind: str,
+    initiated_by: uuid.UUID | None,
+    apply: ApplyFn,
+    correlation_id: str,
+    operation: uuid.UUID,
+    allow_states: tuple[str, ...],
+    journal: SecurityLog,
+    acting_user_id: uuid.UUID | None,
+    precheck: ApplyFn | None,
+    progress: dict[str, bool],
+) -> SecurityChangeResult:
     try:
         return await _run_fenced_change(
             settings,
@@ -134,6 +182,11 @@ async def run_security_change(
             precheck=precheck,
             progress=progress,
         )
+    except TemporarilyUnavailable as exc:
+        if (exc.details or {}).get("reason") == FENCE_BUSY:
+            # Очередь занята: своя операция ещё не начиналась, отменять нечего.
+            raise
+        raise exc
     except DomainError as exc:
         if progress["applied"]:
             # Изменение уже применено: снятие fence решается шагами 4–5.
@@ -274,7 +327,8 @@ async def _run_fenced_change(
         )
         if workspace.security_fence is not None and workspace.security_fence != operation:
             raise TemporarilyUnavailable(
-                "Другое изменение доступа ещё не завершено, повторите позже"
+                "Другое изменение доступа ещё не завершено, повторите позже",
+                details={"reason": FENCE_BUSY},
             )
         existing = (
             await session.execute(
