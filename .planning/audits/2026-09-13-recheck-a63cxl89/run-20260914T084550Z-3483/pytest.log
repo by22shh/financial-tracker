@@ -1,0 +1,25 @@
+...........................F........                                     [100%]
+=================================== FAILURES ===================================
+_____________ test_deferred_reply_is_not_sent_after_member_removal _____________
+tests/integration/test_recheck_adversarial.py:175: in test_deferred_reply_is_not_sent_after_member_removal
+    reply_job = next(j for j in jobs if j.job_type == "deliver_reply")
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   StopIteration
+
+The above exception was the direct cause of the following exception:
+/Users/Bayramov_N/Desktop/Other/financial-tracker/.venv/lib/python3.13/site-packages/pytest_asyncio/plugin.py:549: in runtest
+    super().runtest()
+/Users/Bayramov_N/Desktop/Other/financial-tracker/.venv/lib/python3.13/site-packages/pytest_asyncio/plugin.py:1069: in inner
+    _loop.run_until_complete(task)
+/Users/Bayramov_N/.local/share/uv/python/cpython-3.13.15-macos-aarch64-none/lib/python3.13/asyncio/base_events.py:726: in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+E   RuntimeError: coroutine raised StopIteration
+----------------------------- Captured stdout call -----------------------------
+2026-09-14 15:46:26 [info     ] inbound_accepted               correlation_id=5a086fba6f70488bab7c8e4baeeee3b1 event_type=message has_workspace=True update_id=101
+2026-09-14 15:46:26 [warning  ] reply_deferred_to_delivery_job event_id=d8cc5c07-5272-48be-b374-5dc97d860548
+2026-09-14 15:46:26 [info     ] inbound_processed              event_id=d8cc5c07-5272-48be-b374-5dc97d860548 processed_at=2026-09-14T08:46:26.461972+00:00 replies=1
+- generated xml file: /Users/Bayramov_N/Desktop/Other/financial-tracker/.planning/audits/2026-09-13-recheck-a63cxl89/run-20260914T084550Z-3483/junit.xml -
+=========================== short test summary info ============================
+FAILED tests/integration/test_recheck_adversarial.py::test_deferred_reply_is_not_sent_after_member_removal
+1 failed, 35 passed in 37.83s

@@ -432,7 +432,9 @@ async def _deliver_claimed(
     try:
         await handle_deliver_reply(settings, claimed)
     except DomainError as exc:
-        await queue.fail(settings, claimed, error=exc.message, retry_after=exc.retry_after)
+        # Немедленная отправка не удалась: задача сразу доступна исполнителю,
+        # названную провайдером задержку соблюдаем (ADR-05, A101).
+        await queue.release_for_retry(settings, claimed, retry_after=exc.retry_after)
         logger.warning("reply_deferred_to_delivery_job", event_id=str(event_id))
         return
     except Exception as exc:

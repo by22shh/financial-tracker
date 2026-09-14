@@ -248,6 +248,30 @@ async def claim_specific(settings: Settings, job_id: uuid.UUID) -> LeasedJob | N
         )
 
 
+async def release_for_retry(
+    settings: Settings, job: LeasedJob, *, retry_after: float | None = None
+) -> None:
+    """Вернуть задачу в очередь без искусственной задержки (ADR-05, A101).
+
+    Немедленная отправка — оптимизация поверх долговечной доставки. Если она не
+    удалась и провайдер не назвал время повтора, ждать backoff незачем:
+    исполнитель берёт задачу сразу. Названную провайдером задержку соблюдаем.
+    """
+    async with session_scope(settings, RuntimeRole.WORKER) as session:
+        now = (await session.execute(text("SELECT now()"))).scalar_one()
+        available_at = now + dt.timedelta(seconds=retry_after) if retry_after else now
+        await session.execute(
+            update(Job)
+            .where(Job.id == job.id, Job.lease_token == job.lease_token)
+            .values(
+                state="queued",
+                lease_token=None,
+                lease_until=None,
+                available_at=available_at,
+            )
+        )
+
+
 async def renew_lease(settings: Settings, job: LeasedJob) -> bool:
     """Продлить действующую аренду; False означает её утрату (AR-04, R-02).
 

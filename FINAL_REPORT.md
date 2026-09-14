@@ -245,9 +245,14 @@ docker run --rm --env-file .env fintracker:local worker
 | Набор диагностик | Результат | Как повторить |
 |---|---|---|
 | Первый аудит, 21 сценарий | 21 passed | `.venv/bin/python .planning/audits/2026-09-13/run_reproductions.py --commit HEAD` |
-| Повторная проверка, 36 сценариев | 36 passed | `.venv/bin/python .planning/audits/2026-09-13-recheck-a63cxl89/run_recheck.py` |
+| Повторная проверка, 36 сценариев | 35 passed, 1 расхождение по времени повтора — см. ниже | `.venv/bin/python .planning/audits/2026-09-13-recheck-a63cxl89/run_recheck.py` |
 | Проверка готовности, 40 сценариев | 40 passed | `.venv/bin/pytest tests/readiness -q` |
 | Денежные и контрактные наборы аудита готовности | 8 + 5 passed | `run_probes.py` в `money/` и `ops/` каталога `.planning/audits/2026-09-14-readiness/` |
+
+Одна замороженная диагностика повторной проверки берёт задачу доставки сразу
+после неудачной отправки; теперь задержка, названную отправителем, соблюдается
+(A101), поэтому задача доступна через секунду. Сам инвариант — исключённому
+участнику отложенный ответ не уходит — проверяется в штатном наборе.
 
 Подробности исправлений по проверке готовности:
 [READINESS_FIXES_2026-09-14.md](docs/READINESS_FIXES_2026-09-14.md).
