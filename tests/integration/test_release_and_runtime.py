@@ -216,3 +216,31 @@ def test_ops04_expected_revision_resolves_outside_repository() -> None:
         finally:
             os.chdir(previous)
     assert revision, "требуемая ревизия схемы не определена вне каталога проекта"
+
+
+async def test_ops02_readiness_requires_writable_backends(
+    clean_db: None, test_settings: Settings, tmp_path: pathlib.Path
+) -> None:
+    """OPS-02, G-28: готовность учитывает доступность каталогов объектов.
+
+    В образе с настройками по умолчанию каталоги могли быть недоступны на
+    запись, а readiness этого не замечала: создание бюджета и выгрузка падали
+    при `ready: true`.
+    """
+    from fintracker.runtime.health import check_readiness
+
+    blocked = tmp_path / "blocked"
+    blocked.mkdir()
+    blocked.chmod(0o500)
+    broken = test_settings.model_copy(deep=True)
+    broken.storage.root = blocked / "objects"
+    try:
+        report = await check_readiness(broken)
+    finally:
+        blocked.chmod(0o700)
+    assert report.storage_writable is False
+    assert report.ready is False
+    assert report.detail and "хранилище объектов" in report.detail
+
+    healthy = await check_readiness(test_settings)
+    assert healthy.storage_writable is True

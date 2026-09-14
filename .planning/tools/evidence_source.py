@@ -59,6 +59,10 @@ ROOT_FILES = (
     "tox.ini",
 )
 IGNORED_PARTS = {"__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", ".hypothesis"}
+# Локальные метаданные файловой системы не входят в Git: в чистом checkout их
+# нет, и manifest с ними делал проверенный commit непереносимым (G-29).
+IGNORED_NAMES = {".DS_Store", "Thumbs.db", ".directory"}
+IGNORED_SUFFIXES = {".pyc", ".pyo", ".swp", ".orig", ".rej"}
 
 
 def file_digest(path: Path) -> str:
@@ -77,8 +81,10 @@ def capture_source(root: Path) -> dict[str, Any]:
                 for path in directory.rglob("*")
                 if path.is_file()
                 and not (set(path.relative_to(root).parts) & IGNORED_PARTS)
-                and path.suffix not in {".pyc", ".pyo"}
+                and path.name not in IGNORED_NAMES
+                and path.suffix not in IGNORED_SUFFIXES
             )
+    paths = {path for path in paths if path.name not in IGNORED_NAMES}
     files = {path.relative_to(root).as_posix(): file_digest(path) for path in sorted(paths)}
     digest = hashlib.sha256(json.dumps(files, sort_keys=True).encode()).hexdigest()
     return {"version": 1, "sha256": digest, "files": files}

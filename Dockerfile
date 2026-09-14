@@ -43,13 +43,24 @@ RUN useradd --system --create-home --uid 10001 fintracker
 # Миграции лежат внутри пакета: образ не зависит от исходного дерева.
 COPY --from=builder /opt/venv /opt/venv
 
+# Записываемые каталоги объектов и журнала доступа создаются в образе и
+# принадлежат приложению: иначе создание бюджета и выгрузка падают с
+# PermissionError (ADR-11, ADR-14, OPS-01, G-28).
+ENV FINTRACKER_STORAGE__ROOT=/var/lib/fintracker/objects \
+    FINTRACKER_SECURITY_LOG__ROOT=/var/lib/fintracker/security-log
+RUN mkdir -p /var/lib/fintracker/objects /var/lib/fintracker/security-log \
+    && chown -R fintracker:fintracker /var/lib/fintracker
+
+# Постоянные тома: вложения и журнал доступа переживают пересоздание образа.
+VOLUME ["/var/lib/fintracker/objects", "/var/lib/fintracker/security-log"]
+
 WORKDIR /app
 USER fintracker
 
-# Готовность проверяется отдельно от живости (ADR-13, OPS-02).
-HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=3 \
-    CMD python -c "import urllib.request,sys;\
-sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8080/health/ready', timeout=3).status == 200 else 1)"
+# Проверка подходит всем трём процессам: у worker и scheduler нет HTTP-сервера,
+# поэтому проверяется база, версия схемы и доступность каталогов (ADR-13, OPS-02).
+HEALTHCHECK --interval=15s --timeout=10s --start-period=20s --retries=3 \
+    CMD ["fintracker", "check"]
 
 ENTRYPOINT ["fintracker"]
 CMD ["api"]

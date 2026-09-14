@@ -23,6 +23,7 @@ class ReadinessReport:
     database: bool
     schema_current: bool
     schema_revision: str | None
+    storage_writable: bool
     ai_configured: bool
     asr_configured: bool
     telegram_configured: bool
@@ -34,6 +35,7 @@ class ReadinessReport:
             "database": self.database,
             "schema_current": self.schema_current,
             "schema_revision": self.schema_revision,
+            "storage_writable": self.storage_writable,
             # Внешние интеграции показываются справочно и не блокируют readiness.
             "integrations": {
                 "ai": self.ai_configured,
@@ -95,13 +97,36 @@ async def check_readiness(
             f"схема {schema_revision or 'не применена'} не совпадает с требуемой {expected}"
         )
 
+    # Без записываемых каталогов объектов и журнала доступа создание бюджета и
+    # выгрузка недоступны, хотя база отвечает (ADR-11, ADR-14, OPS-02, G-28).
+    storage_ok, storage_detail = _writable_backends(settings)
+    if storage_detail and not detail:
+        detail = storage_detail
+
     return ReadinessReport(
-        ready=database_ok and schema_current,
+        ready=database_ok and schema_current and storage_ok,
         database=database_ok,
         schema_current=schema_current,
         schema_revision=schema_revision,
+        storage_writable=storage_ok,
         ai_configured=settings.ai.enabled,
         asr_configured=settings.asr.available,
         telegram_configured=settings.telegram.configured,
         detail=detail,
     )
+
+
+def _writable_backends(settings: Settings) -> tuple[bool, str | None]:
+    """Доступны ли на запись хранилище объектов и журнал доступа (OPS-02)."""
+    from fintracker.infra.security_log import build_security_log
+    from fintracker.infra.storage import build_storage
+
+    for name, factory in (
+        ("хранилище объектов", lambda: build_storage(settings.storage)),
+        ("журнал доступа", lambda: build_security_log(settings.security_log)),
+    ):
+        try:
+            factory()
+        except Exception as exc:
+            return False, f"{name} недоступно: {type(exc).__name__}"
+    return True, None

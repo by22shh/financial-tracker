@@ -72,14 +72,17 @@ jobs:
           uv run alembic downgrade -1
           uv run alembic upgrade head
 
-      - name: Проверки
+      - name: Проверки и доказательства прогона
         env:
           FINTRACKER_TEST_PG_HOST: localhost
           FINTRACKER_TEST_PG_PORT: "55432"
           FINTRACKER_TEST_PG_PASSWORD: devpassword
-        run: uv run pytest -q --junitxml=.planning/evidence/junit.xml
+        # Доказательства собирает тот же скрипт, что и локально: отчёт, JUnit и
+        # manifest исходников относятся к этому прогону, а не к прежнему (G-29).
+        run: uv run python .planning/tools/collect_evidence.py
 
       - name: Прослеживаемость требований
+        # Проверяется свежий отчёт: узлы, их исход и совпадение исходников.
         run: uv run python .planning/tools/check_traceability.py
 
       - uses: actions/upload-artifact@v4
