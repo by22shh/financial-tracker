@@ -5,6 +5,7 @@ from __future__ import annotations
 import datetime as dt
 import uuid
 from decimal import Decimal
+from typing import Any
 
 from sqlalchemy import select
 
@@ -442,11 +443,20 @@ def _apply_input(
             if errors:
                 return None, [Reply(text="\n".join(errors))]
             return WizardStep.COMMITMENTS, None
-        case WizardStep.COMMITMENTS | WizardStep.GOALS:
-            # Плановые траты и цели заполняются после создания бюджета,
-            # чтобы не смешивать их с фактическими покупками (FR-84).
-            nxt = WizardStep.GOALS if step is WizardStep.COMMITMENTS else WizardStep.TEMPLATE
-            return nxt, None
+        case WizardStep.COMMITMENTS:
+            # Введённые обязательства сохраняются и создаются вместе с
+            # бюджетом: набранный текст не теряется (FR-84, G-14).
+            entries, errors = _parse_planned(text)
+            if errors:
+                return None, [Reply(text="\n".join(errors))]
+            state.commitments = entries
+            return WizardStep.GOALS, None
+        case WizardStep.GOALS:
+            entries, errors = _parse_planned(text)
+            if errors:
+                return None, [Reply(text="\n".join(errors))]
+            state.goals = entries
+            return WizardStep.TEMPLATE, None
         case WizardStep.TEMPLATE:
             state.repeat_template = text.strip().lower() not in {"нет", "не повторять", "off"}
             return WizardStep.REVIEW, None
@@ -454,6 +464,36 @@ def _apply_input(
             return None, [_review_reply(state)]
         case _:
             return None, None
+
+
+def _parse_planned(text: str) -> tuple[list[dict[str, Any]], list[str]]:
+    """Разобрать строки «Название = сумма [= дата]» мастера (FR-84, G-14)."""
+    from decimal import Decimal
+
+    from fintracker.domain.parsing.amounts import parse_amounts
+
+    entries: list[dict[str, Any]] = []
+    errors: list[str] = []
+    for raw in text.replace(";", "\n").splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        parts = [item.strip() for item in line.split("=")]
+        if not parts[0]:
+            errors.append(f"Не понял строку «{line}»: нужно «Название = сумма».")
+            continue
+        amounts = parse_amounts(parts[1]) if len(parts) > 1 else []
+        if not amounts:
+            errors.append(f"Не понял сумму в строке «{line}».")
+            continue
+        entry: dict[str, Any] = {
+            "name": parts[0][:120],
+            "amount_decimal": str(Decimal(amounts[0].value)),
+        }
+        if len(parts) > 2 and parts[2]:
+            entry["due"] = parts[2]
+        entries.append(entry)
+    return entries, errors
 
 
 def _parse_period_dates(text: str) -> tuple[dt.date, dt.date] | None:

@@ -735,3 +735,69 @@ async def posted_draft_reply(
             )
         )
     return replies
+
+
+async def apply_draft_edit(
+    settings: Settings, *, actor: ActorContext, workspace: Workspace, draft_id: uuid.UUID, text: str
+) -> list[Reply]:
+    """Применить правку к тому же черновику, а не создавать второй (FR-20, G-16)."""
+    from decimal import Decimal
+
+    from fintracker.application.catalog.categories import list_categories
+    from fintracker.application.conversation.entry import CandidateFields, load_draft
+    from fintracker.domain.parsing.amounts import parse_amounts
+
+    workspace_id = actor.require_workspace()
+    async with session_scope(
+        settings, RuntimeRole.API, user_id=actor.user_id, workspace_id=workspace_id
+    ) as session:
+        draft, candidates = await load_draft(
+            session, workspace_id=workspace_id, draft_id=draft_id, owner_id=actor.user_id
+        )
+        if draft.state in {"posted", "cancelled", "expired"}:
+            return await draft_reply(settings, actor=actor, workspace=workspace, draft_id=draft_id)
+        editable = [row for row in candidates if row.state not in {"excluded", "cancelled"}]
+        if len(editable) != 1:
+            return [
+                Reply(
+                    text=(
+                        "В этой записи несколько частей: откройте её после сохранения "
+                        "и исправьте нужную часть."
+                    )
+                )
+            ]
+        row = editable[0]
+        fields = CandidateFields.from_payload(dict(row.fields))
+        changed: list[str] = []
+        amounts = parse_amounts(text)
+        if amounts:
+            fields.amount_minor = Money.from_decimal(
+                Decimal(amounts[0].value), fields.currency or workspace.currency
+            ).minor
+            fields.ambiguities = [
+                item for item in fields.ambiguities if item.get("field") != "amount"
+            ]
+            changed.append("сумма")
+        else:
+            catalog = await list_categories(session, workspace_id=workspace_id)
+            wanted = text.strip().casefold()
+            match = next(
+                (item for item in catalog if item.name.casefold() == wanted),
+                None,
+            )
+            if match is None:
+                return [
+                    Reply(
+                        text=("Не понял правку: отправьте сумму числом или точное название статьи.")
+                    )
+                ]
+            fields.category_id = match.id
+            changed.append("статья")
+        row.fields = fields.to_payload()
+        row.state = "ready" if fields.is_complete else "needs_clarification"
+        row.version += 1
+        draft.state = "ready" if fields.is_complete else "needs_clarification"
+        draft.version += 1
+    replies = await draft_reply(settings, actor=actor, workspace=workspace, draft_id=draft_id)
+    note = ", ".join(changed)
+    return [Reply(text=f"Изменено: {note}.", buttons=replies[0].buttons), *replies[1:]]

@@ -11,7 +11,10 @@ import hashlib
 import uuid
 from dataclasses import dataclass
 from decimal import Decimal
+from typing import Any
 from zoneinfo import ZoneInfo
+
+from sqlalchemy import select
 
 from fintracker.application.conversation import sections
 from fintracker.application.conversation.entry import (
@@ -22,6 +25,7 @@ from fintracker.application.conversation.entry import (
     find_message_draft,
 )
 from fintracker.application.conversation.keyboards import Button, callback, confirm_candidate
+from fintracker.application.conversation.types import Attachment as MediaAttachment
 from fintracker.application.conversation.types import IncomingMessage, MessageKind, Reply
 from fintracker.application.intelligence.extraction import (
     WorkspaceCatalog,
@@ -68,6 +72,14 @@ async def _prepare_media(
     fingerprint: str | None = None,
 ) -> _MediaPreparation | list[Reply]:
     workspace_id = actor.require_workspace()
+    media = {
+        "kind": "voice" if message.kind is MessageKind.VOICE else "photo",
+        "file_ids": [item.file_id for item in message.attachments],
+        "mime_types": [item.mime_type for item in message.attachments],
+        "caption": message.text,
+        "chat_id": message.chat_id,
+        "message_id": message.message_id,
+    }
     existing_id: uuid.UUID | None = None
     existing_state: str | None = None
     async with session_scope(
@@ -96,6 +108,7 @@ async def _prepare_media(
                     logical_message_id=message.inbound_event_id,
                 )
                 draft.state = "processing"
+                draft.source_media = media
             except DraftAlreadyExists as exc:
                 existing_id, existing_state = exc.draft_id, exc.state
         if draft is not None:
@@ -103,6 +116,7 @@ async def _prepare_media(
                 existing_id, existing_state = draft.id, draft.state
             else:
                 draft.state = "processing"
+                draft.source_media = {**dict(draft.source_media or {}), **media}
                 draft.version += 1
                 catalog = await load_catalog(
                     session,
@@ -346,6 +360,9 @@ async def _process_image(
         await _mark_draft(
             settings, actor, draft_id, draft_version, "needs_clarification", "not_paid"
         )
+        # Разобранный документ сохраняется: «Да, оплачено» использует его, а не
+        # повторный платный вызов (FR-17, G-16).
+        await _store_media(settings, actor, draft_id, {"receipt": receipt.model_dump(mode="json")})
         kind_label = {
             "invoice": "счёт на оплату",
             "cart": "корзина",
@@ -369,6 +386,32 @@ async def _process_image(
             )
         ]
 
+    return await _receipt_to_draft(
+        settings,
+        actor=actor,
+        workspace=workspace,
+        message=message,
+        receipt=receipt,
+        catalog=catalog,
+        draft_id=draft_id,
+        draft_version=draft_version,
+        local_date=local_date,
+    )
+
+
+async def _receipt_to_draft(
+    settings: Settings,
+    *,
+    actor: ActorContext,
+    workspace: Workspace,
+    message: IncomingMessage,
+    receipt: Any,
+    catalog: Any,
+    draft_id: uuid.UUID,
+    draft_version: int,
+    local_date: Any,
+) -> list[Reply]:
+    """Превратить разобранный чек в черновик с карточкой (FR-14, G-16)."""
     total_decimal = parse_decimal(receipt.total_decimal)
     if total_decimal is None or total_decimal <= 0:
         await _mark_draft(
@@ -594,3 +637,142 @@ async def _mark_draft(
         )
         if result.scalar_one_or_none() is None:
             raise VersionConflict("Разбор сообщения уже обновлён")
+
+
+async def _store_media(
+    settings: Settings, actor: ActorContext, draft_id: uuid.UUID, extra: dict[str, Any]
+) -> None:
+    """Дополнить сохранённый исходный материал черновика (G-16)."""
+    from fintracker.db.models.platform import Draft
+
+    workspace_id = actor.require_workspace()
+    async with session_scope(
+        settings, RuntimeRole.API, user_id=actor.user_id, workspace_id=workspace_id
+    ) as session:
+        draft = (
+            await session.execute(
+                select(Draft).where(Draft.workspace_id == workspace_id, Draft.id == draft_id)
+            )
+        ).scalar_one_or_none()
+        if draft is None:
+            return
+        draft.source_media = {**dict(draft.source_media or {}), **extra}
+        draft.version += 1
+
+
+async def _saved_media(
+    settings: Settings, actor: ActorContext, draft_id: uuid.UUID
+) -> dict[str, Any]:
+    from fintracker.db.models.platform import Draft
+
+    workspace_id = actor.require_workspace()
+    async with session_scope(
+        settings, RuntimeRole.API, user_id=actor.user_id, workspace_id=workspace_id
+    ) as session:
+        draft = (
+            await session.execute(
+                select(Draft).where(Draft.workspace_id == workspace_id, Draft.id == draft_id)
+            )
+        ).scalar_one_or_none()
+        return dict(draft.source_media or {}) if draft is not None else {}
+
+
+def _message_from_media(media: dict[str, Any], *, workspace_id: uuid.UUID) -> IncomingMessage:
+    """Восстановить исходное сообщение из сохранённого материала (G-16)."""
+    file_ids = [str(item) for item in (media.get("file_ids") or [])]
+    mime_types = list(media.get("mime_types") or [])
+    kind = MessageKind.VOICE if media.get("kind") == "voice" else MessageKind.PHOTO
+    attachments = tuple(
+        MediaAttachment(
+            file_id=file_id,
+            kind="voice" if kind is MessageKind.VOICE else "photo",
+            mime_type=mime_types[index] if index < len(mime_types) else None,
+        )
+        for index, file_id in enumerate(file_ids)
+    )
+    return IncomingMessage(
+        telegram_user_id=0,
+        chat_id=int(media.get("chat_id") or 0),
+        kind=kind,
+        text=media.get("caption"),
+        message_id=media.get("message_id"),
+        attachments=attachments,
+        workspace_id=workspace_id,
+    )
+
+
+async def retry_media_draft(
+    settings: Settings, *, actor: ActorContext, workspace: Workspace, draft_id: uuid.UUID
+) -> list[Reply]:
+    """Повторить разбор сохранённого материала того же черновика (FR-20, G-16)."""
+    media = await _saved_media(settings, actor, draft_id)
+    if not media.get("file_ids"):
+        return [
+            Reply(
+                text=(
+                    "Исходный файл больше не сохранён: пришлите его ещё раз "
+                    "или введите сумму текстом."
+                )
+            )
+        ]
+    message = _message_from_media(media, workspace_id=actor.require_workspace())
+    return await process_media_draft(settings, actor=actor, workspace=workspace, message=message)
+
+
+async def confirm_invoice_paid(
+    settings: Settings, *, actor: ActorContext, workspace: Workspace, draft_id: uuid.UUID
+) -> list[Reply]:
+    """Подтвердить, что документ уже оплачен (FR-17, G-16).
+
+    Повторного платного вызова не происходит: используется уже разобранный
+    документ, а решение о записи остаётся за участником.
+    """
+    from fintracker.application.conversation.entry import load_draft
+    from fintracker.infra.ai.schemas import ReceiptResponse
+
+    media = await _saved_media(settings, actor, draft_id)
+    raw = media.get("receipt")
+    if not raw:
+        return [
+            Reply(
+                text=(
+                    "Разобранный документ не сохранён: пришлите чек ещё раз "
+                    "или введите сумму текстом."
+                )
+            )
+        ]
+    receipt = ReceiptResponse.model_validate(raw)
+    workspace_id = actor.require_workspace()
+    async with session_scope(
+        settings, RuntimeRole.API, user_id=actor.user_id, workspace_id=workspace_id
+    ) as session:
+        draft, _ = await load_draft(
+            session, workspace_id=workspace_id, draft_id=draft_id, owner_id=actor.user_id
+        )
+        if draft.state not in {"needs_clarification", "failed_retryable", "processing"}:
+            return await sections.draft_reply(
+                settings, actor=actor, workspace=workspace, draft_id=draft_id
+            )
+        # Подтверждение оплаты возвращает черновик в разбор с той же версией.
+        draft.state = "processing"
+        draft.version += 1
+        draft_version = draft.version
+        local_date = draft.created_at.astimezone(ZoneInfo(workspace.timezone)).date()
+        catalog = await load_catalog(
+            session,
+            workspace_id=workspace_id,
+            currency=workspace.currency,
+            timezone=workspace.timezone,
+        )
+    message = _message_from_media(media, workspace_id=workspace_id)
+    return await _receipt_to_draft(
+        settings,
+        actor=actor,
+        workspace=workspace,
+        message=message,
+        receipt=receipt,
+        catalog=catalog,
+        draft_id=draft_id,
+        draft_version=draft_version,
+        local_date=local_date,
+    )

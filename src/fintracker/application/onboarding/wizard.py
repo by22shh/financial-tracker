@@ -125,6 +125,10 @@ class WizardState:
     deficit_accepted: bool = False
     deficit_reason: str | None = None
     overall_limit_minor: int | None = None
+    # Введённые в мастере обязательства и цели сохраняются вместе с бюджетом:
+    # набранный участником текст не теряется (FR-84, G-14).
+    commitments: list[dict[str, Any]] = field(default_factory=list)
+    goals: list[dict[str, Any]] = field(default_factory=list)
 
     def to_payload(self) -> dict[str, Any]:
         return {
@@ -159,6 +163,8 @@ class WizardState:
             "deficit_accepted": self.deficit_accepted,
             "deficit_reason": self.deficit_reason,
             "overall_limit_minor": self.overall_limit_minor,
+            "commitments": self.commitments,
+            "goals": self.goals,
         }
 
     @classmethod
@@ -198,6 +204,8 @@ class WizardState:
             deficit_accepted=bool(payload.get("deficit_accepted", False)),
             deficit_reason=payload.get("deficit_reason"),
             overall_limit_minor=payload.get("overall_limit_minor"),
+            commitments=list(payload.get("commitments") or []),
+            goals=list(payload.get("goals") or []),
         )
 
     def policy(self) -> PeriodPolicy:
@@ -627,6 +635,9 @@ async def _materialize_workspace(
                 )
             )
 
+    # --- Обязательства и цели, введённые в мастере (FR-84, G-14) -----------
+    await _create_planned(session, uow, workspace=workspace, actor=actor, state=state)
+
     await uow.bump_revisions(workspace.id, calendar=True, plan=True, catalog=True, data=True)
     await uow.emit(
         workspace_id=workspace.id,
@@ -637,6 +648,53 @@ async def _materialize_workspace(
         audience="author",
         actor_user_id=user.id,
     )
+
+
+async def _create_planned(
+    session: AsyncSession,
+    uow: UnitOfWork,
+    *,
+    workspace: Workspace,
+    actor: ActorContext,
+    state: WizardState,
+) -> None:
+    """Создать обязательства и цели, названные участником в мастере (G-14)."""
+    from decimal import Decimal
+
+    from fintracker.application.commitments.goals import create_goal
+    from fintracker.application.commitments.schedules import create_schedule
+    from fintracker.domain.parsing.dates import resolve_date_expression
+    from fintracker.domain.schedule import ScheduleKind, ScheduleRule
+
+    currency = workspace.currency
+    today = state.start_date or dt.date.today()
+    for entry in state.commitments:
+        amount = Money.from_decimal(Decimal(str(entry["amount_decimal"])), currency)
+        anchor_date = today
+        raw_due = entry.get("due")
+        if raw_due:
+            parsed = resolve_date_expression(str(raw_due), reference=today)
+            if parsed is not None:
+                anchor_date = parsed.value
+        await create_schedule(
+            session,
+            uow,
+            actor=actor,
+            name=str(entry["name"]),
+            direction="payment",
+            rule=ScheduleRule(kind=ScheduleKind.MONTHLY, anchor_date=anchor_date),
+            currency=currency,
+            expected=amount,
+        )
+    for entry in state.goals:
+        await create_goal(
+            session,
+            uow,
+            actor=actor,
+            name=str(entry["name"]),
+            currency=currency,
+            target=Money.from_decimal(Decimal(str(entry["amount_decimal"])), currency),
+        )
 
 
 def preview_periods(state: WizardState, count: int = 3) -> list[DateRange]:

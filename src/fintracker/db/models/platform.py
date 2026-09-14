@@ -184,6 +184,12 @@ class Draft(Base):
     raw_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     transcript: Mapped[str | None] = mapped_column(Text, nullable=True)
     source_fingerprint: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    # Исходный материал черновика: ссылки на файлы и разобранный документ.
+    # Нужен, чтобы повтор разбора и подтверждение оплаты работали с тем же
+    # материалом, а не начинали заново (FR-20, G-16).
+    source_media: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
     version: Mapped[int] = version_column()
     expires_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     delete_raw_after: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), nullable=False)

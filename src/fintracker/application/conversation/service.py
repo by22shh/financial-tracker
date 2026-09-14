@@ -381,6 +381,14 @@ async def _continue_pending(
                 category_id=uuid.UUID(str(pending.payload["category_id"])),
                 text=text,
             )
+        case "draft_edit":
+            return await sections.apply_draft_edit(
+                settings,
+                actor=actor,
+                workspace=workspace,
+                draft_id=uuid.UUID(str(pending.payload["draft_id"])),
+                text=text,
+            )
         case "goal_new":
             return await goals_flow.create_goal_from_text(
                 settings, actor=actor, workspace=workspace, text=text

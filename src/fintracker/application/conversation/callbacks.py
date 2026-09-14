@@ -596,6 +596,38 @@ async def _draft_action(
                 if candidate.state != "posted":
                     candidate.state = "cancelled"
         return [Reply(text="Черновик отменён. Проведённые операции не затронуты.")]
+    if action == "retry":
+        from fintracker.application.intelligence.media_pipeline import retry_media_draft
+
+        return await retry_media_draft(
+            settings, actor=actor, workspace=workspace, draft_id=draft_id
+        )
+    if action == "paid":
+        from fintracker.application.intelligence.media_pipeline import confirm_invoice_paid
+
+        return await confirm_invoice_paid(
+            settings, actor=actor, workspace=workspace, draft_id=draft_id
+        )
+    if action == "edit":
+        # Правка идёт в тот же черновик: следующее сообщение меняет его, а не
+        # создаёт вторую запись (FR-20, G-16).
+        from fintracker.application.conversation.pending import set_pending
+
+        await set_pending(
+            settings,
+            user_id=user_id,
+            workspace_id=workspace_id,
+            kind="draft_edit",
+            payload={"draft_id": str(draft_id)},
+        )
+        return [
+            Reply(
+                text=(
+                    "Отправьте новое значение сообщением: сумму числом или название "
+                    "категории. Изменение применится к этой же записи."
+                )
+            )
+        ]
     return [
         Reply(
             text=("Отправьте уточнение сообщением — например, сумму числом или название категории.")
