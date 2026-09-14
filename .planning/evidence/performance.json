@@ -1,21 +1,21 @@
 {
   "nfr06_report": {
-    "p95_seconds": 0.3342,
-    "median_seconds": 0.2279,
-    "fill_seconds": 34.71,
+    "p95_seconds": 0.341,
+    "median_seconds": 0.2307,
+    "fill_seconds": 34.81,
     "requirement": "p95 <= 2 s на 50 000 операций",
-    "measured_at": "2026-09-14T07:11:55.824430+00:00",
+    "measured_at": "2026-09-14T08:54:42.832886+00:00",
     "volume": 50000
   },
   "nfr06_journal_filters": {
-    "p95_seconds": 0.3062,
+    "p95_seconds": 0.2806,
     "requirement": "p95 <= 2 s",
-    "measured_at": "2026-09-14T07:12:36.063830+00:00",
+    "measured_at": "2026-09-14T08:57:01.340543+00:00",
     "volume": 50000
   },
   "nfr01_intake": {
-    "p95_seconds": 0.0752,
-    "max_seconds": 0.0926,
+    "p95_seconds": 0.0815,
+    "max_seconds": 0.2095,
     "steady_rate_per_second": 5,
     "steady_seconds": 600,
     "burst_rate_per_second": 20,
@@ -23,25 +23,25 @@
     "events": 3600,
     "requirement": "p95 <= 1 s до долговечного сохранения",
     "method": "измерена задержка каждого запроса приёма; профиль ТЗ §23: 600 с по 5/с и 30 с по 20/с",
-    "measured_at": "2026-09-14T07:23:07.032060+00:00",
+    "measured_at": "2026-09-14T09:07:32.143694+00:00",
     "volume": 50000
   },
   "nfr08_concurrency": {
     "workspaces": 10,
     "members_per_workspace": 5,
-    "total_seconds": 2.47,
+    "total_seconds": 2.66,
     "requirement": "10 бюджетов по 5 участников",
     "concurrency_limit": 7,
     "method": "все участники работают одновременно (asyncio.gather) с ограничением по пулу соединений; создание бюджетов в измерение не входит",
-    "measured_at": "2026-09-14T07:23:12.344324+00:00",
+    "measured_at": "2026-09-14T09:07:37.823961+00:00",
     "volume": 50000
   },
   "nfr02_nfr03_dialog": {
-    "card_p95_seconds": 0.0332,
-    "feedback_p95_seconds": 0.0846,
+    "card_p95_seconds": 0.0439,
+    "feedback_p95_seconds": 0.093,
     "requirement": "NFR-02 <= 2 s, NFR-03 p95 <= 5 s (детерминированный путь)",
     "note": "Измерено на детерминированном разборе без внешнего провайдера; задержка модели добавляется после подключения ключа (BL-01).",
-    "measured_at": "2026-09-14T07:23:14.255626+00:00",
+    "measured_at": "2026-09-14T09:07:39.851110+00:00",
     "volume": 50000
   }
 }
