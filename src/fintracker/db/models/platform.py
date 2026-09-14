@@ -203,6 +203,11 @@ class AuthorReply(Base):
     inbound_event_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
     chat_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     messages: Mapped[list[Any]] = mapped_column(JSONB, nullable=False)
+    # Связь отправленных карточек с операциями: ответ на конкретную карточку
+    # адресует именно её операцию (FR-33, G-06).
+    card_links: Mapped[list[Any]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'[]'::jsonb")
+    )
     state: Mapped[str] = mapped_column(String(16), nullable=False, server_default=text("'pending'"))
     created_at: Mapped[dt.datetime] = now_server()
     delete_after: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
@@ -211,6 +216,7 @@ class AuthorReply(Base):
         CheckConstraint("state IN ('pending','sent','cancelled')", name="state_allowed"),
         UniqueConstraint("workspace_id", "id"),
         Index("ix_author_replies_event", "workspace_id", "inbound_event_id"),
+        Index("ix_author_replies_cards", "card_links", postgresql_using="gin"),
         Index("ix_author_replies_retention", "delete_after"),
     )
 

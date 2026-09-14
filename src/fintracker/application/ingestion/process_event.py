@@ -236,7 +236,13 @@ async def _store_reply(
         inbound_event_id=event_id,
         chat_id=chat_id,
         messages=[
-            {"text": reply.text, "buttons": reply.keyboard()} for reply in replies if reply.text
+            {
+                "text": reply.text,
+                "buttons": reply.keyboard(),
+                "transaction_id": str(reply.transaction_id) if reply.transaction_id else None,
+            }
+            for reply in replies
+            if reply.text
         ],
         state="pending",
         delete_after=dt.datetime.now(dt.UTC) + dt.timedelta(days=7),
@@ -267,7 +273,12 @@ async def _load_reply(
 
 
 async def _close_reply(
-    settings: Settings, *, context: _EventContext, reply_id: uuid.UUID, state: str
+    settings: Settings,
+    *,
+    context: _EventContext,
+    reply_id: uuid.UUID,
+    state: str,
+    card_links: list[dict[str, str]] | None = None,
 ) -> None:
     from fintracker.db.models.platform import AuthorReply
 
@@ -277,10 +288,13 @@ async def _close_reply(
         user_id=context.actor_user_id,
         workspace_id=context.workspace_id,
     ) as session:
+        values: dict[str, Any] = {"state": state}
+        if card_links:
+            values["card_links"] = card_links
         await session.execute(
             update(AuthorReply)
             .where(AuthorReply.id == reply_id, AuthorReply.state == "pending")
-            .values(state=state)
+            .values(**values)
         )
 
 
@@ -541,6 +555,7 @@ async def handle_deliver_reply(settings: Settings, job: LeasedJob) -> None:
         messages = [dict(item) for item in (job.payload.get("messages") or [])]
 
     sender = build_sender(settings)
+    links: list[dict[str, str]] = []
     for item in messages:
         if not await _has_delivery_lease(settings, job):
             return
@@ -554,6 +569,14 @@ async def handle_deliver_reply(settings: Settings, job: LeasedJob) -> None:
         result = await sender.send_message(
             chat_id=chat_id, text=str(item["text"]), buttons=item.get("buttons")
         )
+        if result.ok and item.get("transaction_id") and result.message_id is not None:
+            # Связь карточки с операцией: ответ на неё адресует эту операцию.
+            links.append(
+                {
+                    "message_id": str(result.message_id),
+                    "transaction_id": str(item["transaction_id"]),
+                }
+            )
         if result.ok or result.blocked:
             continue
         if result.unknown:
@@ -565,7 +588,11 @@ async def handle_deliver_reply(settings: Settings, job: LeasedJob) -> None:
         )
     if raw_reply_id is not None and context is not None:
         await _close_reply(
-            settings, context=context, reply_id=uuid.UUID(str(raw_reply_id)), state="sent"
+            settings,
+            context=context,
+            reply_id=uuid.UUID(str(raw_reply_id)),
+            state="sent",
+            card_links=links,
         )
     if event_id is not None:
         await _settle_delivery(settings, event_id=event_id, reply_job_id=None)

@@ -714,25 +714,34 @@ async def post_draft(
     if draft.state == "posted":
         return [c.posted_transaction_id for c in candidates if c.posted_transaction_id]
 
-    posted: list[uuid.UUID] = []
+    # Сначала проверяется весь пакет: отказ по второму кандидату не должен
+    # оставлять проведённым первый (FR-11, G-01).
+    planned: list[tuple[Candidate, TransactionSpec]] = []
     for candidate in candidates:
         if candidate.state in {"excluded", "cancelled"}:
             continue
         fields = CandidateFields.from_payload(dict(candidate.fields))
         spec = build_spec(fields, timezone=timezone, workspace_currency=workspace_currency)
-        result = await post_transaction(
-            session,
-            uow,
-            actor=actor,
-            spec=spec,
-            origin=origin,
-            source_candidate_id=candidate.id,
-        )
-        candidate.state = "posted"
-        candidate.posted_transaction_id = result.transaction_id
-        candidate.version += 1
-        posted.append(result.transaction_id)
-    draft.state = "posted"
-    draft.version += 1
-    await session.flush()
+        planned.append((candidate, spec))
+
+    posted: list[uuid.UUID] = []
+    # Запись идёт во вложенной транзакции: сбой на любом кандидате отменяет
+    # весь пакет, а не оставляет его наполовину проведённым.
+    async with session.begin_nested():
+        for candidate, spec in planned:
+            result = await post_transaction(
+                session,
+                uow,
+                actor=actor,
+                spec=spec,
+                origin=origin,
+                source_candidate_id=candidate.id,
+            )
+            candidate.state = "posted"
+            candidate.posted_transaction_id = result.transaction_id
+            candidate.version += 1
+            posted.append(result.transaction_id)
+        draft.state = "posted"
+        draft.version += 1
+        await session.flush()
     return posted

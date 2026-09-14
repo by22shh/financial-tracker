@@ -36,6 +36,8 @@ class Button:
 class Reply:
     text: str
     buttons: tuple[tuple[Button, ...], ...] = ()
+    # Карточка конкретной операции: ответ на неё адресует именно её (G-06).
+    transaction_id: uuid.UUID | None = None
     # Ответ автору на только что введённую операцию показывается сразу (FR-53).
     immediate: bool = True
 

@@ -391,7 +391,13 @@ async def transaction_card_reply(
         extra.extend(history_lines)
     if extra:
         text = text + "\n" + "\n".join(extra)
-    return [Reply(text=text, buttons=transaction_card(transaction_id))]
+    return [
+        Reply(
+            text=text,
+            buttons=transaction_card(transaction_id),
+            transaction_id=transaction_id,
+        )
+    ]
 
 
 async def confirm_draft(

@@ -119,7 +119,11 @@ async def _resolve_target(
         settings, RuntimeRole.API, user_id=actor.user_id, workspace_id=workspace_id
     ) as session:
         if message.reply_to_message_id is not None:
-            from fintracker.db.models.platform import NotificationDelivery, OutboxEvent
+            from fintracker.db.models.platform import (
+                AuthorReply,
+                NotificationDelivery,
+                OutboxEvent,
+            )
 
             row = (
                 await session.execute(
@@ -138,6 +142,36 @@ async def _resolve_target(
             ).scalar_one_or_none()
             if row is not None:
                 return row
+
+            # Карточка, показанная автору сразу после записи (FR-33, G-06).
+            replies = (
+                (
+                    await session.execute(
+                        select(AuthorReply).where(
+                            AuthorReply.workspace_id == workspace_id,
+                            AuthorReply.owner_user_id == actor.user_id,
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            wanted = str(message.reply_to_message_id)
+            for reply in replies:
+                for link in reply.card_links or []:
+                    if isinstance(link, dict) and str(link.get("message_id")) == wanted:
+                        return uuid.UUID(str(link["transaction_id"]))
+
+            # Неизвестная ссылка не подменяется последней операцией (G-06).
+            return [
+                Reply(
+                    text=(
+                        "Не нашёл запись, к которой относится этот ответ. "
+                        "Откройте историю и выберите операцию."
+                    ),
+                    buttons=((Button("История", callback("menu", "history")),),),
+                )
+            ]
 
         amounts = parse_amounts(text)
         if amounts:

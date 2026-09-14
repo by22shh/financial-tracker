@@ -92,6 +92,19 @@ async def export_action(
 
     if chat_id is None:
         return [Reply(text="Не удалось определить чат для выдачи файла.")]
+
+    # Снимок собран, но выдача — отдельное действие: доступ подтверждается
+    # непосредственно перед отправкой файла (SEC-05, FR-81, G-02).
+    async with session_scope(
+        settings, RuntimeRole.API, user_id=actor.user_id, workspace_id=workspace_id
+    ) as session:
+        guard = UnitOfWork(session=session, correlation_id=actor.correlation_id)
+        try:
+            await guard.lock_workspace(workspace_id, actor=actor)
+        except DomainError as exc:
+            logger.info("export_revoked", workspace_id=str(workspace_id), code=exc.code.value)
+            return [Reply(text=(f"Выгрузка отменена: доступ к бюджету изменился. {exc.message}"))]
+
     sender = build_sender(settings)
     result = await sender.send_document(
         chat_id=chat_id,
