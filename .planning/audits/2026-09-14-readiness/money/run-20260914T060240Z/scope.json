@@ -1,7 +1,7 @@
 {
   "head": "563292a7e62fe55ac48e49a9a8258acea2186ef1",
-  "snapshot": "/var/folders/gp/36jzrv8s3nv8hhml14b9k9740000gq/T/fintracker-ops-readiness-nh12bzsq",
-  "database": "fintracker_ops_ready_26cfb1492d",
+  "snapshot": "/var/folders/gp/36jzrv8s3nv8hhml14b9k9740000gq/T/fintracker-readiness-money-d2lsva07",
+  "test_database": "fintracker_money_514d5d1b1485",
   "source_hashes": {
     ".env.example": "efaffdab9eae778f981c0aafdc811be927c97ab4d04f1d09606af4a8052823e2",
     ".github/workflows/ci.yml": "b3a08366a4c5264b8b62c824960fd8d503010477c516e51c1b9aebaaefa0a7c1",

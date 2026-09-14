@@ -128,12 +128,7 @@ async def test_pending_delivery_keeps_runnable_job(owner_session, test_settings,
     async with session_scope(test_settings, RuntimeRole.OWNER) as session:
         delivery = await session.get(NotificationDelivery, delivery_id)
         assert delivery.state in {"pending", "failed"}
-        await session.execute(
-            update(NotificationDelivery)
-            .where(NotificationDelivery.id == delivery_id)
-            .values(available_at=dt.datetime.now(dt.UTC) - dt.timedelta(seconds=1))
-        )
-    async with session_scope(test_settings, RuntimeRole.OWNER) as session:
+        due_at = delivery.available_at
         pending = (
             await session.scalars(
                 select(Job).where(
@@ -143,6 +138,13 @@ async def test_pending_delivery_keeps_runnable_job(owner_session, test_settings,
             )
         ).all()
     assert pending, f"незавершённая доставка ({mode}) осталась без задачи повтора"
+    # Задача назначена ровно на время, когда доставка становится возможной:
+    # отложенная тихими часами или сбоем доставка не теряется и не шлётся
+    # раньше срока (FR-53, ADR-05, G-20).
+    assert any(abs((job.available_at - due_at).total_seconds()) <= 1 for job in pending), (
+        f"повтор назначен не на время доставки: {[job.available_at for job in pending]} "
+        f"вместо {due_at}"
+    )
 
 
 # --- G-27 -------------------------------------------------------------------
