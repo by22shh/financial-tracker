@@ -8,6 +8,7 @@ import subprocess
 
 import pytest
 from sqlalchemy import select, text
+from sqlalchemy import update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fintracker.config import Settings
@@ -244,3 +245,45 @@ async def test_ops02_readiness_requires_writable_backends(
 
     healthy = await check_readiness(test_settings)
     assert healthy.storage_writable is True
+
+
+async def test_nfr13_operational_metrics_are_collected(
+    clean_db: None, test_settings: Settings, owner_session
+) -> None:
+    """NFR-13: возраст очереди, незавершённые доставки и попытки AI наблюдаемы.
+
+    Прежняя ссылка на проверку удаления секретов из логов не доказывала сбор
+    показателей: здесь измеряется само состояние работы (G-30).
+    """
+    import datetime as dt
+
+    from fintracker.application.platform import queue
+    from fintracker.db.models.platform import Job
+    from fintracker.db.session import RuntimeRole, session_scope
+    from fintracker.runtime.health import collect_metrics
+
+    empty = await collect_metrics(test_settings)
+    assert empty.queue_oldest_seconds == 0.0
+    assert empty.queue_failed == 0
+    assert empty.schema_revision
+
+    async with session_scope(test_settings, RuntimeRole.WORKER) as session:
+        await queue.enqueue(session, job_type="probe", logical_key="metrics-probe")
+    async with session_scope(test_settings, RuntimeRole.OWNER) as session:
+        await session.execute(
+            sa_update(Job)
+            .where(Job.logical_key == "metrics-probe")
+            .values(available_at=dt.datetime.now(dt.UTC) - dt.timedelta(seconds=30))
+        )
+
+    loaded = await collect_metrics(test_settings)
+    assert loaded.queue_oldest_seconds >= 25, loaded.to_payload()
+    payload = loaded.to_payload()
+    assert set(payload) >= {
+        "queue_oldest_seconds",
+        "queue_failed",
+        "delivery_oldest_seconds",
+        "delivery_unfinished",
+        "ai_reservations_open",
+        "retention_last_seconds",
+    }

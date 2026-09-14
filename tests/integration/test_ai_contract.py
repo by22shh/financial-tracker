@@ -553,3 +553,37 @@ async def test_ai07_model_proposes_but_does_not_change_plan(
     )
     assert after is not None
     assert after.version == before_version, "план не изменён без подтверждения участника"
+
+
+def test_ai06_analytics_plan_restricts_the_request() -> None:
+    """AI-06: модель получает ограниченный план запроса, а не произвольный SQL.
+
+    Прежняя ссылка вела на проверку другого контракта (G-30): здесь проверяется
+    сам план — перечень инструментов, запрет посторонних полей и строгая схема.
+    """
+    import json as json_module
+
+    import pydantic
+    import pytest as pytest_module
+
+    from fintracker.infra.ai.schemas import AnalyticsPlan, json_schema_for
+
+    plan = AnalyticsPlan.model_validate_json(
+        json_module.dumps({"schema_version": "1.0", "tool": "get_spending"})
+    )
+    assert plan.tool == "get_spending"
+
+    with pytest_module.raises(pydantic.ValidationError):
+        AnalyticsPlan.model_validate_json(
+            json_module.dumps({"schema_version": "1.0", "tool": "get_spending", "sql": "SELECT 1"})
+        )
+    with pytest_module.raises(pydantic.ValidationError):
+        AnalyticsPlan.model_validate_json(
+            json_module.dumps({"schema_version": "1.0", "tool": "drop_table"})
+        )
+
+    schema = json_schema_for(AnalyticsPlan)
+    assert schema["additionalProperties"] is False
+    assert set(schema["properties"]) == set(schema["required"])
+    tools = schema["properties"]["tool"]["enum"]
+    assert "get_spending" in tools and all("sql" not in item for item in tools)

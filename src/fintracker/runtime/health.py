@@ -14,7 +14,7 @@ from typing import Any
 from sqlalchemy import text
 
 from fintracker.config import Settings
-from fintracker.db.session import RuntimeRole, get_sessionmaker
+from fintracker.db.session import RuntimeRole, get_sessionmaker, session_scope
 
 
 @dataclass(frozen=True, slots=True)
@@ -130,3 +130,109 @@ def _writable_backends(settings: Settings) -> tuple[bool, str | None]:
         except Exception as exc:
             return False, f"{name} недоступно: {type(exc).__name__}"
     return True, None
+
+
+@dataclass(frozen=True, slots=True)
+class OperationalMetrics:
+    """Наблюдаемые показатели работы (NFR-13, OPS-02).
+
+    Собираются из собственного состояния: возраст очереди, незавершённые
+    доставки, неисполненные попытки AI и давность обслуживания. Оповещение по
+    порогам выполняет система мониторинга выбранной среды (BL-04).
+    """
+
+    queue_oldest_seconds: float
+    queue_failed: int
+    delivery_oldest_seconds: float
+    delivery_unfinished: int
+    ai_reservations_open: int
+    retention_last_seconds: float | None
+    schema_revision: str | None
+
+    def to_payload(self) -> dict[str, Any]:
+        return {
+            "queue_oldest_seconds": round(self.queue_oldest_seconds, 3),
+            "queue_failed": self.queue_failed,
+            "delivery_oldest_seconds": round(self.delivery_oldest_seconds, 3),
+            "delivery_unfinished": self.delivery_unfinished,
+            "ai_reservations_open": self.ai_reservations_open,
+            "retention_last_seconds": (
+                round(self.retention_last_seconds, 3)
+                if self.retention_last_seconds is not None
+                else None
+            ),
+            "schema_revision": self.schema_revision,
+        }
+
+
+async def collect_metrics(settings: Settings) -> OperationalMetrics:
+    """Снять операционные показатели одной короткой транзакцией (NFR-13)."""
+    from sqlalchemy import func, select
+
+    from fintracker.db.models.platform import AICostReservation, Job, NotificationDelivery
+
+    async with session_scope(settings, RuntimeRole.WORKER) as session:
+        now = (await session.execute(text("SELECT now()"))).scalar_one()
+        queue_oldest = (
+            await session.execute(
+                select(func.min(Job.available_at)).where(
+                    Job.state.in_(("queued", "retry_wait")), Job.available_at <= now
+                )
+            )
+        ).scalar_one_or_none()
+        queue_failed = int(
+            (
+                await session.execute(
+                    select(func.count()).select_from(Job).where(Job.state == "failed")
+                )
+            ).scalar_one()
+        )
+        delivery_oldest = (
+            await session.execute(
+                select(func.min(NotificationDelivery.available_at)).where(
+                    NotificationDelivery.state.in_(("pending", "failed")),
+                    NotificationDelivery.available_at <= now,
+                )
+            )
+        ).scalar_one_or_none()
+        delivery_unfinished = int(
+            (
+                await session.execute(
+                    select(func.count())
+                    .select_from(NotificationDelivery)
+                    .where(NotificationDelivery.state.in_(("pending", "failed")))
+                )
+            ).scalar_one()
+        )
+        reservations = int(
+            (
+                await session.execute(
+                    select(func.count())
+                    .select_from(AICostReservation)
+                    .where(AICostReservation.state == "reserved")
+                )
+            ).scalar_one()
+        )
+        retention_last = (
+            await session.execute(
+                select(func.max(Job.updated_at)).where(
+                    Job.job_type == "retention_sweep", Job.state == "succeeded"
+                )
+            )
+        ).scalar_one_or_none()
+        schema_revision = (
+            await session.execute(text("SELECT version_num FROM alembic_version"))
+        ).scalar_one_or_none()
+
+    def age(value: Any) -> float:
+        return (now - value).total_seconds() if value is not None else 0.0
+
+    return OperationalMetrics(
+        queue_oldest_seconds=age(queue_oldest),
+        queue_failed=queue_failed,
+        delivery_oldest_seconds=age(delivery_oldest),
+        delivery_unfinished=delivery_unfinished,
+        ai_reservations_open=reservations,
+        retention_last_seconds=age(retention_last) if retention_last is not None else None,
+        schema_revision=schema_revision,
+    )

@@ -3043,7 +3043,7 @@
     - src/fintracker/application/conversation/analytics_flow.py
     - src/fintracker/infra/ai/schemas.py
   verification:
-    - tests/integration/test_recommendations.py::test_ai08_card_without_metric_reference_is_rejected
+    - tests/integration/test_ai_contract.py::test_ai06_analytics_plan_restricts_the_request
   evidence:
     - .planning/evidence/latest.json
 
@@ -3521,13 +3521,11 @@
   title: "Корпус AI на выбранном профиле: сырая ошибка, уточнение, ошибочная автозапись, инструкция в заметке, недоступность провайдера"
   source: docs/ARCHITECTURE_REVIEW.md
   stage: P0
-  status: verified
+  status: blocked
+  blocker: "BL-01: корпус на выбранном профиле требует ключа OpenAI; локально проверено только разделение стадий ошибок"
   implementation:
   verification:
-    - tests/integration/test_ai_contract.py::test_ar36_error_stages_are_separated
   evidence:
-    - .planning/evidence/latest.json
-
 - id: B1
   title: "Остаток и будущий платёж"
   source: docs/ACCEPTANCE.md
@@ -5900,14 +5898,14 @@
   title: "Мониторинг перечисленных метрик"
   source: docs/TZ.md §23
   stage: P0
-  status: verified
+  status: implemented
+  blocker: "BL-04: пороговые оповещения и хранение рядов метрик даёт среда размещения"
   implementation:
-    - src/fintracker/application/platform/queue.py
+    - src/fintracker/runtime/health.py
   verification:
-    - tests/integration/test_ops_scenarios.py::test_a112_logs_do_not_contain_secrets
+    - tests/integration/test_release_and_runtime.py::test_nfr13_operational_metrics_are_collected
   evidence:
     - .planning/evidence/latest.json
-
 - id: NFR-14
   title: "Деградация при недоступности AI"
   source: docs/TZ.md §23

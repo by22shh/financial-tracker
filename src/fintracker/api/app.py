@@ -53,6 +53,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         report = await check_readiness(app.state.settings)
         return JSONResponse(status_code=200 if report.ready else 503, content=report.to_payload())
 
+    @app.get("/health/metrics", tags=["operations"])
+    async def metrics() -> JSONResponse:
+        """Операционные показатели: возраст очереди, доставки, попытки AI (NFR-13)."""
+        from fintracker.runtime.health import collect_metrics
+
+        report = await collect_metrics(app.state.settings)
+        return JSONResponse(status_code=200, content=report.to_payload())
+
     from fintracker.api.routes import register_routes
 
     register_routes(app)
