@@ -518,22 +518,28 @@ def build_forecast(
 
     remaining_days = max(0, (status.end_inclusive - today).days)
 
-    if coverage == "incomplete":
-        limitations.append("полнота учёта не подтверждена")
+    # Темп считается только по подтверждённому покрытию: календарные дни без
+    # подтверждения не являются наблюдениями (FR-41, B8, G-12).
+    confirmed = coverage == "confirmed_complete"
+    if not confirmed:
+        limitations.append("полнота учёта не подтверждена: темп не рассчитывается")
     if observed_days < 7:
         limitations.append("менее семи наблюдаемых дней: темп не рассчитывается")
-    elif remaining_days > 0:
+    elif confirmed and remaining_days > 0:
         daily = flexible_fact_minor / observed_days
         flexible = int(daily * remaining_days)
         method = "fact_plus_commitments_plus_pace"
         limitations.append("оценка при сохранении темпа")
 
     total = status.total_fact_minor + commitments + (flexible or 0)
+    # Числовой итог выдаётся только на подтверждённой основе: иначе показаны
+    # факт, план и обязательства без прогноза (FR-41, B8, G-12).
+    numeric = confirmed and (observed_days >= 7 or remaining_days == 0)
     return Forecast(
         fact_minor=status.total_fact_minor,
         commitments_minor=commitments,
         flexible_forecast_minor=flexible,
-        total_minor=total if observed_days >= 7 or remaining_days == 0 else None,
+        total_minor=total if numeric else None,
         method=method,
         limitations=tuple(limitations) or ("ограничений нет",),
     )

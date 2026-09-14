@@ -177,6 +177,31 @@ async def accept_reconciliation(
         raise NotFound("Сверка недоступна")
     if row.status == "accepted":
         return row
+    if row.is_stale:
+        raise ConflictError(
+            "Основа сверки изменилась: повторите сверку остатка",
+            details={"reconciliation_id": str(reconciliation_id)},
+        )
+    # Основа могла измениться между предпросмотром и подтверждением: остаток
+    # пересчитывается под блокировкой строки (FR-71, RV04, G-11).
+    current = await computed_balance(
+        session,
+        workspace_id=workspace_id,
+        account_id=row.account_id,
+        cutoff_date=row.cutoff_date,
+    )
+    if current != row.computed_minor:
+        row.is_stale = True
+        row.computed_minor = current
+        row.difference_minor = row.observed_minor - current
+        await session.flush()
+        raise ConflictError(
+            "Остаток счёта изменился после предпросмотра сверки: подтвердите заново",
+            details={
+                "reconciliation_id": str(reconciliation_id),
+                "computed_minor": current,
+            },
+        )
     if adjust and row.difference_minor != 0:
         if not reason:
             raise ValidationFailed("Для корректировки нужна причина")

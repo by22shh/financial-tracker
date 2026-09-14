@@ -529,6 +529,64 @@ async def _guard_linked_refunds(
             },
         )
 
+    # Возврат оформлен по конкретной части покупки: эту часть нельзя уменьшить
+    # ниже уже возвращённой суммы, даже сохранив общий итог (FR-29, G-10).
+    if new_spec is None:
+        return
+    per_line: dict[uuid.UUID | None, int] = {}
+    for link in refunds:
+        key = link.source_stable_line_id
+        per_line[key] = per_line.get(key, 0) + link.amount_minor
+    proposed = {
+        allocation.stable_line_id: allocation.amount.minor for allocation in new_spec.allocations
+    }
+    for line_id, refunded in per_line.items():
+        if line_id is None:
+            continue
+        available = proposed.get(line_id, 0)
+        if refunded > available:
+            raise ConflictError(
+                "По части покупки уже оформлен возврат на большую сумму: "
+                "сначала согласуйте изменение связанных записей",
+                details={
+                    "stable_line_id": str(line_id),
+                    "refunded_minor": refunded,
+                    "proposed_amount_minor": available,
+                },
+            )
+
+
+async def _guard_linked_settlements(
+    session: AsyncSession, *, workspace_id: uuid.UUID, transaction_id: uuid.UUID
+) -> None:
+    """Нельзя отменить покупку, по которой уже получено возмещение (FR-30, G-08)."""
+    from fintracker.db.models.ledger import Receivable
+
+    receivables = (
+        (
+            await session.execute(
+                select(Receivable).where(
+                    Receivable.workspace_id == workspace_id,
+                    Receivable.origin_transaction_id == transaction_id,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    collected = [row for row in receivables if row.outstanding_minor < row.original_minor]
+    if collected:
+        raise ConflictError(
+            "По этой покупке уже получено возмещение: сначала отмените возмещение "
+            "или согласуйте изменение связанных записей",
+            details={
+                "receivables": [str(row.id) for row in collected],
+                "collected_minor": sum(
+                    row.original_minor - row.outstanding_minor for row in collected
+                ),
+            },
+        )
+
 
 async def revise_transaction(
     session: AsyncSession,
@@ -647,6 +705,128 @@ async def revise_transaction(
     )
 
 
+async def _sync_dependent_state(
+    session: AsyncSession, *, workspace_id: uuid.UUID, transaction_id: uuid.UUID, active: bool
+) -> None:
+    """Согласовать покрытие требований и обязательств с состоянием операции.
+
+    Отмена возмещения снова открывает долг, отмена связанной оплаты возвращает
+    ожидаемый платёж в план; восстановление применяет покрытие заново
+    (FR-30, FR-46, G-07, G-09).
+    """
+    from fintracker.db.models.commitments import Occurrence, OccurrenceSettlement
+    from fintracker.db.models.ledger import Receivable, ReceivableEntry
+
+    entries = (
+        (
+            await session.execute(
+                select(ReceivableEntry)
+                .join(
+                    FinancialEffect,
+                    (FinancialEffect.id == ReceivableEntry.effect_id)
+                    & (FinancialEffect.workspace_id == ReceivableEntry.workspace_id),
+                )
+                .where(
+                    ReceivableEntry.workspace_id == workspace_id,
+                    FinancialEffect.transaction_id == transaction_id,
+                    ReceivableEntry.kind == "settlement",
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for entry in entries:
+        receivable = (
+            await session.execute(
+                select(Receivable)
+                .where(
+                    Receivable.workspace_id == workspace_id,
+                    Receivable.id == entry.receivable_id,
+                )
+                .with_for_update()
+            )
+        ).scalar_one_or_none()
+        if receivable is None:
+            continue
+        # change_minor у погашения отрицателен: отмена возвращает его обратно.
+        delta = -entry.change_minor if not active else entry.change_minor
+        outstanding = receivable.outstanding_minor + delta
+        if outstanding < 0 or outstanding > receivable.original_minor:
+            raise ConflictError(
+                "Восстановление возмещения не помещается в остаток требования",
+                details={"receivable_id": str(receivable.id)},
+            )
+        receivable.outstanding_minor = outstanding
+        receivable.status = "settled" if outstanding == 0 else "open"
+        receivable.version += 1
+
+    settlements = (
+        (
+            await session.execute(
+                select(OccurrenceSettlement).where(
+                    OccurrenceSettlement.workspace_id == workspace_id,
+                    OccurrenceSettlement.transaction_id == transaction_id,
+                    OccurrenceSettlement.status == ("active" if not active else "cancelled"),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for settlement in settlements:
+        occurrence = (
+            await session.execute(
+                select(Occurrence)
+                .where(
+                    Occurrence.workspace_id == workspace_id,
+                    Occurrence.id == settlement.occurrence_id,
+                )
+                .with_for_update()
+            )
+        ).scalar_one_or_none()
+        if occurrence is None:
+            continue
+        from fintracker.domain.schedule import OccurrenceState
+
+        delta_minor = settlement.amount_minor if active else -settlement.amount_minor
+        settled = occurrence.settled_minor + delta_minor
+        if settled < 0:
+            settled = 0
+        if occurrence.expected_minor is not None and settled > occurrence.expected_minor:
+            raise ConflictError(
+                "Восстановление оплаты превышает ожидаемую сумму платежа",
+                details={"occurrence_id": str(occurrence.id)},
+            )
+        occurrence.settled_minor = settled
+        occurrence.state = OccurrenceState(
+            expected_minor=occurrence.expected_minor,
+            settled_minor=settled,
+            due_date=occurrence.due_date,
+        ).next_state()
+        occurrence.version += 1
+        settlement.status = "active" if active else "cancelled"
+    await session.flush()
+
+
+async def _invalidate_reconciliations(
+    session: AsyncSession, *, workspace_id: uuid.UUID, spec: TransactionSpec
+) -> None:
+    """Денежное изменение делает принятую сверку требующей проверки (RV04, G-11)."""
+    from fintracker.application.analytics.coverage import mark_stale_reconciliations
+
+    for leg in spec.cash_legs:
+        if leg.account_id is None:
+            continue
+        await mark_stale_reconciliations(
+            session,
+            workspace_id=workspace_id,
+            account_id=leg.account_id,
+            changed_date=spec.occurred_date,
+            money_changed=True,
+        )
+
+
 async def void_transaction(
     session: AsyncSession,
     uow: UnitOfWork,
@@ -675,6 +855,9 @@ async def void_transaction(
     await _guard_linked_refunds(
         session, workspace_id=workspace_id, transaction_id=transaction_id, new_spec=None
     )
+    await _guard_linked_settlements(
+        session, workspace_id=workspace_id, transaction_id=transaction_id
+    )
 
     revision_number = current.revision + 1
     await _write_revision(
@@ -702,6 +885,11 @@ async def void_transaction(
     await _sync_links_with_status(
         session, workspace_id=workspace_id, transaction_id=transaction_id, active=False
     )
+    # Возмещения и оплаты обязательств возвращаются в открытое состояние.
+    await _sync_dependent_state(
+        session, workspace_id=workspace_id, transaction_id=transaction_id, active=False
+    )
+    await _invalidate_reconciliations(session, workspace_id=workspace_id, spec=spec)
     await session.flush()
 
     await uow.bump_revisions(workspace_id, data=True)

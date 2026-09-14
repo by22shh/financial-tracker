@@ -267,32 +267,50 @@ async def handle_open_next_period(settings: Settings, job: LeasedJob) -> None:
         if isinstance(raw_local_date, str):
             today = max(today, dt.date.fromisoformat(raw_local_date))
 
-        before = (
-            await session.execute(
-                select(BudgetPeriod)
-                .where(BudgetPeriod.workspace_id == workspace_id)
-                .order_by(BudgetPeriod.start_date.desc())
-                .limit(1)
-            )
-        ).scalar_one_or_none()
+        await ensure_periods(session, workspace_id=workspace_id, until_date=today)
 
-        created = await ensure_periods(session, workspace_id=workspace_id, until_date=today)
-        if not created:
+        # Полная инициализация периода не зависит от того, кто первым создал
+        # его строку: чтение бюджета материализует календарь, поэтому задача
+        # доводит до конца все периоды без плана (FR-92, FR-93, G-05).
+        periods = (
+            (
+                await session.execute(
+                    select(BudgetPeriod)
+                    .where(
+                        BudgetPeriod.workspace_id == workspace_id,
+                        BudgetPeriod.start_date <= today,
+                    )
+                    .order_by(BudgetPeriod.start_date)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        pending: list[BudgetPeriod] = []
+        for row in periods:
+            plan = await current_budget_version(
+                session, workspace_id=workspace_id, period_id=row.id
+            )
+            closing = row.end_exclusive <= today and row.state != "ended"
+            if plan is None or closing:
+                pending.append(row)
+        if not pending:
             return
 
-        # Закрыть прежние периоды и сформировать переносы.
-        previous = before
-        for materialized in created:
-            period = (
-                await session.execute(
-                    select(BudgetPeriod).where(
-                        BudgetPeriod.workspace_id == workspace_id,
-                        BudgetPeriod.id == materialized.id,
-                    )
-                )
-            ).scalar_one()
+        created = pending
+        # Предшественник берётся по календарю, а не по тому, что было до вызова.
+        by_start = {row.start_date: row for row in periods}
+        starts = sorted(by_start)
+        previous: BudgetPeriod | None = None
+        for period in pending:
+            index = starts.index(period.start_date)
+            previous = by_start[starts[index - 1]] if index > 0 else None
             await apply_plan_for_period(session, uow, workspace_id=workspace_id, period=period)
-            if previous is not None and previous.state != "ended":
+            if (
+                previous is not None
+                and previous.state != "ended"
+                and previous.end_exclusive <= today
+            ):
                 previous.state = "ended"
                 # Календарное закрытие не подтверждает полноту истории (FR-39).
                 previous.closed_at = dt.datetime.now(dt.UTC)
@@ -348,7 +366,6 @@ async def handle_open_next_period(settings: Settings, job: LeasedJob) -> None:
                     "end_inclusive": (period.end_exclusive - dt.timedelta(days=1)).isoformat(),
                 },
             )
-            previous = period
 
         await uow.bump_revisions(workspace_id, calendar=True, plan=True)
         logger.info(
