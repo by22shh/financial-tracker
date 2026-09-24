@@ -224,7 +224,7 @@ async def test_a138_generation_failure_gives_numeric_summary(
     assert outcome.fallback_used
     assert outcome.recommendations == ()
     assert "Учтённые расходы" in outcome.summary
-    assert "Рекомендации не сформированы" in outcome.summary
+    assert "Рекомендации пока не сформированы" in outcome.summary
 
 
 async def test_a93_no_ai_key_keeps_report(
@@ -523,7 +523,7 @@ def test_fallback_summary_marks_incomplete_coverage() -> None:
     }
     summary = fallback_summary(snapshot, "RUB")
     assert "Полнота учёта не подтверждена" in summary
-    assert "Учтённые расходы: 5 000,00 ₽" in summary
+    assert "Учтённые расходы: 5 000 ₽" in summary
 
 
 async def test_a131_alternative_effect_names_conditions_and_horizon(

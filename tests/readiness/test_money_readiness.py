@@ -150,4 +150,4 @@ async def test_incomplete_calendar_days_are_not_observed_forecast_days(owner_ses
     await owner_session.commit()
     replies = await report_view(test_settings, actor=fixture.actor, workspace=fixture.workspace)
     text = replies[0].text
-    assert "Числовой прогноз не строится" in text, text
+    assert "Прогноз появится" in text, text

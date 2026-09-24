@@ -13,7 +13,7 @@ from typing import Any
 
 import httpx
 
-from fintracker.application.ingestion.accept_update import accept_telegram_update
+from fintracker.application.ingestion.accept_update import accept_telegram_update, callback_ack
 from fintracker.config import Settings
 from fintracker.core.logging import get_logger
 
@@ -54,4 +54,12 @@ async def run_polling(settings: Settings, *, stop_event: asyncio.Event | None = 
             for item in body.get("result", []):
                 await accept_telegram_update(settings, item)
                 offset = int(item["update_id"]) + 1
+                ack = callback_ack(item)
+                if ack is not None:
+                    # В режиме опроса нажатие подтверждается отдельным вызовом.
+                    with contextlib.suppress(httpx.HTTPError):
+                        await client.post(
+                            f"https://api.telegram.org/bot{token}/answerCallbackQuery",
+                            json={"callback_query_id": ack["callback_query_id"]},
+                        )
     logger.info("polling_stopped")

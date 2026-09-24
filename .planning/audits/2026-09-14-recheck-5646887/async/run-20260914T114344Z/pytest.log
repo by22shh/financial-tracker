@@ -1,0 +1,70 @@
+FFFFFF..                                                                 [100%]
+=================================== FAILURES ===================================
+_______ test_notification_rechecks_authority_after_render[expired_lease] _______
+tests/integration/test_async_recheck.py:68: in test_notification_rechecks_authority_after_render
+    assert sender.sent == [], f"Financial notification sent after {invalidation}: {sender.sent}"
+E   AssertionError: Financial notification sent after expired_lease: [{'chat_id': 493932572, 'text': 'Тестовый бюджет\nДобавлена категория: Продукты', 'buttons': None}]
+E   assert [{'buttons': ...я: Продукты'}] == []
+E     
+E     Left contains one more item: {'buttons': None, 'chat_id': 493932572, 'text': 'Тестовый бюджет\nДобавлена категория: Продукты'}
+E     Use -v to get more diff
+----------------------------- Captured stdout call -----------------------------
+2026-09-14 18:43:46 [warning  ] delivery_lease_lost            job_id=a9bf5d44-c439-4c70-93c2-820d5d56b10b
+______ test_notification_rechecks_authority_after_render[security_fence] _______
+tests/integration/test_async_recheck.py:68: in test_notification_rechecks_authority_after_render
+    assert sender.sent == [], f"Financial notification sent after {invalidation}: {sender.sent}"
+E   AssertionError: Financial notification sent after security_fence: [{'chat_id': 448901191, 'text': 'Тестовый бюджет\nДобавлена категория: Продукты', 'buttons': None}]
+E   assert [{'buttons': ...я: Продукты'}] == []
+E     
+E     Left contains one more item: {'buttons': None, 'chat_id': 448901191, 'text': 'Тестовый бюджет\nДобавлена категория: Продукты'}
+E     Use -v to get more diff
+----------------------------- Captured stdout call -----------------------------
+2026-09-14 18:43:47 [info     ] delivery_paused_by_access_change quarantined=False workspace_id=403c3e0f-a2c5-477f-a2b2-511044f44e63
+________ test_notification_rechecks_authority_after_render[quarantined] ________
+tests/integration/test_async_recheck.py:68: in test_notification_rechecks_authority_after_render
+    assert sender.sent == [], f"Financial notification sent after {invalidation}: {sender.sent}"
+E   AssertionError: Financial notification sent after quarantined: [{'chat_id': 214674499, 'text': 'Тестовый бюджет\nДобавлена категория: Продукты', 'buttons': None}]
+E   assert [{'buttons': ...я: Продукты'}] == []
+E     
+E     Left contains one more item: {'buttons': None, 'chat_id': 214674499, 'text': 'Тестовый бюджет\nДобавлена категория: Продукты'}
+E     Use -v to get more diff
+----------------------------- Captured stdout call -----------------------------
+2026-09-14 18:43:47 [info     ] delivery_paused_by_access_change quarantined=True workspace_id=c4dcafd1-a19d-4993-a6f8-4c2fcf3b8b79
+_____ test_paused_notification_remains_runnable_after_security_gate_clears _____
+tests/integration/test_async_recheck.py:83: in test_paused_notification_remains_runnable_after_security_gate_clears
+    assert runnable, f"Pending notification stranded after temporary ACL fence: {states}"
+E   AssertionError: Pending notification stranded after temporary ACL fence: [('9dd5e817-4582-4457-868d-cb1505036868', 'succeeded')]
+E   assert []
+----------------------------- Captured stdout call -----------------------------
+2026-09-14 18:43:47 [info     ] delivery_paused_by_access_change quarantined=False workspace_id=d0f48fb2-848b-4d1c-b4f6-66a8c9f0766e
+________ test_older_security_journal_does_not_confirm_current_database _________
+tests/integration/test_async_recheck.py:104: in test_older_security_journal_does_not_confirm_current_database
+    assert workspace.quarantined, f"Access open: DB revision {workspace.acl_revision}, journal revision {old.proposed_acl_revision}"
+E   AssertionError: Access open: DB revision 3, journal revision 2
+E   assert False
+E    +  where False = <fintracker.db.models.access.Workspace object at 0x10ea6d350>.quarantined
+----------------------------- Captured stdout call -----------------------------
+2026-09-14 18:43:47 [info     ] security_change_completed      acl_revision=2 kind=workspace_create operation_id=dcc42403-465f-48eb-8c85-ef070a4f38fb
+2026-09-14 18:43:47 [info     ] security_change_completed      acl_revision=3 kind=member_join operation_id=8f43124e-f31f-405a-b05e-51abc33c1e5a
+2026-09-14 18:43:47 [info     ] access_reconciled              checked=1 pending_operations=0
+________ test_published_recommendation_is_not_current_after_new_expense ________
+tests/integration/test_async_recheck.py:122: in test_published_recommendation_is_not_current_after_new_expense
+    assert "Расходы на рестораны растут быстрее плана" not in text, f"Old recommendation presented as current after a real posted expense: {text}; proposed={len(proposed)}"
+E   AssertionError: Old recommendation presented as current after a real posted expense: Расходы на рестораны растут быстрее плана
+E     Эффект не рассчитан: Цена альтернативы неизвестна
+E     Условия: Известны четыре доставки по 900 ₽; proposed=1
+E   assert 'Расходы на ...ыстрее плана' not in 'Расходы на ...вки по 900 ₽'
+E     
+E     'Расходы на рестора...астут быстрее плана' is contained here:
+E       Расходы на рестораны растут быстрее плана
+E       Эффект не рассчитан: Цена альтернативы неизвестна
+E       Условия: Известны четыре доставки по 900 ₽
+- generated xml file: /Users/Bayramov_N/Desktop/Other/financial-tracker/.planning/audits/2026-09-14-recheck-5646887/async/run-20260914T114344Z/junit.xml -
+=========================== short test summary info ============================
+FAILED tests/integration/test_async_recheck.py::test_notification_rechecks_authority_after_render[expired_lease]
+FAILED tests/integration/test_async_recheck.py::test_notification_rechecks_authority_after_render[security_fence]
+FAILED tests/integration/test_async_recheck.py::test_notification_rechecks_authority_after_render[quarantined]
+FAILED tests/integration/test_async_recheck.py::test_paused_notification_remains_runnable_after_security_gate_clears
+FAILED tests/integration/test_async_recheck.py::test_older_security_journal_does_not_confirm_current_database
+FAILED tests/integration/test_async_recheck.py::test_published_recommendation_is_not_current_after_new_expense
+6 failed, 2 passed in 5.55s

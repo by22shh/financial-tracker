@@ -17,9 +17,9 @@ async def test_a09_hypothetical_does_not_create_expense(bot: None, test_settings
     user = make_user(test_settings, 910001)
     await create_budget(user, categories="Рестораны, Продукты")
     await user.send("Если завтра потрачу 3000 на ресторан, что останется?")
-    assert "расход не записан" in user.text()
+    assert "ничего не записано" in user.text().lower()
     await user.send("/budget")
-    assert "Учтённые расходы: 0,00 ₽" in user.text()
+    assert "Учтённые расходы: 0 ₽" in user.text()
 
 
 async def test_a10_negated_purchase_is_not_recorded(bot: None, test_settings: Settings) -> None:
@@ -27,9 +27,9 @@ async def test_a10_negated_purchase_is_not_recorded(bot: None, test_settings: Se
     user = make_user(test_settings, 910002)
     await create_budget(user)
     await user.send("Хотел купить за 5000, но передумал")
-    assert "не состоялась" in user.text()
+    assert "покупки не было" in user.text()
     await user.send("/budget")
-    assert "Учтённые расходы: 0,00 ₽" in user.text()
+    assert "Учтённые расходы: 0 ₽" in user.text()
 
 
 async def test_a11_question_returns_report_not_expense(bot: None, test_settings: Settings) -> None:
@@ -41,7 +41,7 @@ async def test_a11_question_returns_report_not_expense(bot: None, test_settings:
     assert "Период:" in text
     assert "10 сентября — 9 октября" in text
     await user.send("/budget")
-    assert "Учтённые расходы: 0,00 ₽" in user.text()
+    assert "Учтённые расходы: 0 ₽" in user.text()
 
 
 async def test_a12_limit_change_requires_confirmation(bot: None, test_settings: Settings) -> None:
@@ -49,9 +49,9 @@ async def test_a12_limit_change_requires_confirmation(bot: None, test_settings: 
     user = make_user(test_settings, 910004)
     await create_budget(user, categories="Рестораны", limits="Рестораны = 5000")
     await user.send("Поставь лимит на рестораны 8000")
-    assert "подтверждения" in user.text()
+    assert "Лимиты меняются" in user.text()
     await user.send("/categories")
-    assert "5 000,00 ₽" in user.text(), "старый лимит сохранён"
+    assert "5 000 ₽" in user.text(), "старый лимит сохранён"
 
 
 async def test_a15_autopost_disabled_shows_confirmation(bot: None, test_settings: Settings) -> None:
@@ -72,7 +72,7 @@ async def test_a06_missing_amount_asks_without_inventing(
     await user.send("Купил продукты")
     text = user.text()
     assert "сумма" in text.lower()
-    assert "сумма неизвестна" in text
+    assert "сумма не указана" in text
 
 
 async def test_a04_two_expenses_create_batch(bot: None, test_settings: Settings) -> None:
@@ -82,12 +82,12 @@ async def test_a04_two_expenses_create_batch(bot: None, test_settings: Settings)
     await user.send("Вчера бензин 3000, сегодня продукты 1800")
     text = user.text()
     assert "1." in text and "2." in text
-    assert "3 000,00 ₽" in text
-    assert "1 800,00 ₽" in text
+    assert "3 000 ₽" in text
+    assert "1 800 ₽" in text
     await user.press(user.button_data("Записать"))
-    assert "Записано операций: 2" in user.text()
+    assert "Записано: 2 траты" in user.text()
     await user.send("/budget")
-    assert "Учтённые расходы: 4 800,00 ₽" in user.text()
+    assert "Учтённые расходы: 4 800 ₽" in user.text()
 
 
 async def test_a05_incomplete_batch_stays_draft(bot: None, test_settings: Settings) -> None:
@@ -96,7 +96,7 @@ async def test_a05_incomplete_batch_stays_draft(bot: None, test_settings: Settin
     await create_budget(user, categories="Транспорт, Продукты")
     await user.send("Купил продукты, вчера бензин 3000")
     await user.send("/budget")
-    assert "Учтённые расходы: 0,00 ₽" in user.text(), "нет частичного сохранения"
+    assert "Учтённые расходы: 0 ₽" in user.text(), "нет частичного сохранения"
 
 
 async def test_a21_long_voice_rejected_before_paid_processing(
@@ -128,7 +128,7 @@ async def test_voice_without_asr_keeps_draft_not_zero_expense(
     text = user.text()
     assert "не подключено" in text or "Голос сохранён" in text
     await user.send("/budget")
-    assert "Учтённые расходы: 0,00 ₽" in user.text()
+    assert "Учтённые расходы: 0 ₽" in user.text()
 
 
 async def test_photo_without_ai_degrades_to_manual(bot: None, test_settings: Settings) -> None:
@@ -136,11 +136,11 @@ async def test_photo_without_ai_degrades_to_manual(bot: None, test_settings: Set
     user = make_user(test_settings, 910012)
     await create_budget(user, categories="Продукты")
     await user.send_photo(caption="чек из магазина")
-    assert "учёт продолжает работать" in user.text()
+    assert "Чтобы записать расход сейчас" in user.text()
     assert user.has_button("Ручной ввод")
 
     await user.send("1200 | Продукты | сегодня | ужин")
-    assert "Записано 1 200,00 ₽" in user.text()
+    assert "Расход записан · 1 200 ₽" in user.text()
 
 
 async def test_no_budget_selected_blocks_recording(bot: None, test_settings: Settings) -> None:

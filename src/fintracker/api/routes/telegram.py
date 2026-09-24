@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Header, Request, Response, status
+from fastapi.responses import JSONResponse
 
 from fintracker.core.errors import Unauthenticated, ValidationFailed
 
@@ -23,7 +24,10 @@ async def telegram_webhook(
 
     Распознавание не выполняется внутри ожидания webhook (TECH-01).
     """
-    from fintracker.application.ingestion.accept_update import accept_telegram_update
+    from fintracker.application.ingestion.accept_update import (
+        accept_telegram_update,
+        callback_ack,
+    )
 
     settings = request.app.state.settings
     expected = settings.telegram.webhook_secret.get_secret_value()
@@ -41,4 +45,9 @@ async def telegram_webhook(
         raise ValidationFailed("Некорректное тело обновления") from exc
 
     await accept_telegram_update(settings, payload)
+    ack = callback_ack(payload)
+    if ack is not None:
+        # Нажатие кнопки подтверждается сразу в ответе webhook: индикатор
+        # загрузки на кнопке гаснет, пока worker готовит ответ (Bot API).
+        return JSONResponse(status_code=status.HTTP_200_OK, content=ack)
     return Response(status_code=status.HTTP_200_OK)

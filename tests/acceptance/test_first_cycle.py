@@ -22,7 +22,7 @@ async def test_a141_new_user_sees_create_and_join(bot: None, test_settings: Sett
     await user.send("/start")
     assert "Добро пожаловать" in user.text()
     assert user.has_button("Создать бюджет")
-    assert user.has_button("Присоединиться по коду")
+    assert user.has_button("Войти по коду")
     # Доступа к чужим бюджетам нет.
     assert "Мои бюджеты" not in user.text()
 
@@ -32,10 +32,10 @@ async def test_a142_create_budget_from_scratch(bot: None, test_settings: Setting
     user = make_user(test_settings, 900002)
     text = await create_budget(user, name="Личный бюджет")
     assert "Личный бюджет" in text
-    assert "Постоянный ID:" in text
-    assert "Ваша роль: администратор" in text
-    assert "Текущий период: 2026-09-10 — 2026-10-09" in text
-    assert "Следующий период начнётся 2026-10-10" in text
+    assert "ID" not in text, "служебный идентификатор не показывается"
+    assert "Вы — администратор бюджета" in text
+    assert "Текущий период: 10 сентября 2026 — 9 октября 2026" in text
+    assert "Следующий период начнётся 10 октября 2026" in text
 
 
 async def test_a143_publish_is_idempotent(bot: None, test_settings: Settings) -> None:
@@ -53,7 +53,7 @@ async def test_a144_income_plan_does_not_create_money(bot: None, test_settings: 
     await create_budget(user, income="100000")
     await user.send("/budget")
     body = user.text()
-    assert "Учтённые расходы: 0,00 ₽" in body
+    assert "Учтённые расходы: 0 ₽" in body
 
 
 async def test_first_expense_and_card(bot: None, test_settings: Settings) -> None:
@@ -64,7 +64,7 @@ async def test_first_expense_and_card(bot: None, test_settings: Settings) -> Non
     assert "Проверьте запись перед сохранением" in user.text()
     await user.press(user.button_data("Записать"))
     card = user.text()
-    assert "Записано 250,00 ₽" in card
+    assert "Расход записан · 250 ₽" in card
     assert user.has_button("Отменить запись")
 
 
@@ -82,16 +82,16 @@ async def test_a158_shared_visibility_counts_once(
 
     await admin.send("ресторан 650")
     await admin.press(admin.button_data("Записать"))
-    assert "Записано 650,00 ₽" in admin.text()
+    assert "Расход записан · 650 ₽" in admin.text()
 
     # Участник видит ту же операцию в общем журнале.
     await member.send("/history")
-    assert "650,00 ₽" in member.text()
+    assert "650 ₽" in member.text()
 
     await admin.send("/budget")
-    assert "Учтённые расходы: 650,00 ₽" in admin.text()
+    assert "Учтённые расходы: 650 ₽" in admin.text()
     await member.send("/budget")
-    assert "Учтённые расходы: 650,00 ₽" in member.text()
+    assert "Учтённые расходы: 650 ₽" in member.text()
 
 
 async def test_a163_member_corrects_admin_record(bot: None, test_settings: Settings) -> None:
@@ -106,15 +106,15 @@ async def test_a163_member_corrects_admin_record(bot: None, test_settings: Setti
     await admin.press(admin.button_data("Записать"))
 
     await member.send("Исправь 1200 на 1100")
-    assert "Изменение записи" in member.text()
-    assert "1 200,00 ₽ → 1 100,00 ₽" in member.text()
+    assert "Изменить запись?" in member.text()
+    assert "1 200 ₽ → 1 100 ₽" in member.text()
     await member.press(member.button_data("Подтвердить"))
-    assert "Записано 1 100,00 ₽" in member.text()
+    assert "🧾 Расход · 1 100 ₽" in member.text()
 
     # Общий расход равен 1100 у обоих.
     for participant in (admin, member):
         await participant.send("/budget")
-        assert "Учтённые расходы: 1 100,00 ₽" in participant.text()
+        assert "Учтённые расходы: 1 100 ₽" in participant.text()
 
 
 async def test_a152_joined_member_sees_history_before_join(
@@ -130,7 +130,7 @@ async def test_a152_joined_member_sees_history_before_join(
     member = make_user(test_settings, 900031)
     await member.send(f"/join {code}")
     await member.send("/history")
-    assert "500,00 ₽" in member.text()
+    assert "500 ₽" in member.text()
 
 
 async def test_a153_invalid_code_reveals_nothing(bot: None, test_settings: Settings) -> None:
@@ -148,12 +148,16 @@ async def test_a153_invalid_code_reveals_nothing(bot: None, test_settings: Setti
 async def test_a151_budget_id_is_not_an_invite(bot: None, test_settings: Settings) -> None:
     """A151: постоянный ID бюджета не работает как код приглашения."""
     admin = make_user(test_settings, 900050)
-    text = await create_budget(admin, name="Общий")
-    budget_id = next(
-        line.split(":", 1)[1].strip()
-        for line in text.splitlines()
-        if line.startswith("Постоянный ID:")
-    )
+    await create_budget(admin, name="Общий")
+    from sqlalchemy import select
+
+    from fintracker.core.ids import short_id
+    from fintracker.db.models.access import Workspace
+    from fintracker.db.session import RuntimeRole, session_scope
+
+    async with session_scope(test_settings, RuntimeRole.OWNER) as session:
+        workspace_id = (await session.execute(select(Workspace.id))).scalar_one()
+    budget_id = short_id(workspace_id)
     outsider = make_user(test_settings, 900051)
     await outsider.send(f"/join {budget_id}")
     assert "Общий" not in outsider.text()

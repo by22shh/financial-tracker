@@ -376,6 +376,15 @@ async def test_quiet_hours_saved_in_personal_timezone(owner_session: AsyncSessio
     )
     assert (prefs.quiet_hours_start, prefs.quiet_hours_end) == (23, 8)
     assert prefs.timezone == "Europe/Moscow"
+    with pytest.raises(ConflictError):
+        await set_quiet_hours(
+            owner_session,
+            user_id=fixture.user.id,
+            workspace_id=fixture.workspace.id,
+            start_hour=22,
+            end_hour=9,
+            expected_version=prefs.version + 5,
+        )
     with pytest.raises(ValidationFailed):
         await set_quiet_hours(
             owner_session,
@@ -399,6 +408,14 @@ async def test_input_preferences_are_per_member(owner_session: AsyncSession) -> 
     )
     assert membership.autopost_enabled is True
     assert membership.large_amount_threshold_minor == 500_000
+
+    membership = await set_input_preferences(
+        owner_session,
+        actor=fixture.actor,
+        clear_large_amount_threshold=True,
+        expected_version=membership.version,
+    )
+    assert membership.large_amount_threshold_minor is None
 
     other = (
         await owner_session.execute(

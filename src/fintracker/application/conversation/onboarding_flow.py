@@ -9,7 +9,8 @@ from typing import Any
 
 from sqlalchemy import select
 
-from fintracker.application.conversation.keyboards import Button, callback
+from fintracker.application.conversation import onboarding_limits
+from fintracker.application.conversation.keyboards import Button, callback, start_menu
 from fintracker.application.conversation.types import IncomingMessage, Reply
 from fintracker.application.identity.invites import accept_invite, preview_invite
 from fintracker.application.onboarding.wizard import (
@@ -27,6 +28,7 @@ from fintracker.config import Settings
 from fintracker.core.calendar import (
     CalendarError,
     PeriodPolicy,
+    RepeatMode,
     infer_policy_options,
     validate_timezone,
 )
@@ -37,7 +39,7 @@ from fintracker.db.session import RuntimeRole, session_scope
 from fintracker.domain.parsing.amounts import parse_amounts
 from fintracker.domain.parsing.dates import resolve_date_expression
 
-DEFAULT_TIMEZONE = "Asia/Novosibirsk"
+DEFAULT_TIMEZONE = "Europe/Moscow"
 DEFAULT_CURRENCY = "RUB"
 
 # Общий шаблон категорий предлагается, но не навязывается (FR-84).
@@ -55,6 +57,21 @@ COMMON_CATEGORY_TEMPLATE: tuple[str, ...] = (
 )
 
 
+def _income_period_label(state: WizardState) -> tuple[str, bool]:
+    """Return the visible income basis and whether it is a monthly amount."""
+    monthly = state.repeat_mode is RepeatMode.CALENDAR_MONTHS and state.repeat_interval == 1
+    if monthly:
+        return "за месяц", True
+    if state.start_date is not None and state.end_inclusive is not None:
+        return (
+            "за первый период "
+            f"{state.start_date.strftime('%d.%m.%Y')} — "
+            f"{state.end_inclusive.strftime('%d.%m.%Y')}",
+            False,
+        )
+    return "за первый период", False
+
+
 async def has_active_wizard(settings: Settings, *, user_id: uuid.UUID) -> bool:
     async with session_scope(settings, RuntimeRole.API, user_id=user_id) as session:
         row = (
@@ -69,24 +86,107 @@ async def has_active_wizard(settings: Settings, *, user_id: uuid.UUID) -> bool:
         return row is not None
 
 
-async def start_wizard(settings: Settings, *, user_id: uuid.UUID) -> list[Reply]:
-    """Начать или продолжить настройку бюджета."""
+async def wizard_help(settings: Settings, *, user_id: uuid.UUID) -> list[Reply] | None:
+    """Show instructions and valid input for the participant's current step."""
     async with session_scope(settings, RuntimeRole.API, user_id=user_id) as session:
+        draft = (
+            await session.execute(
+                select(BudgetSetupDraft)
+                .where(
+                    BudgetSetupDraft.owner_user_id == user_id,
+                    BudgetSetupDraft.state == "draft",
+                )
+                .order_by(BudgetSetupDraft.created_at.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if draft is None or draft.step == WizardStep.DONE.value:
+            return None
+        step = WizardStep(draft.step)
+        state = WizardState.from_payload(dict(draft.payload))
+    replies = _prompt_for(step, state)
+    return [
+        Reply(
+            text="❔ Помощь по текущему шагу\n\n"
+            + reply.text
+            + "\n\n/cancel — отменить настройку.",
+            buttons=reply.buttons,
+            retry_input=reply.retry_input,
+        )
+        for reply in replies
+    ]
+
+
+async def cancel_wizard(settings: Settings, *, user_id: uuid.UUID) -> bool:
+    """Stop setup without touching any published budget or its transactions."""
+    async with session_scope(settings, RuntimeRole.API, user_id=user_id) as session:
+        rows = (
+            (
+                await session.execute(
+                    select(BudgetSetupDraft)
+                    .where(
+                        BudgetSetupDraft.owner_user_id == user_id,
+                        BudgetSetupDraft.state == "draft",
+                    )
+                    .with_for_update()
+                )
+            )
+            .scalars()
+            .all()
+        )
+        for draft in rows:
+            draft.state = "cancelled"
+            draft.version += 1
+        return bool(rows)
+
+
+async def start_wizard(settings: Settings, *, user_id: uuid.UUID) -> list[Reply]:
+    """Start a new setup, offering a choice if one already exists."""
+    async with session_scope(settings, RuntimeRole.API, user_id=user_id) as session:
+        existing = (
+            await session.execute(
+                select(BudgetSetupDraft)
+                .where(
+                    BudgetSetupDraft.owner_user_id == user_id,
+                    BudgetSetupDraft.state == "draft",
+                )
+                .order_by(BudgetSetupDraft.created_at.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if existing is not None:
+            return [
+                Reply(
+                    text=(
+                        "📒 У вас есть незавершённая настройка\n\n"
+                        "Продолжите её или начните заново. При новом старте прежняя "
+                        "настройка будет отменена. Опубликованные бюджеты не изменятся."
+                    ),
+                    buttons=(
+                        (Button("▶️ Продолжить настройку", callback("wiz", "resume")),),
+                        (
+                            Button(
+                                "🔄 Начать заново", callback("wiz", "restart", existing.id.hex[:16])
+                            ),
+                        ),
+                    ),
+                )
+            ]
         draft, state = await get_or_create_draft(session, owner_user_id=user_id)
         step = WizardStep(draft.step)
     return _prompt_for(step, state)
 
 
 async def start_join_flow(settings: Settings, *, user_id: uuid.UUID) -> list[Reply]:
-    async with session_scope(settings, RuntimeRole.API, user_id=user_id) as session:
-        draft, state = await get_or_create_draft(session, owner_user_id=user_id)
-        await save_draft(session, draft, state, step=WizardStep.NAME)
-        draft.state = "cancelled"
+    # Незавершённая настройка своего бюджета при этом сохраняется: код
+    # распознаётся по виду и не попадает в шаг мастера.
+    del settings, user_id
     return [
         Reply(
             text=(
-                "Введите код приглашения от администратора бюджета.\n"
-                "Код состоит из 12 символов и может быть записан группами по четыре."
+                "🔑 Войти в общий бюджет\n\nОтправьте сюда код приглашения, который "
+                "прислал администратор бюджета. Например: ABCD-EFGH-JKMN.\n\n"
+                "Если вам прислали ссылку — просто откройте её."
             )
         )
     ]
@@ -113,16 +213,24 @@ async def submit_join_code(
             settings, user=user, raw_code=raw_code, code_digest=code_digest
         )
     except DomainError as exc:
-        return [Reply(text=exc.message)]
+        return [
+            Reply(
+                text=(
+                    f"⚠️ {exc.message}\n\nПроверьте код или попросите у администратора "
+                    "новый — у приглашения есть срок действия."
+                ),
+                buttons=start_menu(returning=False),
+            )
+        ]
 
     if preview.already_member:
         return [
             Reply(
-                text=f"Вы уже участник бюджета «{preview.workspace_name}».",
+                text=f"ℹ️ Вы уже участник бюджета «{preview.workspace_name}».",
                 buttons=(
                     (
                         Button(
-                            "Открыть бюджет",
+                            "📒 Открыть бюджет",
                             callback("ws", "use", preview.workspace_id.hex[:16]),
                         ),
                     ),
@@ -143,31 +251,97 @@ async def submit_join_code(
         from fintracker.application.identity.actor import set_active_workspace
 
         await set_active_workspace(session, user=user, workspace_id=result.workspace_id)
+    from fintracker.application.identity.profile import ensure_member_profile
+
+    await ensure_member_profile(
+        settings, user_id=user_id, workspace_id=result.workspace_id, name=message.display_name
+    )
     return [
         Reply(
             text=(
-                f"Вы присоединились к бюджету «{result.workspace_name}».\n"
-                "Ваши записи в этом бюджете будут видны всем участникам, "
-                "а вам доступна вся общая история."
+                f"🤝 Вы присоединились к бюджету «{result.workspace_name}»!\n\n"
+                "Вам видна общая история, а ваши записи увидят остальные участники.\n\n"
+                "Чтобы записать трату, просто напишите её: «кофе 250»."
             ),
             buttons=(
                 (
-                    Button("Открыть бюджет", callback("menu", "budget")),
-                    Button("Добавить трату", callback("menu", "add")),
+                    Button("📒 Открыть бюджет", callback("menu", "budget")),
+                    Button("➕ Добавить трату", callback("menu", "add")),
                 ),
             ),
         )
     ]
 
 
+# Повторение периода — часть шага «Период»: номер шага не перескакивает,
+# если готовый цикл выбран кнопкой.
+_VISIBLE_STEPS = tuple(step for step in STEP_ORDER if step is not WizardStep.PERIOD_REPEAT)
+
+
+def _wizard_progress(step: WizardStep) -> str:
+    if step not in STEP_ORDER:
+        return ""
+    shown = WizardStep.PERIOD_DATES if step is WizardStep.PERIOD_REPEAT else step
+    return f"Шаг {_VISIBLE_STEPS.index(shown) + 1} из {len(_VISIBLE_STEPS)}"
+
+
+def _days_word(count: int) -> str:
+    from fintracker.application.conversation.views import plural
+
+    return plural(count, "день", "дня", "дней")
+
+
+def _categories_word(count: int) -> str:
+    from fintracker.application.conversation.views import plural
+
+    return plural(count, "категорию", "категории", "категорий")
+
+
+def _local_today(state: WizardState) -> dt.date:
+    """Сегодня в выбранном часовом поясе, а не по часам сервера."""
+    from zoneinfo import ZoneInfo
+
+    return dt.datetime.now(ZoneInfo(state.timezone or DEFAULT_TIMEZONE)).date()
+
+
+def _date(value: dt.date) -> str:
+    from fintracker.application.delivery.render import format_date
+
+    return format_date(value, with_year=True)
+
+
 def _prompt_for(step: WizardStep, state: WizardState) -> list[Reply]:
+    """Render one consistent wizard screen with progress and safe navigation."""
+    replies = _prompt_body(step, state)
+    if step not in STEP_ORDER:
+        return replies
+    progress = _wizard_progress(step)
+    result: list[Reply] = []
+    for reply in replies:
+        buttons = list(reply.buttons)
+        if step is not WizardStep.NAME:
+            buttons.append((Button("← Назад", callback("wiz", "back", step.value)),))
+        result.append(
+            Reply(
+                text=f"{progress}\n\n{reply.text}",
+                buttons=tuple(buttons),
+                transaction_id=reply.transaction_id,
+                immediate=reply.immediate,
+                retry_input=reply.retry_input,
+            )
+        )
+    return result
+
+
+def _prompt_body(step: WizardStep, state: WizardState) -> list[Reply]:
     match step:
         case WizardStep.NAME:
             return [
                 Reply(
                     text=(
-                        "Создаём бюджет. Как его назвать?\n"
-                        "Например: «Наш общий бюджет» или «Личный»."
+                        "📒 Давайте создадим бюджет\n\nКак его назвать?\nНапример: «Наш "
+                        "общий бюджет» или «Личный».\n\n✍️ Отправьте название одним "
+                        "сообщением."
                     )
                 )
             ]
@@ -175,16 +349,19 @@ def _prompt_for(step: WizardStep, state: WizardState) -> list[Reply]:
             return [
                 Reply(
                     text=(
-                        "В какой валюте вести учёт? Укажите код, например RUB.\n"
-                        "Валюту заполненного бюджета менять нельзя, поэтому её нужно "
-                        "подтвердить сейчас."
+                        "💱 Валюта бюджета\n\nВ какой валюте вести учёт? Выберите кнопкой "
+                        "или отправьте код, например KZT. Позже валюту поменять нельзя.\n\n"
+                        "⚡ Не хотите настраивать всё сейчас? «Быстрый старт» создаст бюджет "
+                        "в рублях на календарный месяц с готовыми категориями — всё можно "
+                        "поменять на последнем шаге."
                     ),
                     buttons=(
                         (
-                            Button("RUB", callback("wiz", "cur", "RUB")),
-                            Button("USD", callback("wiz", "cur", "USD")),
-                            Button("EUR", callback("wiz", "cur", "EUR")),
+                            Button("₽ RUB", callback("wiz", "cur", "RUB")),
+                            Button("$ USD", callback("wiz", "cur", "USD")),
+                            Button("€ EUR", callback("wiz", "cur", "EUR")),
                         ),
+                        (Button("⚡ Быстрый старт", callback("wiz", "quick")),),
                     ),
                 )
             ]
@@ -192,47 +369,94 @@ def _prompt_for(step: WizardStep, state: WizardState) -> list[Reply]:
             return [
                 Reply(
                     text=(
-                        "Какой часовой пояс использовать для дат?\n"
-                        f"Предлагается {DEFAULT_TIMEZONE}. Можно ввести другой в формате "
-                        "IANA, например Europe/Moscow."
+                        "🌍 Часовой пояс\n\nОт него зависят даты трат и время напоминаний. "
+                        "Выберите ближайший город."
                     ),
-                    buttons=((Button(DEFAULT_TIMEZONE, callback("wiz", "tz", "default")),),),
+                    buttons=(
+                        (
+                            Button("Москва · UTC+3", callback("wiz", "tz", "msk")),
+                            Button("Екатеринбург · UTC+5", callback("wiz", "tz", "ekb")),
+                        ),
+                        (
+                            Button("Новосибирск · UTC+7", callback("wiz", "tz", "nsk")),
+                            Button("UTC", callback("wiz", "tz", "utc")),
+                        ),
+                        (Button("Другой часовой пояс", callback("wiz", "tz", "custom")),),
+                    ),
                 )
             ]
         case WizardStep.PERIOD_DATES:
             return [
                 Reply(
                     text=(
-                        "Выберите даты первого периода в формате ДД.ММ.ГГГГ — ДД.ММ.ГГГГ.\n"
-                        "Например: 10.09.2026 — 09.10.2026. Обе даты включаются в период."
-                    )
+                        "📅 Период бюджета\n\nНа какой срок планировать лимиты? Новый период "
+                        "будет начинаться автоматически.\n\n«С 10-го по 9-е» удобно, если "
+                        "зарплата приходит 10-го числа."
+                    ),
+                    buttons=(
+                        (
+                            Button("Календарный месяц", callback("wiz", "period", "month")),
+                            Button("Неделя", callback("wiz", "period", "week")),
+                        ),
+                        (Button("С 10-го по 9-е", callback("wiz", "period", "10to9")),),
+                        (Button("Свои даты", callback("wiz", "period", "custom")),),
+                    ),
                 )
             ]
         case WizardStep.PERIOD_REPEAT:
             options = _repeat_options(state)
-            lines = ["Как повторять период?"]
+            lines = [
+                (
+                    "🔁 Повторение бюджета\n\nКак повторять периоды? Ниже видно, когда "
+                    "начнётся следующий.\n"
+                )
+            ]
             buttons: list[tuple[Button, ...]] = []
             for index, option in enumerate(options):
                 preview = option.preview(2)
                 lines.append(
-                    f"{index + 1}. {option.describe()} → далее "
-                    f"{preview[1].start.isoformat()} — {preview[1].end_inclusive.isoformat()}"
+                    f"{index + 1}. {option.describe()} → следующий "
+                    f"{_date(preview[1].start)} — {_date(preview[1].end_inclusive)}"
                 )
                 buttons.append((Button(option.describe(), callback("wiz", "rep", str(index))),))
             return [Reply(text="\n".join(lines), buttons=tuple(buttons))]
         case WizardStep.INCOME:
+            income_label, _ = _income_period_label(state)
+            if state.income_precision in {"exact", "estimate"}:
+                exact = state.income_precision == "exact"
+                heading = "🎯 Выбран точный план" if exact else "≈ Выбрана примерная оценка"
+                switch_label = "≈ Сделать примерным" if exact else "🎯 Сделать точным"
+                switch_value = "estimate" if exact else "exact"
+                currency = state.currency or DEFAULT_CURRENCY
+                return [
+                    Reply(
+                        text=(
+                            f"{heading}\n\n"
+                            f"✍️ Отправьте сумму дохода {income_label} в {currency}.\n"
+                            "Например: 120000\n\n"
+                            "Это только план — с ним бот сравнит лимиты. Сами поступления "
+                            "записываются сообщением, например «зарплата 120000»."
+                        ),
+                        buttons=(
+                            (Button(switch_label, callback("wiz", "inc", switch_value)),),
+                            (Button("Укажу позже →", callback("wiz", "inc", "later")),),
+                        ),
+                    )
+                ]
             return [
                 Reply(
                     text=(
-                        "Какой доход планируется? Укажите сумму и выберите тип оценки.\n"
-                        "План дохода не является фактом поступления и не увеличивает счёт."
+                        "💰 Планируемый доход\n\n"
+                        f"Сколько вы ожидаете получить {income_label}? Бот сравнит доход с "
+                        "лимитами и предупредит, если планируете потратить больше.\n\n"
+                        "Сначала выберите, точная это сумма или примерная. Можно пропустить."
                     ),
                     buttons=(
                         (
-                            Button("Точный план", callback("wiz", "inc", "exact")),
-                            Button("Примерная оценка", callback("wiz", "inc", "estimate")),
+                            Button("🎯 Точный план", callback("wiz", "inc", "exact")),
+                            Button("≈ Примерная оценка", callback("wiz", "inc", "estimate")),
                         ),
-                        (Button("Укажу позже", callback("wiz", "inc", "later")),),
+                        (Button("Укажу позже →", callback("wiz", "inc", "later")),),
                     ),
                 )
             ]
@@ -240,60 +464,57 @@ def _prompt_for(step: WizardStep, state: WizardState) -> list[Reply]:
             return [
                 Reply(
                     text=(
-                        "Категории: перечислите свои через запятую либо возьмите общий "
-                        "шаблон.\nИмена чужих бюджетов не навязываются."
+                        "🗂 Категории расходов\n\nНа что обычно уходят деньги? Перечислите"
+                        " категории через запятую.\n\nНапример: Продукты, Кафе, "
+                        "Транспорт, Жильё\n\nМожно взять готовый шаблон или начать с "
+                        "нуля. Категории легко изменить позже."
                     ),
                     buttons=(
                         (
-                            Button("Общий шаблон", callback("wiz", "cats", "template")),
-                            Button("С нуля", callback("wiz", "cats", "empty")),
+                            Button("🗂 Готовый шаблон", callback("wiz", "cats", "template")),
+                            Button("➕ С нуля", callback("wiz", "cats", "empty")),
                         ),
                     ),
                 )
             ]
         case WizardStep.LIMITS:
-            names = ", ".join(item.name for item in state.categories) or "нет категорий"
-            return [
-                Reply(
-                    text=(
-                        f"Задайте лимиты строками «Категория = сумма».\nКатегории: {names}.\n"
-                        "Нулевой лимит отличается от незаданного: пропустите строку, "
-                        "если лимит пока не нужен."
-                    ),
-                    buttons=((Button("Пропустить", callback("wiz", "skip", "limits")),),),
-                )
-            ]
+            return [onboarding_limits.prompt(state)]
         case WizardStep.COMMITMENTS:
             return [
                 Reply(
                     text=(
-                        "Плановые траты: «Название = сумма = ДД.ММ».\n"
-                        "Это будущие обязательства, а не совершённые покупки."
+                        "🗓 Регулярные платежи\n\nАренда, интернет, подписки — бот напомнит о "
+                        "сроке и запишет оплату одним нажатием.\n\nПроще добавить их потом в "
+                        "разделе «Платежи». Если хотите сейчас — отправьте по одному в строке:\n"
+                        "Интернет = 900 = 20.09"
                     ),
-                    buttons=((Button("Пропустить", callback("wiz", "skip", "commitments")),),),
+                    buttons=(
+                        (Button("Настроить позже →", callback("wiz", "skip", "commitments")),),
+                    ),
                 )
             ]
         case WizardStep.GOALS:
             return [
                 Reply(
                     text=(
-                        "Цели накоплений: «Название = целевая сумма».\n"
-                        "Выделение денег на цель не является покупкой."
+                        "🎯 На что будем копить?\n\nЦели удобнее добавить потом в разделе "
+                        "«Цели». Если хотите сейчас — отправьте по одной в строке:\n"
+                        "Отпуск = 100000"
                     ),
-                    buttons=((Button("Пропустить", callback("wiz", "skip", "goals")),),),
+                    buttons=((Button("Настроить позже →", callback("wiz", "skip", "goals")),),),
                 )
             ]
         case WizardStep.TEMPLATE:
             return [
                 Reply(
                     text=(
-                        "Повторять утверждённый шаблон плана в следующих периодах?\n"
-                        "Копируются лимиты и правила, но не расходы, факт дохода и "
-                        "прогресс целей."
+                        "🔁 Повторять лимиты каждый период?\n\nВ новом периоде будут те же "
+                        "лимиты — не придётся настраивать их заново. Траты и доходы, "
+                        "конечно, начнутся с нуля."
                     ),
                     buttons=(
                         (
-                            Button("Повторять", callback("wiz", "tpl", "on")),
+                            Button("🔁 Повторять", callback("wiz", "tpl", "on")),
                             Button("Не повторять", callback("wiz", "tpl", "off")),
                         ),
                     ),
@@ -302,7 +523,7 @@ def _prompt_for(step: WizardStep, state: WizardState) -> list[Reply]:
         case WizardStep.REVIEW:
             return [_review_reply(state)]
         case _:
-            return [Reply(text="Настройка завершена.")]
+            return [Reply(text="✅ Настройка завершена\n\nМожно переходить к учёту расходов.")]
 
 
 def _repeat_options(state: WizardState) -> list[PeriodPolicy]:
@@ -315,52 +536,103 @@ def _review_reply(state: WizardState) -> Reply:
     """Предпросмотр и явный показ дефицита (FR-84, FR-62)."""
     currency = state.currency or DEFAULT_CURRENCY
     funding = check_funding(state)
+    from fintracker.application.conversation.sections import timezone_label
+
     lines = [
+        "📋 Проверьте настройки",
+        "",
         f"Бюджет: {state.name}",
-        f"Валюта: {currency} · Пояс: {state.timezone}",
+        f"Валюта: {currency}",
+        f"Часовой пояс: {timezone_label(state.timezone or DEFAULT_TIMEZONE)}",
+        "",
     ]
     if state.start_date and state.end_inclusive:
+        days = (state.end_inclusive - state.start_date).days + 1
         lines.append(
-            f"Период: {state.start_date.isoformat()} — {state.end_inclusive.isoformat()} "
-            f"({(state.end_inclusive - state.start_date).days + 1} дн.)"
+            f"📅 Первый период: {_date(state.start_date)} — {_date(state.end_inclusive)} "
+            f"({days} {_days_word(days)})"
         )
     upcoming = preview_periods(state)
     if upcoming:
-        lines.append("Далее:")
-        lines.extend(
-            f"       {item.start.isoformat()} — {item.end_inclusive.isoformat()}"
-            for item in upcoming
+        lines.append(
+            "Дальше: "
+            + ", ".join(
+                f"{_date(item.start)} — {_date(item.end_inclusive)}" for item in upcoming[:2]
+            )
         )
+    lines.extend(["", "💰 План"])
     if funding.income_known and funding.income_minor is not None:
-        lines.append(f"План дохода на период: {Money(funding.income_minor, currency).format()}")
+        lines.append(f"Доход: {Money(funding.income_minor, currency).format()}")
     else:
-        lines.append("План дохода на период: не задан (финансирование непроверено)")
-    lines.append(f"Сумма лимитов: {Money(funding.limits_total_minor, currency).format()}")
+        lines.append("Доход: не указан")
+    lines.append(
+        f"Лимиты: {Money(funding.limits_total_minor, currency).format()} "
+        f"на {len(state.categories)} {_categories_word(len(state.categories))}"
+    )
     if funding.deficit_minor:
         lines.append(
-            f"Дефицит: {Money(funding.deficit_minor, currency).format()} — "
-            "нужно подтвердить осознанно или уменьшить лимиты"
+            f"\n⚠️ Лимиты больше дохода на {Money(funding.deficit_minor, currency).format()}\n"
+            "Уменьшите лимиты или подтвердите, что так и задумано."
         )
     lines.append(
-        "Повторять шаблон плана: " + ("включено" if state.repeat_template else "выключено")
+        "🔁 Лимиты каждый период: " + ("повторять" if state.repeat_template else "не повторять")
     )
-    lines.append(f"Категорий: {len(state.categories)}")
+    lines.extend(["", "Всё верно? Нажмите «Создать бюджет» или исправьте нужный пункт."])
 
-    buttons: list[tuple[Button, ...]] = [(Button("Создать бюджет", callback("wiz", "publish")),)]
+    buttons: list[tuple[Button, ...]] = [(Button("➕ Создать бюджет", callback("wiz", "publish")),)]
     if funding.deficit_minor and not state.deficit_accepted:
-        buttons.insert(0, (Button("Принять дефицит осознанно", callback("wiz", "deficit")),))
-    buttons.append((Button("Изменить", callback("wiz", "back")),))
+        buttons.insert(0, (Button("⚠️ Так и задумано", callback("wiz", "deficit")),))
+    buttons.extend(
+        [
+            (
+                Button("✏️ Название", callback("wiz", "edit", "name")),
+                Button("💱 Валюта", callback("wiz", "edit", "currency")),
+            ),
+            (
+                Button("🌍 Часовой пояс", callback("wiz", "edit", "timezone")),
+                Button("📅 Период", callback("wiz", "edit", "period_dates")),
+            ),
+            (
+                Button("💰 Доход", callback("wiz", "edit", "income")),
+                Button("🗂 Категории", callback("wiz", "edit", "categories")),
+            ),
+            (Button("💳 Лимиты", callback("wiz", "edit", "limits")),),
+        ]
+    )
     return Reply(text="\n".join(lines), buttons=tuple(buttons))
 
 
+# Брошенная настройка не перехватывает траты: через полчаса без ответа
+# текст снова разбирается как обычно, а настройку можно продолжить из /start.
+WIZARD_IDLE = dt.timedelta(minutes=30)
+# На этих шагах ответ обычно выбирается кнопкой: фраза «кофе 250» здесь —
+# трата в уже существующий бюджет, а не ответ мастеру.
+_BUTTON_STEPS = frozenset(
+    {
+        WizardStep.CURRENCY,
+        WizardStep.TIMEZONE,
+        WizardStep.PERIOD_REPEAT,
+        WizardStep.INCOME,
+        WizardStep.TEMPLATE,
+        WizardStep.REVIEW,
+    }
+)
+
+
 async def continue_wizard_input(
-    settings: Settings, *, user_id: uuid.UUID, message: IncomingMessage
+    settings: Settings,
+    *,
+    user_id: uuid.UUID,
+    message: IncomingMessage,
+    has_budget: bool = False,
 ) -> list[Reply] | None:
     """Обработать текстовый ответ на шаг мастера.
 
     Возвращает None, если текст не относится к мастеру: новая законченная
     фраза о покупке создаёт отдельный ввод и не затирает настройку (R07).
     """
+    from fintracker.application.conversation.guards import looks_like_new_entry
+
     text = (message.text or "").strip()
     if not text:
         return None
@@ -369,6 +641,11 @@ async def continue_wizard_input(
         step = WizardStep(draft.step)
         if step is WizardStep.DONE:
             return None
+        if has_budget:
+            idle = dt.datetime.now(dt.UTC) - draft.updated_at > WIZARD_IDLE
+            income_amount = step is WizardStep.INCOME and state.income_precision is not None
+            if idle or (step in _BUTTON_STEPS and not income_amount and looks_like_new_entry(text)):
+                return None
         next_step, replies = _apply_input(step, state, text)
         if next_step is None:
             return replies
@@ -382,15 +659,15 @@ def _apply_input(
     match step:
         case WizardStep.NAME:
             state.name = text[:120]
-            return WizardStep.CURRENCY, None
+            return _after_review_edit(state, WizardStep.NAME, WizardStep.CURRENCY), None
         case WizardStep.CURRENCY:
             try:
                 state.currency = normalize_currency(text)
             except MoneyError:
                 return None, [
-                    Reply(text="Не узнал валюту. Укажите трёхбуквенный код, например RUB.")
+                    Reply(text="⚠️ Не узнал валюту.\n\nУкажите трёхбуквенный код, например RUB.")
                 ]
-            return WizardStep.TIMEZONE, None
+            return _after_review_edit(state, WizardStep.CURRENCY, WizardStep.TIMEZONE), None
         case WizardStep.TIMEZONE:
             try:
                 state.timezone = validate_timezone(text)
@@ -398,26 +675,26 @@ def _apply_input(
                 return None, [
                     Reply(
                         text=(
-                            "Не узнал часовой пояс. Введите в формате IANA, "
-                            "например Asia/Novosibirsk."
+                            "⚠️ Не узнал часовой пояс.\n\nВведите международное название, например "
+                            "Asia/Novosibirsk."
                         )
                     )
                 ]
-            return WizardStep.PERIOD_DATES, None
+            return _after_review_edit(state, WizardStep.TIMEZONE, WizardStep.PERIOD_DATES), None
         case WizardStep.PERIOD_DATES:
             parsed = _parse_period_dates(text)
             if parsed is None:
                 return None, [
                     Reply(
                         text=(
-                            "Не удалось разобрать даты. Формат: ДД.ММ.ГГГГ — ДД.ММ.ГГГГ.\n"
-                            "Например: 10.09.2026 — 09.10.2026."
+                            "⚠️ Не удалось разобрать даты.\n\nФормат: ДД.ММ.ГГГГ — "
+                            "ДД.ММ.ГГГГ.\n\nНапример: 10.09.2026 — 09.10.2026."
                         )
                     )
                 ]
             start, end = parsed
             if end < start:
-                return None, [Reply(text="Дата конца раньше даты начала. Повторите ввод.")]
+                return None, [Reply(text="ℹ️ Дата конца раньше даты начала.\n\nПовторите ввод.")]
             state.start_date, state.end_inclusive = start, end
             return WizardStep.PERIOD_REPEAT, None
         case WizardStep.PERIOD_REPEAT:
@@ -425,36 +702,71 @@ def _apply_input(
         case WizardStep.INCOME:
             amounts = parse_amounts(text)
             if not amounts:
-                return None, [Reply(text="Укажите сумму дохода числом либо нажмите «Укажу позже».")]
+                return None, [
+                    Reply(text="✍️ Укажите сумму дохода числом либо нажмите «Укажу позже».")
+                ]
             currency = state.currency or DEFAULT_CURRENCY
-            state.income_monthly_minor = Money.from_decimal(
-                Decimal(amounts[0].value), currency
-            ).minor
+            income_minor = Money.from_decimal(Decimal(amounts[0].value), currency).minor
+            _, monthly = _income_period_label(state)
+            if monthly:
+                state.income_monthly_minor = income_minor
+                state.income_period_minor = None
+            else:
+                state.income_monthly_minor = None
+                state.income_period_minor = income_minor
             state.income_precision = state.income_precision or "estimate"
-            return WizardStep.CATEGORIES, None
+            return _after_review_edit(state, WizardStep.INCOME, WizardStep.CATEGORIES), None
         case WizardStep.CATEGORIES:
             names = [part.strip() for part in text.split(",") if part.strip()]
             if not names:
-                return None, [Reply(text="Перечислите категории через запятую.")]
+                return None, [Reply(text="✍️ Перечислите категории через запятую.")]
             state.categories = [DraftCategory(name=name[:120]) for name in names]
+            state.limit_category = None
+            state.limits_page = 0
+            state.deficit_accepted = False
             return WizardStep.LIMITS, None
         case WizardStep.LIMITS:
+            if state.limit_category is not None:
+                return WizardStep.LIMITS, [onboarding_limits.apply_amount(state, text)]
+            if not any(
+                category.name.casefold() in text.casefold() for category in state.categories
+            ):
+                return None, [
+                    onboarding_limits.prompt(
+                        state, notice="👆 Сначала выберите категорию кнопкой ниже."
+                    )
+                ]
             errors = _apply_limits(state, text)
             if errors:
-                return None, [Reply(text="\n".join(errors))]
-            return WizardStep.COMMITMENTS, None
+                return None, [Reply(text="✍️ Проверьте ввод\n\n" + "\n\n".join(errors))]
+            return _after_review_edit(state, WizardStep.LIMITS, WizardStep.COMMITMENTS), None
         case WizardStep.COMMITMENTS:
             # Введённые обязательства сохраняются и создаются вместе с
             # бюджетом: набранный текст не теряется (FR-84, G-14).
             entries, errors = _parse_planned(text)
             if errors:
-                return None, [Reply(text="\n".join(errors))]
+                return None, [Reply(text="✍️ Проверьте ввод\n\n" + "\n\n".join(errors))]
+            for entry in entries:
+                due = entry.get("due")
+                if due and state.start_date is not None:
+                    parsed_due = resolve_date_expression(
+                        str(due), reference=state.start_date, prefer_future=True
+                    )
+                    if parsed_due is None:
+                        return None, [
+                            Reply(
+                                text=(
+                                    f"⚠️ Не удалось разобрать дату платежа «{entry['name']}».\n\n"
+                                    "Укажите существующую дату в формате ДД.ММ или ДД.ММ.ГГГГ."
+                                ),
+                            )
+                        ]
             state.commitments = entries
             return WizardStep.GOALS, None
         case WizardStep.GOALS:
             entries, errors = _parse_planned(text)
             if errors:
-                return None, [Reply(text="\n".join(errors))]
+                return None, [Reply(text="✍️ Проверьте ввод\n\n" + "\n\n".join(errors))]
             state.goals = entries
             return WizardStep.TEMPLATE, None
         case WizardStep.TEMPLATE:
@@ -464,6 +776,15 @@ def _apply_input(
             return None, [_review_reply(state)]
         case _:
             return None, None
+
+
+def _after_review_edit(
+    state: WizardState, completed: WizardStep, normal_next: WizardStep
+) -> WizardStep:
+    if state.return_to_review_after == completed.value:
+        state.return_to_review_after = None
+        return WizardStep.REVIEW
+    return normal_next
 
 
 def _parse_planned(text: str) -> tuple[list[dict[str, Any]], list[str]]:
@@ -555,41 +876,189 @@ async def apply_wizard_choice(
     settings: Settings, *, user_id: uuid.UUID, action: str, value: str, message: IncomingMessage
 ) -> list[Reply]:
     """Обработать нажатие кнопки мастера."""
+    if action == "start":
+        return await start_wizard(settings, user_id=user_id)
     async with session_scope(settings, RuntimeRole.API, user_id=user_id) as session:
-        draft, state = await get_or_create_draft(session, owner_user_id=user_id)
+        draft = (
+            await session.execute(
+                select(BudgetSetupDraft)
+                .where(
+                    BudgetSetupDraft.owner_user_id == user_id,
+                    BudgetSetupDraft.state == "draft",
+                )
+                .order_by(BudgetSetupDraft.created_at.desc())
+                .limit(1)
+                .with_for_update()
+            )
+        ).scalar_one_or_none()
+        if draft is None:
+            return [
+                Reply(
+                    text=(
+                        "ℹ️ Эта настройка уже завершена или отменена.\n\nМожно создать новый бюджет."
+                    ),
+                    buttons=start_menu(returning=True),
+                )
+            ]
+        if action == "restart":
+            if value != draft.id.hex[:16]:
+                return [Reply(text="🔄 Настройка уже изменилась. Откройте /start заново.")]
+            draft.state = "cancelled"
+            draft.version += 1
+            await session.flush()
+            draft, state = await get_or_create_draft(session, owner_user_id=user_id)
+            return _prompt_for(WizardStep.NAME, state)
+        state = WizardState.from_payload(dict(draft.payload))
         draft_id = draft.id
         step = WizardStep(draft.step)
         next_step: WizardStep | None = None
+        expected_step = {
+            "cur": WizardStep.CURRENCY,
+            "tz": WizardStep.TIMEZONE,
+            "period": WizardStep.PERIOD_DATES,
+            "rep": WizardStep.PERIOD_REPEAT,
+            "tpl": WizardStep.TEMPLATE,
+            "deficit": WizardStep.REVIEW,
+            "publish": WizardStep.REVIEW,
+        }.get(action)
+        if expected_step is not None and step is not expected_step:
+            return _prompt_for(step, state)
+
+        if action in onboarding_limits.ACTIONS:
+            if step is not WizardStep.LIMITS:
+                return _prompt_for(step, state)
+            done = onboarding_limits.choose(state, action=action, value=value)
+            next_step = (
+                _after_review_edit(state, WizardStep.LIMITS, WizardStep.COMMITMENTS)
+                if done
+                else WizardStep.LIMITS
+            )
+            await save_draft(session, draft, state, step=next_step)
+            return _prompt_for(next_step, state)
 
         match action:
-            case "start":
+            case "resume":
                 return _prompt_for(step, state)
+            case "quick":
+                # Быстрый старт: разумные значения и сразу проверка настроек.
+                if step not in {WizardStep.CURRENCY, WizardStep.TIMEZONE, WizardStep.PERIOD_DATES}:
+                    return _prompt_for(step, state)
+                state.currency = state.currency or DEFAULT_CURRENCY
+                state.timezone = state.timezone or DEFAULT_TIMEZONE
+                today = _local_today(state)
+                state.start_date = today.replace(day=1)
+                state.repeat_mode = RepeatMode.CALENDAR_MONTHS
+                state.repeat_interval = 1
+                state.end_inclusive = state.policy().period(0).end_inclusive
+                if not state.categories:
+                    state.categories = [
+                        DraftCategory(name=name) for name in COMMON_CATEGORY_TEMPLATE
+                    ]
+                state.repeat_template = True
+                state.limit_category = None
+                next_step = WizardStep.REVIEW
             case "cur":
                 state.currency = normalize_currency(value)
-                next_step = WizardStep.TIMEZONE
+                next_step = _after_review_edit(state, WizardStep.CURRENCY, WizardStep.TIMEZONE)
             case "tz":
-                state.timezone = DEFAULT_TIMEZONE
-                next_step = WizardStep.PERIOD_DATES
+                timezones = {
+                    "msk": "Europe/Moscow",
+                    "ekb": "Asia/Yekaterinburg",
+                    "nsk": "Asia/Novosibirsk",
+                    "utc": "UTC",
+                    "default": DEFAULT_TIMEZONE,
+                }
+                if value == "custom":
+                    return [
+                        Reply(
+                            text=(
+                                f"{_wizard_progress(WizardStep.TIMEZONE)}\n\n"
+                                "🌍 Другой часовой пояс\n\nОтправьте международное "
+                                "название, например Asia/Irkutsk или Europe/Moscow.\n\n"
+                                "/cancel — отменить настройку."
+                            ),
+                            buttons=((Button("← Назад", callback("wiz", "back", step.value)),),),
+                        )
+                    ]
+                state.timezone = timezones.get(value, DEFAULT_TIMEZONE)
+                next_step = _after_review_edit(state, WizardStep.TIMEZONE, WizardStep.PERIOD_DATES)
+            case "period":
+                if value == "custom":
+                    return [
+                        Reply(
+                            text=(
+                                f"{_wizard_progress(WizardStep.PERIOD_DATES)}\n\n"
+                                "📅 Свой период\n\nОтправьте начало и конец одним сообщением:\n"
+                                "10.09.2026 — 09.10.2026\n\nОбе даты входят в период."
+                            ),
+                            buttons=((Button("← Назад", callback("wiz", "back", step.value)),),),
+                        )
+                    ]
+                today = _local_today(state)
+                if value == "month":
+                    start = today.replace(day=1)
+                    if today.month == 12:
+                        boundary = dt.date(today.year + 1, 1, 1)
+                    else:
+                        boundary = dt.date(today.year, today.month + 1, 1)
+                    state.start_date = start
+                    state.end_inclusive = boundary - dt.timedelta(days=1)
+                    state.repeat_mode = RepeatMode.CALENDAR_MONTHS
+                    state.repeat_interval = 1
+                elif value == "week":
+                    start = today - dt.timedelta(days=today.weekday())
+                    state.start_date = start
+                    state.end_inclusive = start + dt.timedelta(days=6)
+                    state.repeat_mode = RepeatMode.FIXED_DAYS
+                    state.repeat_interval = 7
+                elif value == "10to9":
+                    if today.day >= 10:
+                        start = today.replace(day=10)
+                    else:
+                        previous = today.replace(day=1) - dt.timedelta(days=1)
+                        start = previous.replace(day=10)
+                    state.start_date = start
+                    state.repeat_mode = RepeatMode.CALENDAR_MONTHS
+                    state.repeat_interval = 1
+                    state.end_inclusive = state.policy().period(0).end_inclusive
+                else:
+                    return _prompt_for(step, state)
+                state.income_monthly_minor = None
+                state.income_period_minor = None
+                next_step = WizardStep.INCOME
             case "rep":
                 options = _repeat_options(state)
                 index = int(value) if value.isdigit() else 0
                 if not options or index >= len(options):
-                    return [Reply(text="Сначала выберите даты первого периода.")]
+                    return [Reply(text="✍️ Сначала выберите даты первого периода.")]
                 chosen = options[index]
                 state.repeat_mode = chosen.mode
                 state.repeat_interval = chosen.interval
+                # A previously entered amount belongs to the old cycle basis.
+                # Never reinterpret it silently after the user changes the cycle.
+                state.income_monthly_minor = None
+                state.income_period_minor = None
                 # Конец первого периода приводится в соответствие выбранному
                 # правилу явно, без молчаливой подмены (FR-90, A205).
                 state.end_inclusive = chosen.period(0).end_inclusive
                 next_step = WizardStep.INCOME
             case "inc":
+                # Старые кнопки не возвращают уже пройденный мастер к доходу.
+                if step is not WizardStep.INCOME or value not in {"exact", "estimate", "later"}:
+                    return _prompt_for(step, state)
                 if value == "later":
                     state.income_precision = None
-                    next_step = WizardStep.CATEGORIES
+                    state.income_monthly_minor = None
+                    state.income_period_minor = None
+                    next_step = _after_review_edit(state, WizardStep.INCOME, WizardStep.CATEGORIES)
                 else:
                     state.income_precision = value
                     next_step = WizardStep.INCOME
             case "cats":
+                if step is not WizardStep.CATEGORIES:
+                    return _prompt_for(step, state)
+                state.limit_category = None
+                state.limits_page = 0
                 if value == "template":
                     state.categories = [
                         DraftCategory(name=name) for name in COMMON_CATEGORY_TEMPLATE
@@ -597,8 +1066,11 @@ async def apply_wizard_choice(
                     next_step = WizardStep.LIMITS
                 else:
                     state.categories = []
-                    next_step = WizardStep.LIMITS
+                    next_step = WizardStep.CATEGORIES
             case "skip":
+                if value != step.value:
+                    return _prompt_for(step, state)
+                state.limit_category = None
                 order = list(STEP_ORDER)
                 next_step = order[min(order.index(step) + 1, len(order) - 1)]
             case "tpl":
@@ -609,12 +1081,37 @@ async def apply_wizard_choice(
                 state.deficit_reason = "Принято осознанно при создании бюджета"
                 next_step = WizardStep.REVIEW
             case "back":
+                if value and value != step.value:
+                    return _prompt_for(step, state)
+                state.limit_category = None
                 order = list(STEP_ORDER)
                 next_step = order[max(order.index(step) - 1, 0)]
+            case "edit":
+                if step is not WizardStep.REVIEW:
+                    return _prompt_for(step, state)
+                edit_steps = {
+                    "name": WizardStep.NAME,
+                    "currency": WizardStep.CURRENCY,
+                    "timezone": WizardStep.TIMEZONE,
+                    "period_dates": WizardStep.PERIOD_DATES,
+                    "income": WizardStep.INCOME,
+                    "categories": WizardStep.CATEGORIES,
+                    "limits": WizardStep.LIMITS,
+                }
+                target = edit_steps.get(value)
+                if target is None:
+                    return _prompt_for(step, state)
+                if target is WizardStep.PERIOD_DATES:
+                    state.return_to_review_after = WizardStep.INCOME.value
+                elif target is WizardStep.CATEGORIES:
+                    state.return_to_review_after = WizardStep.LIMITS.value
+                else:
+                    state.return_to_review_after = target.value
+                next_step = target
             case "publish":
                 await save_draft(session, draft, state, step=WizardStep.REVIEW)
             case _:
-                return [Reply(text="Неизвестное действие мастера.")]
+                return [Reply(text="ℹ️ Неизвестное действие мастера.")]
 
         if next_step is not None:
             await save_draft(session, draft, state, step=next_step)
@@ -639,9 +1136,7 @@ async def _publish(
             correlation_id=message.correlation_id or uuid.uuid4().hex,
         )
     except ValidationFailed as exc:
-        return [Reply(text=f"Не удалось создать бюджет: {exc.message}")]
-
-    from fintracker.core.ids import short_id
+        return [Reply(text=f"⚠️ Не удалось создать бюджет: {exc.message}")]
 
     async with session_scope(
         settings, RuntimeRole.API, user_id=user_id, workspace_id=workspace_id
@@ -654,26 +1149,35 @@ async def _publish(
         ).scalar_one()
         periods = await list_periods(session, workspace_id=workspace_id, limit=2)
     current = periods[0] if periods else None
-    lines = [
-        f"Бюджет «{workspace.name}» создан.",
-        f"Постоянный ID: {short_id(workspace_id)}",
-    ]
+    from fintracker.application.identity.profile import ensure_member_profile
+
+    await ensure_member_profile(
+        settings, user_id=user_id, workspace_id=workspace_id, name=message.display_name
+    )
+    lines = [f"🎉 Бюджет «{workspace.name}» создан!", "", "Вы — администратор бюджета."]
     if current:
         lines.append(
-            f"Текущий период: {current.start_date.isoformat()} — "
-            f"{(current.end_exclusive - dt.timedelta(days=1)).isoformat()}"
+            f"Текущий период: {_date(current.start_date)} — "
+            f"{_date(current.end_exclusive - dt.timedelta(days=1))}"
         )
-        lines.append(f"Следующий период начнётся {current.end_exclusive.isoformat()}")
-    lines.append("Ваша роль: администратор")
+        lines.append(f"Следующий период начнётся {_date(current.end_exclusive)}")
+    lines.extend(
+        [
+            "",
+            "✍️ Чтобы записать трату, просто напишите её: «кофе 250» или «вчера такси 450».",
+            "",
+            "Вести бюджет вместе? Нажмите «Пригласить» и перешлите код.",
+        ]
+    )
     return [
         Reply(
             text="\n".join(lines),
             buttons=(
                 (
-                    Button("Добавить трату", callback("menu", "add")),
-                    Button("Пригласить", callback("inv", "new")),
+                    Button("➕ Добавить трату", callback("menu", "add")),
+                    Button("🔗 Пригласить", callback("inv", "new")),
                 ),
-                (Button("Открыть бюджет", callback("menu", "budget")),),
+                (Button("🏠 Меню", callback("menu", "main")),),
             ),
         )
     ]

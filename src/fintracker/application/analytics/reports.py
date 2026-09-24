@@ -12,7 +12,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
-from sqlalchemy import Uuid, case, func, literal, select
+from sqlalchemy import Uuid, case, func, literal, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fintracker.application.planning.plan import PeriodStatus, period_status
@@ -162,7 +162,15 @@ def _apply_transaction_filters(statement: Any, *, filters: FilterSpec) -> Any:
         )
     if filters.note_query:
         pattern = f"%{escape_like(filters.note_query)}%"
-        statement = statement.where(TransactionRevision.note.ilike(pattern, escape="\\"))
+        # Поиск по тексту записи: «/history кофе» находит и описание, и
+        # комментарий, и продавца (FR-07).
+        statement = statement.where(
+            or_(
+                TransactionRevision.note.ilike(pattern, escape="\\"),
+                TransactionRevision.description.ilike(pattern, escape="\\"),
+                TransactionRevision.merchant.ilike(pattern, escape="\\"),
+            )
+        )
     if filters.has_note is True:
         statement = statement.where(TransactionRevision.note.is_not(None))
     if filters.has_note is False:
@@ -238,6 +246,9 @@ async def spending_report(
             category_key.label("category_id"),
             beneficiary_key.label("beneficiary_id"),
             func.sum(signed).label("amount_minor"),
+            func.sum(case((Allocation.category_id.is_(None), signed), else_=0)).label(
+                "uncategorized_minor"
+            ),
             func.count(func.distinct(Allocation.transaction_id)).label("transaction_count"),
             func.count(func.distinct(case((individual, Allocation.transaction_id)))).label(
                 "individual_count"
@@ -344,13 +355,15 @@ async def spending_report(
     legacy_minor = int((await session.execute(legacy_statement)).scalar_one() or 0)
 
     total = 0
-    uncategorized = 0
+    uncategorized = sum(int(row.uncategorized_minor or 0) for row in grouped_rows)
     labels = await _labels(session, workspace_id=workspace.id)
     report_rows = tuple(
         sorted(
             (
                 SpendingRow(
-                    label=_label_for((row.category_id, row.beneficiary_id), labels),
+                    label=_label_for(
+                        (row.category_id, row.beneficiary_id), labels, grouping=group_by
+                    ),
                     category_id=row.category_id,
                     beneficiary_id=row.beneficiary_id,
                     amount_minor=int(row.amount_minor or 0),
@@ -365,8 +378,6 @@ async def spending_report(
     )
     for row in report_rows:
         total += row.amount_minor
-        if row.category_id is None:
-            uncategorized += row.amount_minor
     meta = ReportMeta(
         workspace_id=workspace.id,
         date_from=date_from,
@@ -415,13 +426,22 @@ async def _labels(
 
 
 def _label_for(
-    key: tuple[uuid.UUID | None, uuid.UUID | None], labels: dict[str, dict[uuid.UUID, str]]
+    key: tuple[uuid.UUID | None, uuid.UUID | None],
+    labels: dict[str, dict[uuid.UUID, str]],
+    *,
+    grouping: str = "category",
 ) -> str:
     category_id, beneficiary_id = key
+    if grouping == "beneficiary":
+        return (
+            labels["beneficiaries"].get(beneficiary_id, "Без получателя")
+            if beneficiary_id
+            else "Без получателя"
+        )
     parts: list[str] = []
     if category_id is not None:
         parts.append(labels["categories"].get(category_id, "Без названия"))
-    elif beneficiary_id is None:
+    elif grouping == "none":
         parts.append("Всего")
     else:
         parts.append("Без категории")
@@ -614,11 +634,15 @@ def status_days(status: PeriodStatus) -> int:
     return (status.end_inclusive - status.start_date).days + 1
 
 
-def format_report(report: SpendingReport, *, limit: int = 10) -> str:
+def format_report(
+    report: SpendingReport, *, limit: int = 10, title: str = "📊 Расходы за период"
+) -> str:
     """Ответ содержит период, валюту, полноту и определение показателя."""
     currency = report.meta.currency
     lines = [
+        title,
         f"Период: {report.meta.describe_period()}",
+        "",
         f"Итого: {Money(report.total_minor, currency).format()}",
     ]
     if report.transaction_count:
@@ -629,10 +653,14 @@ def format_report(report: SpendingReport, *, limit: int = 10) -> str:
             "Полная сумма затронутых покупок: "
             f"{Money(report.matched_transaction_total_minor, currency).format()}"
         )
+    if report.rows:
+        lines.extend(["", "🗂 Распределение расходов"])
     for row in report.rows[:limit]:
         lines.append(f"• {row.label}: {Money(row.amount_minor, currency).format()}")
-    if report.uncategorized_minor:
-        lines.append(f"Без категории: {Money(report.uncategorized_minor, currency).format()}")
+    if report.uncategorized_minor and not any(
+        row.label == "Без категории" for row in report.rows[:limit]
+    ):
+        lines.append(f"• Без категории: {Money(report.uncategorized_minor, currency).format()}")
     if report.unclassified_legacy_minor:
         lines.append(
             "Исторические неклассифицированные движения: "
@@ -640,9 +668,9 @@ def format_report(report: SpendingReport, *, limit: int = 10) -> str:
             "в потребление не включены до подтверждённого разделения"
         )
     coverage_label = {
-        "incomplete": "не подтверждена",
-        "reconciled_source": "сверена по доступному источнику",
-        "confirmed_complete": "подтверждена участником",
-    }.get(report.meta.coverage, report.meta.coverage)
-    lines.append(f"Полнота учёта: {coverage_label}")
+        "incomplete": "не подтверждена — часть трат может быть не внесена",
+        "reconciled_source": "сверена с выпиской",
+        "confirmed_complete": "подтверждена",
+    }.get(report.meta.coverage, "не подтверждена")
+    lines.append(f"\nℹ️ Полнота учёта: {coverage_label}")
     return "\n".join(lines)

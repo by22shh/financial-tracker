@@ -1,0 +1,34 @@
+{
+  "release": "ux-polish-20260920-r8",
+  "image": "fintracker:ux-polish-20260920-r8",
+  "source": "releases/ux-polish-20260920-r8",
+  "deployed_at": "2026-09-20T15:12:00Z",
+  "backup": "/opt/fintracker/backups/20260920T151125Z",
+  "schema_revision": "0018_history_query",
+  "readiness": {
+    "ready": true,
+    "database": true,
+    "schema_current": true,
+    "storage_writable": true,
+    "ai": true,
+    "asr": false,
+    "telegram": true
+  },
+  "services": {
+    "api": "healthy",
+    "worker": "healthy",
+    "scheduler": "healthy",
+    "polling": "healthy",
+    "postgres": "healthy"
+  },
+  "verification": {
+    "acceptance_tests": "31 passed",
+    "ruff": "passed",
+    "ruff_format": "passed",
+    "mypy_strict": "passed",
+    "installed_package_files": 160,
+    "package_mismatches": 0,
+    "runtime_log_scan": "clean",
+    "telegram_web": "passed"
+  }
+}

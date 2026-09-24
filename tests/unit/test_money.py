@@ -54,8 +54,11 @@ def test_amount_limit() -> None:
 
 def test_format_groups_digits() -> None:
     """FR-09: числа с разделением разрядов и понятной валютой."""
-    assert Money(4820000, "RUB").format() == "48 200,00 ₽"
-    assert Money(-120000, "RUB").format() == "-1 200,00 ₽"
+    assert Money(4820000, "RUB").format() == "48\xa0200\xa0₽"
+    assert Money(-120000, "RUB").format() == "-1\xa0200\xa0₽"
+    # Дробная часть остаётся, когда она есть, и в выгрузках без символа.
+    assert Money(125050, "RUB").format() == "1\xa0250,50\xa0₽"
+    assert Money(4820000, "RUB").format(with_symbol=False) == "48\xa0200,00"
 
 
 def test_money_sum_of_empty_is_explicit_zero() -> None:

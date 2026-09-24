@@ -81,7 +81,10 @@ def fallback_summary(snapshot: dict[str, object], currency: str) -> str:
     total_fact = int(raw_fact) if isinstance(raw_fact, int) else 0
     total_limit = snapshot.get("total_limit_minor")
     lines = [
+        "📊 Краткая сводка",
+        "",
         f"Период: {period.get('start')} — {period.get('end_inclusive')}",
+        "",
         f"Учтённые расходы: {Money(total_fact, currency).format()}",
     ]
     if isinstance(total_limit, int):
@@ -99,11 +102,11 @@ def fallback_summary(snapshot: dict[str, object], currency: str) -> str:
         and int(item["fact_minor"]) > int(item["limit_minor"])
     ]
     if over:
-        lines.append(f"Превышено статей: {len(over)}")
+        lines.extend(["", f"⚠️ Категорий с перерасходом: {len(over)}"])
     coverage = snapshot.get("coverage")
     if coverage == "incomplete":
-        lines.append("Полнота учёта не подтверждена: выводы ограничены.")
-    lines.append("Рекомендации не сформированы: доступна только числовая сводка.")
+        lines.extend(["", "ℹ️ Полнота учёта не подтверждена: часть трат может быть не внесена."])
+    lines.extend(["", "Рекомендации пока не сформированы. Здесь показаны учтённые суммы."])
     return "\n".join(lines)
 
 

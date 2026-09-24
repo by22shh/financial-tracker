@@ -535,6 +535,9 @@ async def _pending_summary(
     count = len(rows)
     confident = 0
     for fields in rows:
+        if isinstance(fields, dict) and fields.get("kind", "expense") != "expense":
+            # Доход и переводы на уточнении не выглядят как будущий расход.
+            continue
         amount = fields.get("amount_minor") if isinstance(fields, dict) else None
         occurred = fields.get("occurred_date") if isinstance(fields, dict) else None
         if not isinstance(amount, int) or not isinstance(occurred, str):

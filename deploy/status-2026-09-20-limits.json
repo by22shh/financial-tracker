@@ -1,0 +1,62 @@
+{
+  "checked_at": "2026-09-20T06:43:56.183773+00:00",
+  "host": "2.26.231.184",
+  "bot": "https://t.me/budzhet_ai_bot",
+  "image": "fintracker:limit-buttons-20260920",
+  "image_id": "sha256:4a9721884fa009b37e48696a49162016ee5d4552667a4048a7b383056a470fa9",
+  "manifest_sha256": "2dbdeae4584092c4268ef77ad4c94d633976baf443e6de422e42d7dcd1efec2f",
+  "backup": "/opt/fintracker/backups/20260920T064221Z",
+  "services": [
+    {
+      "Service": "api",
+      "State": "running",
+      "Health": "healthy",
+      "Image": "fintracker:limit-buttons-20260920"
+    },
+    {
+      "Service": "polling",
+      "State": "running",
+      "Health": "healthy",
+      "Image": "fintracker:limit-buttons-20260920"
+    },
+    {
+      "Service": "postgres",
+      "State": "running",
+      "Health": "healthy",
+      "Image": "postgres:17-alpine@sha256:f02121de6f74d30d8a94cd1d9584125e2178d7e6c377d8130112d4e52d867995"
+    },
+    {
+      "Service": "scheduler",
+      "State": "running",
+      "Health": "healthy",
+      "Image": "fintracker:limit-buttons-20260920"
+    },
+    {
+      "Service": "worker",
+      "State": "running",
+      "Health": "healthy",
+      "Image": "fintracker:limit-buttons-20260920"
+    }
+  ],
+  "readiness": {
+    "ready": true,
+    "database": true,
+    "schema_current": true,
+    "schema_revision": "0018_history_query",
+    "storage_writable": true,
+    "integrations": {
+      "ai": false,
+      "asr": false,
+      "telegram": true
+    },
+    "detail": null
+  },
+  "package_files_verified": 157,
+  "limit_button_flow_verified": true,
+  "tests": {
+    "passed": 626,
+    "skipped": 6,
+    "scope": "full suite; performance tests opt-in"
+  },
+  "real_user_conversation_tested": false
+}

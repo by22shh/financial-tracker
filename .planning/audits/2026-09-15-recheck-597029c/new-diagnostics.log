@@ -1,0 +1,329 @@
+FFFFFFFFFFFFFFFFFFFFFFF                                                  [100%]
+=================================== FAILURES ===================================
+_ test_history_query_fits_buttons_even_with_category[\u043a\u043e\u043c\u043c\u0435\u043d\u0442\u0430\u0440\u0438\u0439 \u0434\u043b\u044f \u0441\u0435\u043c\u0435\u0439\u043d\u043e\u0433\u043e \u043e\u0442\u043f\u0443\u0441\u043a\u0430] _
+.planning/audits/2026-09-15-recheck-597029c/test_boundaries.py:32: in test_history_query_fits_buttons_even_with_category
+    await user.send("/history " + query)
+tests/acceptance/conftest.py:59: in send
+    self.last_replies = await handle(self.settings, message)
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src/fintracker/application/conversation/service.py:73: in handle
+    return await _route(settings, message)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src/fintracker/application/conversation/service.py:106: in _route
+    return await _handle_command(settings, message, user_id, command)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src/fintracker/application/conversation/service.py:214: in _handle_command
+    return await sections.history_view(
+src/fintracker/application/conversation/sections.py:131: in history_view
+    replies = await journal_view(
+src/fintracker/application/conversation/history_flow.py:158: in journal_view
+    (Button("Фильтры", callback("hist", "filters", *view.parts())),),
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src/fintracker/application/conversation/keyboards.py:21: in callback
+    raise ValueError(f"Слишком длинные данные кнопки: {data}")
+E   ValueError: Слишком длинные данные кнопки: hist:filters:-:o:0:-:комментарий для семейного отпуска
+----------------------------- Captured stdout call -----------------------------
+2026-09-15 00:29:17 [info     ] security_change_completed      acl_revision=2 kind=workspace_create operation_id=06e0e552-882b-4b08-b3aa-e7c0a97ef310
+_ test_history_query_fits_buttons_even_with_category[xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx] _
+.planning/audits/2026-09-15-recheck-597029c/test_boundaries.py:33: in test_history_query_fits_buttons_even_with_category
+    await user.press(user.button_data("Фильтры"))
+tests/acceptance/conftest.py:71: in press
+    self.last_replies = await handle(self.settings, message)
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src/fintracker/application/conversation/service.py:73: in handle
+    return await _route(settings, message)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src/fintracker/application/conversation/service.py:102: in _route
+    return await dispatch_callback(settings, message=message, user_id=user_id)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src/fintracker/application/conversation/callbacks.py:244: in dispatch_callback
+    return await history_action(
+src/fintracker/application/conversation/history_flow.py:294: in history_action
+    return await filters_view(
+src/fintracker/application/conversation/history_flow.py:263: in filters_view
+    callback("hist", "cat", short(category_id), *view.parts()),
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src/fintracker/application/conversation/keyboards.py:21: in callback
+    raise ValueError(f"Слишком длинные данные кнопки: {data}")
+E   ValueError: Слишком длинные данные кнопки: hist:cat:e545e920784d48c1:-:o:0:-:xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+----------------------------- Captured stdout call -----------------------------
+2026-09-15 00:29:18 [info     ] security_change_completed      acl_revision=2 kind=workspace_create operation_id=af99b12d-d12c-46a4-b809-39ebcbf6184c
+_____ test_nested_provider_null_allowed_by_schema_is_accepted[ambiguities] _____
+.planning/audits/2026-09-15-recheck-597029c/test_boundaries.py:48: in test_nested_provider_null_allowed_by_schema_is_accepted
+    result = await OpenAIResponsesProvider(test_settings.ai).structured(
+src/fintracker/infra/ai/openai_client.py:220: in structured
+    raise ValidationFailed(f"Модель не вернула корректный результат по схеме: {last_error}")
+E   fintracker.core.errors.ValidationFailed: Модель не вернула корректный результат по схеме: Input should be a valid list
+----------------------------- Captured stdout call -----------------------------
+2026-09-15 00:29:18 [info     ] ai_schema_invalid              attempt=0 schema=audit
+2026-09-15 00:29:18 [info     ] ai_schema_invalid              attempt=1 schema=audit
+______ test_nested_provider_null_allowed_by_schema_is_accepted[evidence] _______
+.planning/audits/2026-09-15-recheck-597029c/test_boundaries.py:48: in test_nested_provider_null_allowed_by_schema_is_accepted
+    result = await OpenAIResponsesProvider(test_settings.ai).structured(
+src/fintracker/infra/ai/openai_client.py:220: in structured
+    raise ValidationFailed(f"Модель не вернула корректный результат по схеме: {last_error}")
+E   fintracker.core.errors.ValidationFailed: Модель не вернула корректный результат по схеме: Input should be a valid dictionary or instance of Evidence
+----------------------------- Captured stdout call -----------------------------
+2026-09-15 00:29:18 [info     ] ai_schema_invalid              attempt=0 schema=audit
+2026-09-15 00:29:18 [info     ] ai_schema_invalid              attempt=1 schema=audit
+_____________ test_malformed_model_json_gets_bounded_schema_retry ______________
+.planning/audits/2026-09-15-recheck-597029c/test_boundaries.py:64: in test_malformed_model_json_gets_bounded_schema_retry
+    result = await OpenAIResponsesProvider(test_settings.ai).structured(
+src/fintracker/infra/ai/openai_client.py:195: in structured
+    _normalize_null_defaults(response_model, text)
+src/fintracker/infra/ai/openai_client.py:225: in _normalize_null_defaults
+    payload = json.loads(text)
+              ^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.13.15-macos-aarch64-none/lib/python3.13/json/__init__.py:352: in loads
+    return _default_decoder.decode(s)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.13.15-macos-aarch64-none/lib/python3.13/json/decoder.py:345: in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.13.15-macos-aarch64-none/lib/python3.13/json/decoder.py:363: in raw_decode
+    raise JSONDecodeError("Expecting value", s, err.value) from None
+E   json.decoder.JSONDecodeError: Expecting value: line 1 column 19 (char 18)
+________________ test_reserve_retry_after_commit_is_idempotent _________________
+.planning/audits/2026-09-15-recheck-597029c/test_boundaries.py:93: in test_reserve_retry_after_commit_is_idempotent
+    assert allocated == 500000, (allocated, movements)
+E   AssertionError: (1000000, [500000, 500000])
+E   assert 1000000 == 500000
+----------------------------- Captured stdout call -----------------------------
+2026-09-15 00:29:18 [info     ] security_change_completed      acl_revision=2 kind=workspace_create operation_id=3dc08e52-5738-4459-b88d-0c5e4f20f5f4
+_______________ test_second_text_does_not_steal_payment_binding ________________
+.planning/audits/2026-09-15-recheck-597029c/test_boundaries.py:119: in test_second_text_does_not_steal_payment_binding
+    assert occurrence.settled_minor == 100000, (occurrence.state, occurrence.settled_minor, user.text())
+E   AssertionError: ('planned', 0, 'Бюджет: Тестовый бюджет
+E     Записано 1\xa0000,00\xa0₽ — Продукты
+E     12 сентября 2026
+E     Период: 10 сентября — 9 октября
+E     По статье: Лимит не задан')
+E   assert 0 == 100000
+E    +  where 0 = <fintracker.db.models.commitments.Occurrence object at 0x10d0802b0>.settled_minor
+_________________ test_receipt_payment_is_bound_to_occurrence __________________
+.planning/audits/2026-09-15-recheck-597029c/test_boundaries.py:132: in test_receipt_payment_is_bound_to_occurrence
+    assert occurrence.settled_minor == 45000, (occurrence.state, occurrence.settled_minor, user.text())
+E   AssertionError: ('planned', 0, 'Бюджет: Тестовый бюджет
+E     Записано 450,00\xa0₽ — Без категории
+E     12 сентября 2026
+E     Период: 10 сентября — 9 октября')
+E   assert 0 == 45000
+E    +  where 0 = <fintracker.db.models.commitments.Occurrence object at 0x10d063f00>.settled_minor
+----------------------------- Captured stdout call -----------------------------
+2026-09-15 00:29:19 [info     ] image_type_mismatch            declared=image/jpeg detected=image/png
+__________________ test_invalid_reserve_amount_keeps_pending ___________________
+.planning/audits/2026-09-15-recheck-597029c/test_boundaries.py:148: in test_invalid_reserve_amount_keeps_pending
+    assert kind == "goal_allocate", (kind, user.text())
+E   AssertionError: (None, 'Сумма выделения должна быть положительной')
+E   assert None == 'goal_allocate'
+----------------------------- Captured stdout call -----------------------------
+2026-09-15 00:29:20 [info     ] security_change_completed      acl_revision=2 kind=workspace_create operation_id=80d5c34f-6d55-461b-9baf-634b3ea49daa
+_____________ test_restore_shared_origin_reopens_uncollected_debt ______________
+.planning/audits/2026-09-15-recheck-597029c/test_money_boundaries.py:24: in test_restore_shared_origin_reopens_uncollected_debt
+    assert (row.outstanding_minor, row.status) == (150000, 'open'), (row.outstanding_minor, row.status)
+E   AssertionError: (0, 'settled')
+E   assert (0, 'settled') == (150000, 'open')
+E     
+E     At index 0 diff: 0 != 150000
+E     Use -v to get more diff
+______________ test_remove_uncollected_share_is_valid_correction _______________
+.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py:1969: in _exec_single_context
+    self.dialect.do_execute(
+.venv/lib/python3.13/site-packages/sqlalchemy/engine/default.py:952: in do_execute
+    cursor.execute(statement, parameters)
+.venv/lib/python3.13/site-packages/sqlalchemy/dialects/postgresql/psycopg.py:642: in execute
+    result = self.await_(self._cursor.execute(query, params, **kw))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.13/site-packages/sqlalchemy/util/_concurrency_py3k.py:132: in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.13/site-packages/sqlalchemy/util/_concurrency_py3k.py:196: in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+.venv/lib/python3.13/site-packages/psycopg/cursor_async.py:117: in execute
+    raise ex.with_traceback(None)
+E   psycopg.errors.CheckViolation: new row for relation "receivables" violates check constraint "ck_receivables_original_positive"
+
+The above exception was the direct cause of the following exception:
+.planning/audits/2026-09-15-recheck-597029c/test_money_boundaries.py:39: in test_remove_uncollected_share_is_valid_correction
+    await revise_transaction(session, uow, actor=fixture.actor,
+src/fintracker/application/ledger/service.py:995: in revise_transaction
+    await _sync_money_dependents(
+src/fintracker/application/ledger/service.py:894: in _sync_money_dependents
+    await _sync_receivable_origins(
+src/fintracker/application/ledger/service.py:701: in _sync_receivable_origins
+    await session.flush()
+.venv/lib/python3.13/site-packages/sqlalchemy/ext/asyncio/session.py:786: in flush
+    await greenlet_spawn(self.sync_session.flush, objects=objects)
+.venv/lib/python3.13/site-packages/sqlalchemy/util/_concurrency_py3k.py:203: in greenlet_spawn
+    result = context.switch(value)
+             ^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.13/site-packages/sqlalchemy/orm/session.py:4353: in flush
+    self._flush(objects)
+.venv/lib/python3.13/site-packages/sqlalchemy/orm/session.py:4488: in _flush
+    with util.safe_reraise():
+         ^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.13/site-packages/sqlalchemy/util/langhelpers.py:122: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+.venv/lib/python3.13/site-packages/sqlalchemy/orm/session.py:4449: in _flush
+    flush_context.execute()
+.venv/lib/python3.13/site-packages/sqlalchemy/orm/unitofwork.py:465: in execute
+    rec.execute(self)
+.venv/lib/python3.13/site-packages/sqlalchemy/orm/unitofwork.py:641: in execute
+    util.preloaded.orm_persistence.save_obj(
+.venv/lib/python3.13/site-packages/sqlalchemy/orm/persistence.py:86: in save_obj
+    _emit_update_statements(
+.venv/lib/python3.13/site-packages/sqlalchemy/orm/persistence.py:913: in _emit_update_statements
+    c = connection.execute(
+.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py:1421: in execute
+    return meth(
+.venv/lib/python3.13/site-packages/sqlalchemy/sql/elements.py:526: in _execute_on_connection
+    return connection._execute_clauseelement(
+.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py:1643: in _execute_clauseelement
+    ret = self._execute_context(
+.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py:1848: in _execute_context
+    return self._exec_single_context(
+.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py:1988: in _exec_single_context
+    self._handle_dbapi_exception(
+.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py:2365: in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py:1969: in _exec_single_context
+    self.dialect.do_execute(
+.venv/lib/python3.13/site-packages/sqlalchemy/engine/default.py:952: in do_execute
+    cursor.execute(statement, parameters)
+.venv/lib/python3.13/site-packages/sqlalchemy/dialects/postgresql/psycopg.py:642: in execute
+    result = self.await_(self._cursor.execute(query, params, **kw))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.13/site-packages/sqlalchemy/util/_concurrency_py3k.py:132: in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.13/site-packages/sqlalchemy/util/_concurrency_py3k.py:196: in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+.venv/lib/python3.13/site-packages/psycopg/cursor_async.py:117: in execute
+    raise ex.with_traceback(None)
+E   sqlalchemy.exc.IntegrityError: (psycopg.errors.CheckViolation) new row for relation "receivables" violates check constraint "ck_receivables_original_positive"
+E   [SQL: UPDATE receivables SET original_minor=%(original_minor)s::BIGINT, outstanding_minor=%(outstanding_minor)s::BIGINT, status=%(status)s::VARCHAR, version=%(version)s::BIGINT WHERE receivables.id = %(receivables_id)s::UUID]
+E   [parameters: {'original_minor': 0, 'outstanding_minor': 0, 'status': 'settled', 'version': 2, 'receivables_id': UUID('2b4bb4af-5358-4272-aa05-57b54f29ff5e')}]
+E   (Background on this error at: https://sqlalche.me/e/20/gkpj)
+___________ test_refunded_share_survives_settlement_lifecycle[note] ____________
+.planning/audits/2026-09-15-recheck-597029c/test_money_boundaries.py:75: in test_refunded_share_survives_settlement_lifecycle
+    assert row.outstanding_minor == expected, (change, row.outstanding_minor, expected)
+E   AssertionError: ('note', 100000, 50000)
+E   assert 100000 == 50000
+E    +  where 100000 = <fintracker.db.models.ledger.Receivable object at 0x117701630>.outstanding_minor
+___________ test_refunded_share_survives_settlement_lifecycle[void] ____________
+.planning/audits/2026-09-15-recheck-597029c/test_money_boundaries.py:75: in test_refunded_share_survives_settlement_lifecycle
+    assert row.outstanding_minor == expected, (change, row.outstanding_minor, expected)
+E   AssertionError: ('void', 150000, 100000)
+E   assert 150000 == 100000
+E    +  where 150000 = <fintracker.db.models.ledger.Receivable object at 0x1169c5c10>.outstanding_minor
+________ test_refunded_share_survives_settlement_lifecycle[refund_void] ________
+.planning/audits/2026-09-15-recheck-597029c/test_money_boundaries.py:75: in test_refunded_share_survives_settlement_lifecycle
+    assert row.outstanding_minor == expected, (change, row.outstanding_minor, expected)
+E   AssertionError: ('refund_void', 50000, 100000)
+E   assert 50000 == 100000
+E    +  where 50000 = <fintracker.db.models.ledger.Receivable object at 0x117528110>.outstanding_minor
+____________ test_note_edit_preserves_partial_occurrence_settlement ____________
+.planning/audits/2026-09-15-recheck-597029c/test_money_boundaries.py:99: in test_note_edit_preserves_partial_occurrence_settlement
+    assert (row.settled_minor, row.state) == (50000, 'partially_settled'), (row.settled_minor, row.state)
+E   AssertionError: (100000, 'settled')
+E   assert (100000, 'settled') == (50000, 'partially_settled')
+E     
+E     At index 0 diff: 100000 != 50000
+E     Use -v to get more diff
+__________ test_goal_amount_needs_unambiguous_positive_currency[-100] __________
+.planning/audits/2026-09-15-recheck-597029c/test_money_boundaries.py:114: in test_goal_amount_needs_unambiguous_positive_currency
+    assert row.allocated_minor == 500000, (input_text, row.allocated_minor, [r.text for r in replies])
+E   AssertionError: ('-100', 490000, ['По цели использовано: 100,00\xa0₽.'])
+E   assert 490000 == 500000
+E    +  where 490000 = <fintracker.db.models.commitments.Goal object at 0x116cb8aa0>.allocated_minor
+________ test_goal_amount_needs_unambiguous_positive_currency[100 USD] _________
+.planning/audits/2026-09-15-recheck-597029c/test_money_boundaries.py:114: in test_goal_amount_needs_unambiguous_positive_currency
+    assert row.allocated_minor == 500000, (input_text, row.allocated_minor, [r.text for r in replies])
+E   AssertionError: ('100 USD', 490000, ['По цели использовано: 100,00\xa0₽.'])
+E   assert 490000 == 500000
+E    +  where 490000 = <fintracker.db.models.commitments.Goal object at 0x11694fc50>.allocated_minor
+_________ test_goal_amount_needs_unambiguous_positive_currency[1.500] __________
+.planning/audits/2026-09-15-recheck-597029c/test_money_boundaries.py:114: in test_goal_amount_needs_unambiguous_positive_currency
+    assert row.allocated_minor == 500000, (input_text, row.allocated_minor, [r.text for r in replies])
+E   AssertionError: ('1.500', 350000, ['По цели использовано: 1\xa0500,00\xa0₽.'])
+E   assert 350000 == 500000
+E    +  where 350000 = <fintracker.db.models.commitments.Goal object at 0x116cbb2f0>.allocated_minor
+______________ test_existing_plan_still_schedules_period_opening _______________
+.planning/audits/2026-09-15-recheck-597029c/test_money_boundaries.py:139: in test_existing_plan_still_schedules_period_opening
+    assert (len(jobs), len(events)) == (1, 1), (len(jobs), len(events))
+E   AssertionError: (0, 0)
+E   assert (0, 0) == (1, 1)
+E     
+E     At index 0 diff: 0 != 1
+E     Use -v to get more diff
+----------------------------- Captured stdout call -----------------------------
+2026-09-15 00:29:22 [info     ] plan_from_template             baseline_version=1 period_id=6194bb65-0ff0-4fe2-8c9e-1039d2bf1d24 template_version=1 workspace_id=f30424c5-a8a2-4bf1-a415-985613be21c5
+2026-09-15 00:29:22 [info     ] periods_opened                 count=1 until=2026-09-15 workspace_id=f30424c5-a8a2-4bf1-a415-985613be21c5
+___ test_completed_access_change_during_render_prevents_send[remove_member] ____
+.planning/audits/2026-09-15-recheck-597029c/delivery/test_delivery_boundaries.py:120: in test_completed_access_change_during_render_prevents_send
+    assert sender.sent == [], (
+E   AssertionError: Financial data sent after completed remove_member: before_send=[(None, 'active', 'removed', 'cancelled')]; after_delivery_state=sent; messages=[{'chat_id': 888077001, 'text': 'Тестовый бюджет\nУчастник добавил расход: 450,00\xa0₽ — Продукты\nДата: 12 сентября 2026', 'buttons': [[{'text': 'Открыть операцию', 'callback_data': 'tx:4f710336-798c-432e-8c3d-f0f49c57bc9c'}, {'text': 'Бюджет', 'callback_data': 'menu:budget'}]]}]
+E   assert [{'buttons': ...нтября 2026'}] == []
+E     
+E     Left contains one more item: {'buttons': [[{'callback_data': 'tx:4f710336-798c-432e-8c3d-f0f49c57bc9c', 'text': 'Открыть операцию'}, {'callback_dat...hat_id': 888077001, 'text': 'Тестовый бюджет\nУчастник добавил расход: 450,00\xa0₽ — Продукты\nДата: 12 сентября 2026'}
+E     Use -v to get more diff
+----------------------------- Captured stdout call -----------------------------
+2026-09-15 00:29:23 [info     ] security_change_completed      acl_revision=2 kind=member_remove operation_id=fd9cfe69-3fff-4dbe-a7d9-a571d724c753
+__ test_completed_access_change_during_render_prevents_send[delete_workspace] __
+.planning/audits/2026-09-15-recheck-597029c/delivery/test_delivery_boundaries.py:120: in test_completed_access_change_during_render_prevents_send
+    assert sender.sent == [], (
+E   AssertionError: Financial data sent after completed delete_workspace: before_send=[(None, 'deleting', 'active', 'cancelled')]; after_delivery_state=sent; messages=[{'chat_id': 888077001, 'text': 'Тестовый бюджет\nУчастник добавил расход: 450,00\xa0₽ — Продукты\nДата: 12 сентября 2026', 'buttons': [[{'text': 'Открыть операцию', 'callback_data': 'tx:21666061-d84a-48d2-a51b-ab37d2121a07'}, {'text': 'Бюджет', 'callback_data': 'menu:budget'}]]}]
+E   assert [{'buttons': ...нтября 2026'}] == []
+E     
+E     Left contains one more item: {'buttons': [[{'callback_data': 'tx:21666061-d84a-48d2-a51b-ab37d2121a07', 'text': 'Открыть операцию'}, {'callback_dat...hat_id': 888077001, 'text': 'Тестовый бюджет\nУчастник добавил расход: 450,00\xa0₽ — Продукты\nДата: 12 сентября 2026'}
+E     Use -v to get more diff
+----------------------------- Captured stdout call -----------------------------
+2026-09-15 00:29:23 [info     ] security_change_completed      acl_revision=2 kind=workspace_delete operation_id=22b58058-3666-4f0e-88ac-efc8153c1c8f
+2026-09-15 00:29:23 [info     ] workspace_deleted              workspace_id=6496051f-ad89-4280-b97d-0fd375f2a50b
+__________ test_fence_surviving_two_attempts_keeps_delivery_runnable ___________
+.planning/audits/2026-09-15-recheck-597029c/delivery/test_delivery_boundaries.py:148: in test_fence_surviving_two_attempts_keeps_delivery_runnable
+    assert runnable, f"Unsent delivery stranded after two fenced attempts: {states}"
+E   AssertionError: Unsent delivery stranded after two fenced attempts: [('probe-deliver', 'succeeded'), ('deliver:d749f58e-2339-45d9-a241-66ba63f14bb6:1789406962', 'succeeded')]
+E   assert []
+----------------------------- Captured stdout call -----------------------------
+2026-09-15 00:29:23 [info     ] delivery_paused_by_access_change quarantined=False workspace_id=b634bddd-ab78-433c-a691-b67570ede133
+2026-09-15 00:29:23 [info     ] delivery_retry_scheduled       available_at=2026-09-14T17:29:22.783252+00:00 event_id=d749f58e-2339-45d9-a241-66ba63f14bb6
+2026-09-15 00:29:23 [info     ] delivery_paused_by_access_change quarantined=False workspace_id=b634bddd-ab78-433c-a691-b67570ede133
+_____ test_reconciliation_retries_after_concurrent_committed_access_change _____
+.planning/audits/2026-09-15-recheck-597029c/delivery/test_delivery_boundaries.py:186: in test_reconciliation_retries_after_concurrent_committed_access_change
+    assert not workspace.quarantined, (
+E   AssertionError: Healthy budget quarantined after live API change: database=3; journal=3
+E   assert not True
+E    +  where True = <fintracker.db.models.access.Workspace object at 0x10cfe2650>.quarantined
+----------------------------- Captured stdout call -----------------------------
+2026-09-15 00:29:24 [info     ] security_change_completed      acl_revision=2 kind=workspace_create operation_id=c3e2ebcc-191a-432f-9d53-70284b1086be
+2026-09-15 00:29:24 [info     ] security_change_completed      acl_revision=3 kind=member_remove operation_id=58d22b35-6157-40cf-ad23-e44d20bd9ece
+2026-09-15 00:29:24 [error    ] access_journal_stale           database_revision=3 journal_revision=2 workspace_id=b717369d-3776-4bed-b196-89f05f34c56c
+- generated xml file: /Users/Bayramov_N/Desktop/Other/financial-tracker/.planning/audits/2026-09-15-recheck-597029c/new-diagnostics-junit.xml -
+=========================== short test summary info ============================
+FAILED .planning/audits/2026-09-15-recheck-597029c/test_boundaries.py::test_history_query_fits_buttons_even_with_category[\u043a\u043e\u043c\u043c\u0435\u043d\u0442\u0430\u0440\u0438\u0439 \u0434\u043b\u044f \u0441\u0435\u043c\u0435\u0439\u043d\u043e\u0433\u043e \u043e\u0442\u043f\u0443\u0441\u043a\u0430]
+FAILED .planning/audits/2026-09-15-recheck-597029c/test_boundaries.py::test_history_query_fits_buttons_even_with_category[xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx]
+FAILED .planning/audits/2026-09-15-recheck-597029c/test_boundaries.py::test_nested_provider_null_allowed_by_schema_is_accepted[ambiguities]
+FAILED .planning/audits/2026-09-15-recheck-597029c/test_boundaries.py::test_nested_provider_null_allowed_by_schema_is_accepted[evidence]
+FAILED .planning/audits/2026-09-15-recheck-597029c/test_boundaries.py::test_malformed_model_json_gets_bounded_schema_retry
+FAILED .planning/audits/2026-09-15-recheck-597029c/test_boundaries.py::test_reserve_retry_after_commit_is_idempotent
+FAILED .planning/audits/2026-09-15-recheck-597029c/test_boundaries.py::test_second_text_does_not_steal_payment_binding
+FAILED .planning/audits/2026-09-15-recheck-597029c/test_boundaries.py::test_receipt_payment_is_bound_to_occurrence
+FAILED .planning/audits/2026-09-15-recheck-597029c/test_boundaries.py::test_invalid_reserve_amount_keeps_pending
+FAILED .planning/audits/2026-09-15-recheck-597029c/test_money_boundaries.py::test_restore_shared_origin_reopens_uncollected_debt
+FAILED .planning/audits/2026-09-15-recheck-597029c/test_money_boundaries.py::test_remove_uncollected_share_is_valid_correction
+FAILED .planning/audits/2026-09-15-recheck-597029c/test_money_boundaries.py::test_refunded_share_survives_settlement_lifecycle[note]
+FAILED .planning/audits/2026-09-15-recheck-597029c/test_money_boundaries.py::test_refunded_share_survives_settlement_lifecycle[void]
+FAILED .planning/audits/2026-09-15-recheck-597029c/test_money_boundaries.py::test_refunded_share_survives_settlement_lifecycle[refund_void]
+FAILED .planning/audits/2026-09-15-recheck-597029c/test_money_boundaries.py::test_note_edit_preserves_partial_occurrence_settlement
+FAILED .planning/audits/2026-09-15-recheck-597029c/test_money_boundaries.py::test_goal_amount_needs_unambiguous_positive_currency[-100]
+FAILED .planning/audits/2026-09-15-recheck-597029c/test_money_boundaries.py::test_goal_amount_needs_unambiguous_positive_currency[100 USD]
+FAILED .planning/audits/2026-09-15-recheck-597029c/test_money_boundaries.py::test_goal_amount_needs_unambiguous_positive_currency[1.500]
+FAILED .planning/audits/2026-09-15-recheck-597029c/test_money_boundaries.py::test_existing_plan_still_schedules_period_opening
+FAILED .planning/audits/2026-09-15-recheck-597029c/delivery/test_delivery_boundaries.py::test_completed_access_change_during_render_prevents_send[remove_member]
+FAILED .planning/audits/2026-09-15-recheck-597029c/delivery/test_delivery_boundaries.py::test_completed_access_change_during_render_prevents_send[delete_workspace]
+FAILED .planning/audits/2026-09-15-recheck-597029c/delivery/test_delivery_boundaries.py::test_fence_surviving_two_attempts_keeps_delivery_runnable
+FAILED .planning/audits/2026-09-15-recheck-597029c/delivery/test_delivery_boundaries.py::test_reconciliation_retries_after_concurrent_committed_access_change
+23 failed in 8.55s

@@ -135,7 +135,7 @@ async def answer_amount(
 
     amounts = parse_amounts(raw_amount)
     if not amounts:
-        return [Reply(text="Не понял сумму. Отправьте число, например 500.")]
+        return [Reply(text="✍️ Не удалось разобрать сумму\n\nОтправьте число, например 500.")]
     workspace_id = actor.require_workspace()
     async with session_scope(
         settings, RuntimeRole.API, user_id=actor.user_id, workspace_id=workspace_id
@@ -157,8 +157,8 @@ async def answer_amount(
             return [
                 Reply(
                     text=(
-                        "Этот вопрос уже закрыт. Отправьте трату отдельным сообщением, "
-                        "если нужно записать новую."
+                        "ℹ️ Этот вопрос уже закрыт.\n\nОтправьте трату отдельным "
+                        "сообщением, если нужно записать новую."
                     )
                 )
             ]
@@ -172,7 +172,7 @@ async def answer_amount(
             )
         ).scalar_one_or_none()
         if draft is None or draft.state in {"cancelled", "expired", "posted"}:
-            return [Reply(text="Черновик больше не активен.")]
+            return [Reply(text="ℹ️ Черновик больше не активен.")]
 
         candidate = (
             await session.execute(
@@ -232,16 +232,29 @@ async def clarify_action(
         return [
             Reply(
                 text=(
-                    "Хорошо. Отправьте новую трату отдельным сообщением с названием "
-                    "и суммой, например «продукты 500»."
+                    "👌 Хорошо\n\nОтправьте новую трату отдельным сообщением с "
+                    "названием и суммой, например «продукты 500»."
                 )
             )
         ]
+    if action in _CHOICES and rest:
+        from fintracker.application.conversation.callbacks import _resolve_uuid
+
+        draft_id = await _resolve_uuid(
+            settings,
+            workspace_id=actor.require_workspace(),
+            user_id=actor.user_id,
+            table="drafts",
+            prefix=rest[0],
+        )
+        return await resolve_choice(
+            settings, actor=actor, workspace=workspace, draft_id=draft_id, choice=action
+        )
     if action == "pick" and len(rest) >= 2:
         questions = await open_questions(settings, actor=actor)
         target = next((item for item in questions if short(item.clarification_id) == rest[0]), None)
         if target is None:
-            return [Reply(text="Этот вопрос уже закрыт.")]
+            return [Reply(text="ℹ️ Этот вопрос уже закрыт.")]
         return await answer_amount(
             settings,
             actor=actor,
@@ -249,4 +262,126 @@ async def clarify_action(
             clarification_id=target.clarification_id,
             raw_amount=rest[1],
         )
-    return [Reply(text="Кнопка устарела.")]
+    return [Reply(text="🔄 Кнопка устарела.\n\nОткройте нужный раздел заново.")]
+
+
+# Ответы кнопками на открытые вопросы черновика и поля, которые они закрывают.
+_CHOICES: dict[str, frozenset[str]] = {
+    "person": frozenset({"spender_person_id"}),
+    "noperson": frozenset({"spender_person_id"}),
+    "today": frozenset({"date", "occurred_date"}),
+    "plan": frozenset({"date", "occurred_date"}),
+    "noteall": frozenset({"note"}),
+    "nonote": frozenset({"note"}),
+}
+
+
+async def resolve_choice(
+    settings: Settings,
+    *,
+    actor: ActorContext,
+    workspace: Workspace,
+    draft_id: uuid.UUID,
+    choice: str,
+) -> list[Reply]:
+    """Закрыть открытый вопрос выбранным вариантом и показать черновик."""
+    from zoneinfo import ZoneInfo
+
+    from fintracker.application.catalog.directory import create_person
+    from fintracker.application.conversation.entry import (
+        CandidateFields,
+        _extract_note,
+        load_draft,
+    )
+    from fintracker.application.conversation.sections import draft_reply
+
+    fields_closed = _CHOICES[choice]
+    workspace_id = actor.require_workspace()
+    today = dt.datetime.now(ZoneInfo(workspace.timezone)).date()
+    notice: str | None = None
+    async with session_scope(
+        settings, RuntimeRole.API, user_id=actor.user_id, workspace_id=workspace_id
+    ) as session:
+        uow = UnitOfWork(session=session, correlation_id=actor.correlation_id)
+        await uow.lock_workspace(workspace_id, actor=actor)
+        draft, candidates = await load_draft(
+            session, workspace_id=workspace_id, draft_id=draft_id, owner_id=actor.user_id
+        )
+        if draft.state in {"posted", "cancelled", "expired"}:
+            return [Reply(text="ℹ️ Эта запись уже сохранена или отменена.")]
+        if choice == "plan":
+            draft.state = "cancelled"
+            draft.version += 1
+            for candidate in candidates:
+                if candidate.state != "posted":
+                    candidate.state = "cancelled"
+            plan_only = True
+        else:
+            plan_only = False
+            common_note = _extract_note(draft.raw_text or "")[1] if choice == "noteall" else None
+            for candidate in candidates:
+                if candidate.state in {"excluded", "cancelled", "posted"}:
+                    continue
+                ambiguities = list(candidate.ambiguities or [])
+                matched = [item for item in ambiguities if item.get("field") in fields_closed]
+                if not matched:
+                    continue
+                fields = CandidateFields.from_payload(dict(candidate.fields))
+                if choice == "person":
+                    name = str(matched[0].get("value") or "").strip()
+                    if name:
+                        person = await create_person(session, uow, actor=actor, name=name)
+                        fields.spender_person_id = person.id
+                        notice = f"👤 Человек «{person.name}» добавлен в бюджет."
+                elif choice == "today":
+                    fields.occurred_date = today
+                    fields.date_expression = None
+                elif choice == "noteall" and common_note:
+                    fields.note = common_note
+                candidate.fields = fields.to_payload()
+                candidate.ambiguities = [
+                    item for item in ambiguities if item.get("field") not in fields_closed
+                ]
+                candidate.state = "needs_clarification" if candidate.ambiguities else "ready"
+                candidate.version += 1
+            open_rows = (
+                (
+                    await session.execute(
+                        select(Clarification).where(
+                            Clarification.workspace_id == workspace_id,
+                            Clarification.draft_id == draft_id,
+                            Clarification.state == "open",
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            now = dt.datetime.now(dt.UTC)
+            for row in open_rows:
+                if row.field in fields_closed:
+                    row.state = "answered"
+                    row.answered_at = now
+            still_open = any(
+                row.state == "open" and row.field not in fields_closed for row in open_rows
+            )
+            draft.state = "needs_clarification" if still_open else "ready"
+            draft.version += 1
+    if plan_only:
+        return [
+            Reply(
+                text=(
+                    "💭 Хорошо, это план\n\nНичего не записано. Регулярный платёж можно "
+                    "добавить в «Платежи» — бот напомнит о сроке."
+                ),
+                buttons=(
+                    (
+                        Button("🗓 Добавить платёж", callback("pay", "new")),
+                        Button("🏠 Меню", callback("menu", "main")),
+                    ),
+                ),
+            )
+        ]
+    return await draft_reply(
+        settings, actor=actor, workspace=workspace, draft_id=draft_id, notice=notice
+    )

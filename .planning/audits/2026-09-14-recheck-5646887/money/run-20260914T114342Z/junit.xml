@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="11" skipped="0" tests="11" time="6.846" timestamp="2026-09-14T18:43:43.052441+07:00" hostname="Bayramov-N-mb"><testcase classname="tests.integration.test_money_recheck" name="test_restored_receivable_settlement_reapplies_debt_coverage" time="1.762"><failure message="AssertionError: assert (150000, 'open', -150000) == (0, 'settled', -150000)&#10;  &#10;  At index 0 diff: 150000 != 0&#10;  Use -v to get more diff">tests/integration/test_money_recheck.py:72: in test_restored_receivable_settlement_reapplies_debt_coverage
+    assert (row.outstanding_minor, row.status, balance) == (0, "settled", -150000)
+E   AssertionError: assert (150000, 'open', -150000) == (0, 'settled', -150000)
+E     
+E     At index 0 diff: 150000 != 0
+E     Use -v to get more diff</failure></testcase><testcase classname="tests.integration.test_money_recheck" name="test_revised_receivable_settlement_recomputes_debt" time="0.263"><failure message="AssertionError: assert (0, 'settled', -200000) == (50000, 'open', -200000)&#10;  &#10;  At index 0 diff: 0 != 50000&#10;  Use -v to get more diff">tests/integration/test_money_recheck.py:87: in test_revised_receivable_settlement_recomputes_debt
+    assert (row.outstanding_minor, row.status, balance) == (50000, "open", -200000)
+E   AssertionError: assert (0, 'settled', -200000) == (50000, 'open', -200000)
+E     
+E     At index 0 diff: 0 != 50000
+E     Use -v to get more diff</failure></testcase><testcase classname="tests.integration.test_money_recheck" name="test_restored_scheduled_payment_reapplies_obligation_coverage" time="0.286"><failure message="AssertionError: assert ('planned', 0) == ('settled', 100000)&#10;  &#10;  At index 0 diff: 'planned' != 'settled'&#10;  Use -v to get more diff">tests/integration/test_money_recheck.py:101: in test_restored_scheduled_payment_reapplies_obligation_coverage
+    assert (row.state, row.settled_minor) == ("settled", 100000)
+E   AssertionError: assert ('planned', 0) == ('settled', 100000)
+E     
+E     At index 0 diff: 'planned' != 'settled'
+E     Use -v to get more diff</failure></testcase><testcase classname="tests.integration.test_money_recheck" name="test_revised_scheduled_payment_recomputes_obligation_coverage" time="0.253"><failure message="AssertionError: assert ('settled', 100000) == ('partially_settled', 50000)&#10;  &#10;  At index 0 diff: 'settled' != 'partially_settled'&#10;  Use -v to get more diff">tests/integration/test_money_recheck.py:115: in test_revised_scheduled_payment_recomputes_obligation_coverage
+    assert (row.state, row.settled_minor) == ("partially_settled", 50000)
+E   AssertionError: assert ('settled', 100000) == ('partially_settled', 50000)
+E     
+E     At index 0 diff: 'settled' != 'partially_settled'
+E     Use -v to get more diff</failure></testcase><testcase classname="tests.integration.test_money_recheck" name="test_void_uncollected_shared_purchase_removes_open_debt" time="0.230"><failure message="AssertionError: (150000, 'open')&#10;assert 150000 == 0&#10; +  where 150000 = &lt;fintracker.db.models.ledger.Receivable object at 0x10c6b4050&gt;.outstanding_minor">tests/integration/test_money_recheck.py:127: in test_void_uncollected_shared_purchase_removes_open_debt
+    assert row.outstanding_minor == 0, (row.outstanding_minor, row.status)
+E   AssertionError: (150000, 'open')
+E   assert 150000 == 0
+E    +  where 150000 = &lt;fintracker.db.models.ledger.Receivable object at 0x10c6b4050&gt;.outstanding_minor</failure></testcase><testcase classname="tests.integration.test_money_recheck" name="test_cannot_shrink_collected_receivable_origin" time="0.232"><failure message="Failed: DID NOT RAISE &lt;class 'fintracker.core.errors.ConflictError'&gt;">tests/integration/test_money_recheck.py:135: in test_cannot_shrink_collected_receivable_origin
+    with pytest.raises(ConflictError):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   Failed: DID NOT RAISE &lt;class 'fintracker.core.errors.ConflictError'&gt;</failure></testcase><testcase classname="tests.integration.test_money_recheck" name="test_restore_marks_accepted_reconciliation_stale" time="0.283"><failure message="assert (False, -100000) == (True, -100000)&#10;  &#10;  At index 0 diff: False != True&#10;  Use -v to get more diff">tests/integration/test_money_recheck.py:155: in test_restore_marks_accepted_reconciliation_stale
+    assert (row.is_stale, balance) == (True, -100000)
+E   assert (False, -100000) == (True, -100000)
+E     
+E     At index 0 diff: False != True
+E     Use -v to get more diff</failure></testcase><testcase classname="tests.integration.test_money_recheck" name="test_change_account_marks_old_and_new_reconciliations_stale" time="0.242"><failure message="assert (False, False) == (True, True)&#10;  &#10;  At index 0 diff: False != True&#10;  Use -v to get more diff">tests/integration/test_money_recheck.py:174: in test_change_account_marks_old_and_new_reconciliations_stale
+    assert (old_row.is_stale, new_row.is_stale) == (True, True)
+E   assert (False, False) == (True, True)
+E     
+E     At index 0 diff: False != True
+E     Use -v to get more diff</failure></testcase><testcase classname="tests.integration.test_money_recheck" name="test_backdated_post_marks_accepted_reconciliation_stale" time="0.235"><failure message="assert (False, -100000) == (True, -100000)&#10;  &#10;  At index 0 diff: False != True&#10;  Use -v to get more diff">tests/integration/test_money_recheck.py:188: in test_backdated_post_marks_accepted_reconciliation_stale
+    assert (row.is_stale, balance) == (True, -100000)
+E   assert (False, -100000) == (True, -100000)
+E     
+E     At index 0 diff: False != True
+E     Use -v to get more diff</failure></testcase><testcase classname="tests.integration.test_money_recheck" name="test_weekly_review_does_not_forecast_incomplete_history" time="0.253"><failure message="AssertionError: [(171428, 'темп 14 наблюдаемых дней плюс неисполненные обязательства')]&#10;assert (RiskLine(lin...зательства'),) == ()&#10;  &#10;  Left contains one more item: RiskLine(line=LineStatus(stable_line_id=UUID('09c47b68-9dfe-50d1-93ca-db0c58483fa8'), category_id=UUID('c3a9a78b-9be3-...y='RUB'), forecast_minor=171428, excess_minor=71428, basis='темп 14 наблюдаемых дней плюс неисполненные обязательства')&#10;  Use -v to get more diff">tests/integration/test_money_recheck.py:198: in test_weekly_review_does_not_forecast_incomplete_history
+    assert review.risky == (), [(line.forecast_minor, line.basis) for line in review.risky]
+E   AssertionError: [(171428, 'темп 14 наблюдаемых дней плюс неисполненные обязательства')]
+E   assert (RiskLine(lin...зательства'),) == ()
+E     
+E     Left contains one more item: RiskLine(line=LineStatus(stable_line_id=UUID('09c47b68-9dfe-50d1-93ca-db0c58483fa8'), category_id=UUID('c3a9a78b-9be3-...y='RUB'), forecast_minor=171428, excess_minor=71428, basis='темп 14 наблюдаемых дней плюс неисполненные обязательства')
+E     Use -v to get more diff</failure></testcase><testcase classname="tests.integration.test_money_recheck" name="test_period_with_existing_plan_still_closes_predecessor" time="2.433"><failure message="AssertionError: open&#10;assert 'open' == 'ended'&#10;  &#10;  - ended&#10;  + open">tests/integration/test_money_recheck.py:213: in test_period_with_existing_plan_still_closes_predecessor
+    assert previous.state == "ended", previous.state
+E   AssertionError: open
+E   assert 'open' == 'ended'
+E     
+E     - ended
+E     + open</failure></testcase></testsuite></testsuites>

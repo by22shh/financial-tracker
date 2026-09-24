@@ -1,0 +1,1 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="0" skipped="0" tests="1" time="1.979" timestamp="2026-09-15T00:21:28.410594+07:00" hostname="Bayramov-N-mb"><testcase classname="tests.integration.test_media_retention" name="test_media_caption_is_erased_at_raw_data_deadline" time="1.632" /></testsuite></testsuites>

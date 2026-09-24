@@ -280,3 +280,120 @@ async def list_periods(
         )
         for row in rows
     ]
+
+
+async def upcoming_periods(
+    session: AsyncSession, *, workspace_id: uuid.UUID, from_date: dt.date, count: int
+) -> list[DateRange]:
+    """Будущие периоды с учётом версий правила и переходного интервала.
+
+    Повторяет логику ``ensure_periods`` без записи: показ совпадает с тем,
+    что будет создано при наступлении дат (FR-90, FR-94).
+    """
+    existing = (
+        (
+            await session.execute(
+                select(BudgetPeriod)
+                .where(
+                    BudgetPeriod.workspace_id == workspace_id,
+                    BudgetPeriod.start_date >= from_date,
+                )
+                .order_by(BudgetPeriod.start_date)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    result = [DateRange(row.start_date, row.end_exclusive) for row in existing][:count]
+    cursor = result[-1].end_exclusive if result else from_date
+    while len(result) < count:
+        policy = policy_from_row(await active_policy_for_date(session, workspace_id, cursor))
+        sequence = policy.sequence_for_date(cursor) or 0
+        if policy.boundary(sequence) != cursor:
+            period_range = DateRange(cursor, policy.boundary(sequence + 1))
+        else:
+            period_range = policy.period(sequence)
+        result.append(period_range)
+        cursor = period_range.end_exclusive
+    return result
+
+
+PERIOD_PRESETS = {
+    "month": "календарный месяц, с 1-го числа",
+    "10to9": "месяц с 10-го по 9-е число",
+    "week": "неделя, с понедельника",
+}
+
+
+def _preset_anchor(preset: str, boundary: dt.date) -> tuple[dt.date, RepeatMode, int]:
+    """Последняя граница нового правила не позже переданной даты."""
+    if preset == "month":
+        return boundary.replace(day=1), RepeatMode.CALENDAR_MONTHS, 1
+    if preset == "10to9":
+        if boundary.day >= 10:
+            return boundary.replace(day=10), RepeatMode.CALENDAR_MONTHS, 1
+        previous = boundary.replace(day=1) - dt.timedelta(days=1)
+        return previous.replace(day=10), RepeatMode.CALENDAR_MONTHS, 1
+    if preset == "week":
+        return boundary - dt.timedelta(days=boundary.weekday()), RepeatMode.FIXED_DAYS, 7
+    raise ValidationFailed("Неизвестный вариант периода")
+
+
+async def next_policy_boundary(session: AsyncSession, *, workspace_id: uuid.UUID) -> dt.date:
+    """С какой даты можно применить новое правило: после уже открытых периодов."""
+    last = (
+        await session.execute(
+            select(BudgetPeriod)
+            .where(BudgetPeriod.workspace_id == workspace_id)
+            .order_by(BudgetPeriod.start_date.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if last is None:
+        raise NotFound("Периоды бюджета ещё не созданы")
+    return last.end_exclusive
+
+
+async def change_period_policy(
+    session: AsyncSession,
+    *,
+    workspace_id: uuid.UUID,
+    preset: str,
+    created_by: uuid.UUID,
+) -> dt.date:
+    """Новая версия правила повторения со следующей свободной границы (CMD-17).
+
+    Прошлые и уже открытые периоды не пересчитываются. Если новое правило не
+    совпадает с границей, между ними создаётся короткий переходный период.
+    """
+    boundary = await next_policy_boundary(session, workspace_id=workspace_id)
+    current = await latest_policy(session, workspace_id)
+    anchor, mode, interval = _preset_anchor(preset, boundary)
+    policy = PeriodPolicy(
+        anchor_date=anchor, mode=mode, interval=interval, timezone=current.timezone
+    )
+    last_sequence = (
+        await session.execute(
+            select(BudgetPeriod.sequence)
+            .where(BudgetPeriod.workspace_id == workspace_id)
+            .order_by(BudgetPeriod.start_date.desc())
+            .limit(1)
+        )
+    ).scalar_one()
+    session.add(
+        PeriodPolicyRow(
+            workspace_id=workspace_id,
+            version=current.version + 1,
+            anchor_date=anchor,
+            anchor_day=anchor.day,
+            mode=mode.value,
+            interval=interval,
+            timezone=current.timezone,
+            first_end_exclusive=policy.period(0).end_exclusive,
+            effective_from=boundary,
+            base_sequence=last_sequence + 1,
+            created_by=created_by,
+        )
+    )
+    await session.flush()
+    return boundary

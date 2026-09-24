@@ -80,7 +80,7 @@ def test_early_risk_triggers_above_both_thresholds() -> None:
     item = risky[0]
     assert item.forecast_minor == 9_000_000
     assert item.excess_minor == 4_000_000
-    assert "прогноз" in item.describe("RUB")
+    assert "при нынешнем темпе" in item.describe("RUB")
     assert Money(item.line.fact_minor, "RUB").format() != item.describe("RUB")
 
     # Небольшое отклонение ниже стартового порога не поднимает тревогу.
@@ -209,7 +209,7 @@ async def test_explain_changes_without_counts_for_aggregates(owner_session: Asyn
     changes = explain_changes(current, previous)
     assert len(changes) == 1
     assert changes[0].count_available is False
-    assert "агрегирована" in changes[0].describe("RUB")
+    assert "покупок" not in changes[0].describe("RUB")
 
 
 async def test_weekly_review_has_required_sections(owner_session: AsyncSession) -> None:
@@ -244,13 +244,13 @@ async def test_weekly_review_has_required_sections(owner_session: AsyncSession) 
 
     review = await build_weekly_review(owner_session, workspace=fixture.workspace, today=DAY)
     text = review.render()
-    assert "Обзор за" in text
-    assert "Учтённые расходы" in text
-    assert "Изменение" in text
-    assert "Главные изменения" in text
-    assert "Цели:" in text
+    assert "Обзор недели" in text
+    assert "Потрачено" in text
+    assert "По сравнению с прошлой неделей" in text
+    assert "Что изменилось сильнее всего" in text
+    assert "🎯 Цели" in text
     assert "Полнота учёта" in text
-    assert text.count("Предлагаемое действие:") == 1
+    assert text.count("💡 Что сделать") == 1
     assert review.date_to_inclusive == DAY
     assert review.date_from == DAY - dt.timedelta(days=6)
     assert review.spent_minor == rub(6_000).minor
@@ -272,10 +272,10 @@ async def test_period_summary_does_not_call_leftovers_savings(owner_session: Asy
     )
     text = summary.render()
     assert "сэкономил" not in text.lower()
-    assert "Неиспользованные лимиты" in text
+    assert "Не потрачено по лимитам категорий" in text
     assert summary.consumption_minor == rub(3_000).minor
     assert summary.unspent_limits_minor == rub(7_000).minor
-    assert "не является доказанной" in text
+    assert "остаток пока нельзя считать экономией" in text
 
 
 async def test_period_summary_separates_income_and_other_flows(
@@ -327,7 +327,7 @@ async def test_period_summary_separates_income_and_other_flows(
     assert summary.consumption_minor == rub(4_000).minor
     text = summary.render()
     assert "Доходы:" in text
-    assert "Потребительские расходы:" in text
+    assert "Расходы:" in text
 
 
 async def test_next_period_draft_shows_balance_apart_from_income(
@@ -379,9 +379,9 @@ async def test_next_period_draft_shows_balance_apart_from_income(
         owner_session, workspace=fixture.workspace, period_id=following.id, today=DAY
     )
     text = draft.render("RUB")
-    assert "Имеющийся остаток на счетах" in text
+    assert "На счетах сейчас" in text
     assert "Ожидаемый доход" in text
-    assert "Основание повторения" in text
+    assert "🔁 " in text
     assert draft.fund_contributions_minor == 300_000
     assert draft.expected_income_minor == 8_000_000
     assert draft.income_dates[0][0] == "Зарплата"
@@ -416,7 +416,7 @@ async def test_next_period_draft_reports_deficit(owner_session: AsyncSession) ->
         owner_session, workspace=fixture.workspace, period_id=following.id, today=DAY
     )
     assert draft.deficit_minor == 4_000_000
-    assert "Дефицит" in draft.render("RUB")
+    assert "Лимиты больше дохода" in draft.render("RUB")
 
 
 async def test_next_period_draft_without_income_basis(owner_session: AsyncSession) -> None:
@@ -434,7 +434,7 @@ async def test_next_period_draft_without_income_basis(owner_session: AsyncSessio
     assert draft.expected_income_minor is None
     assert draft.deficit_minor is None
     assert draft.flexible_available_minor is None
-    assert "основание не задано" in draft.render("RUB")
+    assert "Ожидаемый доход: не указан" in draft.render("RUB")
 
 
 def test_b8_fixed_expense_forecast_uses_commitments() -> None:

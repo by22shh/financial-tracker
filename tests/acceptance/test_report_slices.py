@@ -30,7 +30,7 @@ async def test_a53_calendar_month_differs_from_budget_period(
 
     await user.send("Сколько потрачено за календарный сентябрь?")
     text = user.text()
-    assert "Разрез: календарный месяц" in text
+    assert "Расходы за календарный месяц" in text
     assert "01.09.2026" in text or "1 сентября" in text
 
 
@@ -49,7 +49,7 @@ async def test_a229_month_question_on_short_period_is_clarified(
     assert user.has_button("Текущий период")
 
     await user.press(user.button_data("Календарный месяц"))
-    assert "Разрез: календарный месяц" in user.text()
+    assert "Расходы за календарный месяц" in user.text()
 
 
 async def test_a86_ai_free_answer_matches_snapshot(bot: None, test_settings: Settings) -> None:
@@ -59,7 +59,7 @@ async def test_a86_ai_free_answer_matches_snapshot(bot: None, test_settings: Set
     await _post(user, "продукты 1500")
     await user.send("Сколько потрачено?")
     text = user.text()
-    assert "Разрез:" in text
+    assert "📊 Расходы за" in text
     assert "1 500" in text.replace(" ", " ").replace(" ", " ")
     assert user.has_button("Детализация")
 
@@ -73,7 +73,7 @@ async def test_a91_incomplete_history_gives_no_confident_permission(
     await _post(user, "продукты 1500")
     await user.send("/report")
     text = user.text()
-    assert "Ограничения:" in text
+    assert "Прогноз появится" in text
     assert "можете потратить" not in text.lower()
     assert "полнота" in text.lower()
 
@@ -84,10 +84,10 @@ async def test_spender_slice_requires_linked_profile(bot: None, test_settings: S
     await create_budget(user)
     await _post(user, "продукты 500")
     await user.send("Сколько я потратил?")
-    assert user.has_button("Я потратил")
-    await user.press(user.button_data("Я потратил"))
+    assert user.has_button("Платил я")
+    await user.press(user.button_data("Платил я"))
     text = user.text()
-    assert "Разрез:" in text or "не привязан" in text
+    assert "📊 Расходы" in text or "Бот пока не знает" in text
 
 
 async def test_a132_choosing_action_changes_nothing_financial(
@@ -154,8 +154,8 @@ async def test_a132_choosing_action_changes_nothing_financial(
     assert "Гибкие траты выше обычного" in user.text()
     await user.press(user.button_data("Выбрать действие"))
     text = user.text()
-    assert "Намерение сохранено" in text
-    assert "не изменены" in text
+    assert "Сами лимиты и записи не изменились" in text
+    assert "не изменились" in text
 
     async with session_scope(test_settings, RuntimeRole.OWNER) as session:
         versions_after = len(
@@ -220,4 +220,4 @@ async def test_a137_done_mark_does_not_claim_proven_savings(
     await user.press(f"rec:done:{code}")
     text = user.text()
     assert "Отметка сохранена" in text
-    assert "не объявляется доказанной" in text
+    assert "оценит по следующим тратам" in text

@@ -1,0 +1,7 @@
+{
+  "head": "5646887f8e5f61b475cccb36bc3ff068eef80ba7",
+  "snapshot": "/var/folders/gp/36jzrv8s3nv8hhml14b9k9740000gq/T/fintracker-clean-recheck-7f859e1j",
+  "exit_code": 0,
+  "stdout": "Прослеживаемость в порядке. Требований: 500. Статусы: {'verified': 479, 'planned': 8, 'blocked': 10, 'implemented': 3}\nПодтверждённые проверки по видам: {'acceptance': 212, 'domain': 77, 'integration': 462, 'ops': 20, 'ai': 57, 'ai_corpus': 7, 'ops_measurement': 11}\n",
+  "stderr": ""
+}

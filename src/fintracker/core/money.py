@@ -134,6 +134,10 @@ class Money:
         whole, frac = (digits[:-exponent], digits[-exponent:]) if exponent else (digits, "")
         if group:
             whole = f"{int(whole):,}".replace(",", " ")
+        if with_symbol and frac and not frac.strip("0"):
+            # В сообщениях целая сумма показывается без «,00»; выгрузки
+            # без символа валюты сохраняют дробную часть.
+            frac = ""
         body = f"{whole},{frac}" if frac else whole
         if with_symbol:
             symbol = CURRENCY_SYMBOLS.get(self.currency, self.currency)

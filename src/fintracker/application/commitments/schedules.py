@@ -211,6 +211,7 @@ async def upcoming_payments(
                 Occurrence.state.in_(("planned", "partially_settled")),
                 Occurrence.due_date <= today + dt.timedelta(days=horizon_days),
                 ScheduledItem.direction == direction,
+                ScheduledItem.archived_at.is_(None),
             )
             .order_by(Occurrence.due_date, Occurrence.id)
         )
@@ -374,3 +375,46 @@ async def change_occurrence(
     await session.flush()
     await uow.bump_revisions(workspace_id, plan=True)
     return occurrence
+
+
+async def archive_schedule(
+    session: AsyncSession,
+    uow: UnitOfWork,
+    *,
+    actor: ActorContext,
+    schedule_id: uuid.UUID,
+) -> ScheduledItem:
+    """Удалить платёж из будущего: прошлые оплаты и записи сохраняются (FR-45)."""
+    workspace_id = actor.require_workspace()
+    item = (
+        await session.execute(
+            select(ScheduledItem)
+            .where(ScheduledItem.workspace_id == workspace_id, ScheduledItem.id == schedule_id)
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
+    if item is None or item.archived_at is not None:
+        raise NotFound("Платёж уже удалён")
+    item.archived_at = dt.datetime.now(dt.UTC)
+    item.version += 1
+    open_rows = (
+        (
+            await session.execute(
+                select(Occurrence).where(
+                    Occurrence.workspace_id == workspace_id,
+                    Occurrence.schedule_id == schedule_id,
+                    Occurrence.state == "planned",
+                    Occurrence.settled_minor == 0,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for occurrence in open_rows:
+        occurrence.state = "cancelled"
+        occurrence.change_reason = "Платёж удалён участником"
+        occurrence.version += 1
+    await session.flush()
+    await uow.bump_revisions(workspace_id, plan=True)
+    return item

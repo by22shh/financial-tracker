@@ -290,12 +290,24 @@ def _nullable(definition: dict[str, Any]) -> dict[str, Any]:
     if kind is None:
         return definition
     if isinstance(kind, list):
-        if "null" not in kind:
-            definition = {**definition, "type": [*kind, "null"]}
-        return definition
+        # Responses Structured Outputs accepts nullable values through
+        # ``anyOf`` but rejects the otherwise valid JSON Schema shorthand
+        # ``type: ["array", "null"]``.  Keep constraints such as ``items``
+        # on every non-null branch so arrays remain fully specified.
+        variants = list(kind)
+        if "null" not in variants:
+            variants.append("null")
+        rest = {key: value for key, value in definition.items() if key != "type"}
+        return {
+            "anyOf": [
+                {"type": variant, **rest} if variant != "null" else {"type": "null"}
+                for variant in variants
+            ]
+        }
     if kind == "null":
         return definition
-    return {**definition, "type": [kind, "null"]}
+    rest = {key: value for key, value in definition.items() if key != "type"}
+    return {"anyOf": [{"type": kind, **rest}, {"type": "null"}]}
 
 
 def json_schema_for(model: type[BaseModel]) -> dict[str, Any]:

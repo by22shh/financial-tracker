@@ -63,7 +63,40 @@ async def test_a165_a166_context_is_pinned_at_receipt(bot: None, test_settings: 
     await user.press("wiz:publish")
 
     await user.send("/budgets")
-    assert "Второй бюджет" in user.text()
+    budget_list = user.text()
+    assert "📒 Мои бюджеты" in budget_list
+    assert "Нажмите на бюджет, чтобы переключиться." in budget_list
+    assert "✅ Второй бюджет — сейчас открыт" in budget_list
+    assert "• Первый бюджет" in budget_list
+    assert budget_list.count("Ваша роль: 👑 администратор") == 2
+    assert "ID бюджета" not in budget_list
+    assert user.has_button("✅ Второй бюджет")
+    assert user.has_button("Первый бюджет")
+    assert user.has_button("← Меню")
+
+    # Нажатие уже выбранного бюджета тоже даёт явный результат и путь назад.
+    await user.press(user.button_data("✅ Второй бюджет"))
+    assert user.text().startswith("✅ Этот бюджет уже открыт")
+    assert "📒 Второй бюджет" in user.text()
+    assert user.has_button("📒 К моим бюджетам")
+    await user.press(user.button_data("К моим бюджетам"))
+
+    # Выбор бюджета подтверждается отдельно и не перебрасывает в его разделы.
+    await user.press(user.button_data("Первый бюджет"))
+    assert user.text().startswith("✅ Бюджет переключён")
+    assert "📒 Первый бюджет" in user.text()
+    assert user.has_button("📒 К моим бюджетам")
+    assert user.has_button("🏠 Главное меню")
+    assert user.has_button("⚙️ Настройки бюджета")
+
+    await user.press(user.button_data("К моим бюджетам"))
+    assert "✅ Первый бюджет — сейчас открыт" in user.text()
+    assert user.has_button("Второй бюджет")
+
+    # Возвращаем второй бюджет активным для проверки привязки новой траты.
+    await user.press(user.button_data("Второй бюджет"))
+    assert user.text().startswith("✅ Бюджет переключён")
+    assert "📒 Второй бюджет" in user.text()
 
     # Новая трата относится к выбранному сейчас бюджету.
     await _post(user, "транспорт 200")
@@ -81,7 +114,7 @@ async def test_a167_reply_corrects_the_card_budget(bot: None, test_settings: Set
     await _post(user, "продукты 900")
 
     await user.send("/history")
-    await user.press(user.button_data("Запись 1"))
+    await user.press(user.button_data("900"))
     card = user.text()
     assert "Рабочий бюджет" in card
 

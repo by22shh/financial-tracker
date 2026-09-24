@@ -7,6 +7,8 @@
 from __future__ import annotations
 
 import asyncio
+import html
+import re
 import time
 from dataclasses import dataclass, field
 from typing import Any, Protocol
@@ -19,6 +21,7 @@ from fintracker.core.logging import get_logger
 logger = get_logger("telegram.sender")
 
 MAX_MESSAGE_CHARS = 4096
+_MONEY_LINE = re.compile(r"^[+\-−]?\d[\d\s\u00a0.,]*(?:₽|€|\$|[A-Z]{3})(?:\s+—.*)?$")
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,6 +37,15 @@ class SendResult:
 class TelegramSender(Protocol):
     async def send_message(
         self, *, chat_id: int, text: str, buttons: list[list[dict[str, str]]] | None = None
+    ) -> SendResult: ...
+
+    async def edit_message(
+        self,
+        *,
+        chat_id: int,
+        message_id: int,
+        text: str,
+        buttons: list[list[dict[str, str]]] | None = None,
     ) -> SendResult: ...
 
     async def send_document(
@@ -60,6 +72,55 @@ def split_message(text: str, limit: int = MAX_MESSAGE_CHARS) -> list[str]:
     if current:
         parts.append("".join(current))
     return parts
+
+
+def render_safe_html(text: str) -> str:
+    """Добавить спокойную иерархию и экранировать весь динамический текст.
+
+    Разговорный слой по-прежнему оперирует обычным текстом. Только адаптер
+    Telegram добавляет поддерживаемую разметку: первую строку карточки делает
+    заголовком, а частые подписи — заметными. Пользовательские названия,
+    комментарии и суммы сначала экранируются, поэтому не могут разорвать HTML.
+    """
+    lines = text.split("\n")
+    first_content = next((index for index, line in enumerate(lines) if line.strip()), None)
+    rendered: list[str] = []
+    amount_highlighted = False
+    labels = (
+        "Автор изменения:",
+        "Дата:",
+        "Период:",
+        "Категория:",
+        "Комментарий:",
+        "Счета:",
+    )
+    for index, line in enumerate(lines):
+        escaped = html.escape(line, quote=False)
+        if index == first_content:
+            rendered.append(f"<b>{escaped}</b>")
+            continue
+        if not amount_highlighted and _MONEY_LINE.fullmatch(line.strip()):
+            rendered.append(f"<b>{escaped}</b>")
+            amount_highlighted = True
+            continue
+        matched = next((label for label in labels if line.startswith(label)), None)
+        if matched is None:
+            rendered.append(escaped)
+            continue
+        escaped_label = html.escape(matched, quote=False)
+        escaped_value = html.escape(line[len(matched) :], quote=False)
+        rendered.append(f"<b>{escaped_label}</b>{escaped_value}")
+    return "\n".join(rendered)
+
+
+def split_html_message(text: str, limit: int = MAX_MESSAGE_CHARS) -> list[str]:
+    """Разбить текст по лимиту Telegram после разбора entities.
+
+    Bot API считает длину после разбора HTML entities, поэтому ``&lt;``
+    соответствует одному исходному символу и не требует сверхдробления.
+    Каждый фрагмент затем размечается независимо и остаётся валидным HTML.
+    """
+    return split_message(text, limit)
 
 
 class RateLimiter:
@@ -98,12 +159,16 @@ class HttpTelegramSender:
     async def send_message(
         self, *, chat_id: int, text: str, buttons: list[list[dict[str, str]]] | None = None
     ) -> SendResult:
-        chunks = split_message(text)
+        chunks = split_html_message(text)
         last: SendResult = SendResult(ok=False, error="Пустое сообщение")
         async with httpx.AsyncClient(timeout=20.0) as client:
             for index, chunk in enumerate(chunks):
                 await self._limiter.acquire(chat_id)
-                payload: dict[str, Any] = {"chat_id": chat_id, "text": chunk}
+                payload: dict[str, Any] = {
+                    "chat_id": chat_id,
+                    "text": render_safe_html(chunk),
+                    "parse_mode": "HTML",
+                }
                 if buttons and index == len(chunks) - 1:
                     payload["reply_markup"] = {"inline_keyboard": buttons}
                 try:
@@ -125,6 +190,46 @@ class HttpTelegramSender:
                     return SendResult(ok=False, error=description[:300], blocked=blocked)
                 last = SendResult(ok=True, message_id=body["result"]["message_id"])
         return last
+
+    async def edit_message(
+        self,
+        *,
+        chat_id: int,
+        message_id: int,
+        text: str,
+        buttons: list[list[dict[str, str]]] | None = None,
+    ) -> SendResult:
+        """Обновить callback-карточку; вызывающий сам выполняет fallback send."""
+        if len(split_html_message(text)) != 1:
+            return SendResult(ok=False, error="message_too_long_to_edit")
+        await self._limiter.acquire(chat_id)
+        payload: dict[str, Any] = {
+            "chat_id": chat_id,
+            "message_id": message_id,
+            "text": render_safe_html(text),
+            "parse_mode": "HTML",
+            "reply_markup": {"inline_keyboard": buttons or []},
+        }
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            try:
+                response = await client.post(
+                    f"https://api.telegram.org/bot{self._token}/editMessageText", json=payload
+                )
+            except (httpx.TimeoutException, httpx.TransportError) as exc:
+                return SendResult(ok=False, unknown=True, error=f"{type(exc).__name__}")
+        if response.status_code == 429:
+            retry_after = float(response.json().get("parameters", {}).get("retry_after", 1))
+            return SendResult(ok=False, error="rate_limited", retry_after=retry_after)
+        body = response.json()
+        if not body.get("ok"):
+            description = str(body.get("description", ""))
+            if "message is not modified" in description.lower():
+                return SendResult(ok=True, message_id=message_id)
+            blocked = "bot was blocked" in description or "user is deactivated" in description
+            return SendResult(ok=False, error=description[:300], blocked=blocked)
+        result = body.get("result")
+        result_id = result.get("message_id") if isinstance(result, dict) else message_id
+        return SendResult(ok=True, message_id=result_id)
 
     async def send_document(
         self, *, chat_id: int, filename: str, content: bytes, caption: str | None = None
@@ -159,10 +264,12 @@ class RecordingSender:
     """Контролируемый отправитель для проверок без реального Telegram."""
 
     sent: list[dict[str, Any]] = field(default_factory=list)
+    edited: list[dict[str, Any]] = field(default_factory=list)
     documents: list[dict[str, Any]] = field(default_factory=list)
     fail_for_chats: set[int] = field(default_factory=set)
     blocked_chats: set[int] = field(default_factory=set)
     unknown_chats: set[int] = field(default_factory=set)
+    fail_edits: bool = False
     _next_id: int = 1
 
     async def send_message(
@@ -177,6 +284,23 @@ class RecordingSender:
         self.sent.append({"chat_id": chat_id, "text": text, "buttons": buttons})
         self._next_id += 1
         return SendResult(ok=True, message_id=self._next_id)
+
+    async def edit_message(
+        self,
+        *,
+        chat_id: int,
+        message_id: int,
+        text: str,
+        buttons: list[list[dict[str, str]]] | None = None,
+    ) -> SendResult:
+        if self.fail_edits or chat_id in self.fail_for_chats:
+            return SendResult(ok=False, error="message can't be edited")
+        if chat_id in self.blocked_chats:
+            return SendResult(ok=False, blocked=True, error="bot was blocked by the user")
+        self.edited.append(
+            {"chat_id": chat_id, "message_id": message_id, "text": text, "buttons": buttons}
+        )
+        return SendResult(ok=True, message_id=message_id)
 
     async def send_document(
         self, *, chat_id: int, filename: str, content: bytes, caption: str | None = None

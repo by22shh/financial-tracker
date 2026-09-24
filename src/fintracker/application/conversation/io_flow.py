@@ -13,12 +13,14 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 
+from fintracker.application.conversation import views
 from fintracker.application.conversation.keyboards import Button, callback, short
 from fintracker.application.conversation.types import IncomingMessage, Reply
 from fintracker.config import Settings
 from fintracker.core.context import ActorContext
 from fintracker.core.errors import DomainError, NotFound, ValidationFailed
 from fintracker.core.logging import get_logger
+from fintracker.core.money import Money
 from fintracker.db.models.access import Workspace
 from fintracker.db.models.integrations import ImportBatch
 from fintracker.db.session import RuntimeRole, session_scope
@@ -42,20 +44,19 @@ async def export_menu(
     return [
         Reply(
             text=(
-                "Импорт и экспорт\n"
-                "• Экспорт XLSX содержит листы «Операции», «Распределения», "
-                "«Категории», «Бюджеты», «Цели» и «Описание полей».\n"
-                "• Экспорт CSV — нормализованный журнал в UTF-8 с явными датами.\n"
-                "• Импорт разбирает снимок таблицы и показывает предпросмотр до "
-                "применения: в рабочие итоги ничего не попадает без подтверждения."
+                "📁 Импорт и экспорт\n\n📤 Забрать данные\nXLSX — операции, "
+                "категории, бюджеты и цели на отдельных листах.\nCSV — журнал "
+                "операций для работы в других приложениях.\n\n📥 Перенести данные "
+                "из таблицы\nПришлите XLSX: сначала покажу предпросмотр. Записи "
+                "попадут в бюджет только после вашего подтверждения."
             ),
             buttons=(
                 (
-                    Button("Экспорт XLSX", callback("exp", "xlsx")),
-                    Button("Экспорт CSV", callback("exp", "csv")),
+                    Button("📤 Экспорт XLSX", callback("exp", "xlsx")),
+                    Button("📤 Экспорт CSV", callback("exp", "csv")),
                 ),
                 (
-                    Button("Импорт таблицы", callback("imp", "start")),
+                    Button("📥 Импорт таблицы", callback("imp", "start")),
                     Button("← Меню", callback("menu", "main")),
                 ),
             ),
@@ -91,7 +92,7 @@ async def export_action(
     filename = f"fintracker-{today.isoformat()}.{fmt}"
 
     if chat_id is None:
-        return [Reply(text="Не удалось определить чат для выдачи файла.")]
+        return [Reply(text="⚠️ Не удалось определить чат для выдачи файла.")]
 
     # Снимок собран, но выдача — отдельное действие: доступ подтверждается
     # непосредственно перед отправкой файла (SEC-05, FR-81, G-02).
@@ -103,20 +104,20 @@ async def export_action(
             await guard.lock_workspace(workspace_id, actor=actor)
         except DomainError as exc:
             logger.info("export_revoked", workspace_id=str(workspace_id), code=exc.code.value)
-            return [Reply(text=(f"Выгрузка отменена: доступ к бюджету изменился. {exc.message}"))]
+            return [Reply(text=(f"ℹ️ Выгрузка отменена: доступ к бюджету изменился. {exc.message}"))]
 
     sender = build_sender(settings)
     result = await sender.send_document(
         chat_id=chat_id,
         filename=filename,
         content=content,
-        caption=f"Выгрузка «{workspace.name}» на {today.isoformat()}",
+        caption=f"📁 Выгрузка «{workspace.name}» на {views.format_date(today, with_year=True)}",
     )
     if not result.ok:
         return [
             Reply(
                 text=(
-                    "Не удалось отправить файл выгрузки. Повторите позже — "
+                    "⚠️ Не удалось отправить файл выгрузки.\n\nПовторите позже — "
                     "данные бюджета не изменились."
                 ),
                 buttons=((Button("← Импорт и экспорт", callback("menu", "io")),),),
@@ -125,8 +126,11 @@ async def export_action(
     return [
         Reply(
             text=(
-                f"Файл {filename} отправлен. Он содержит {len(snapshot.rows)} операций "
-                "и версию данных для сверки."
+                "✅ Файл "
+                f"{filename}"
+                " отправлен.\n\nОн содержит "
+                f"{len(snapshot.rows)}"
+                " операций и версию данных для сверки."
             ),
             buttons=((Button("← Импорт и экспорт", callback("menu", "io")),),),
         )
@@ -140,10 +144,9 @@ async def import_start(
     return [
         Reply(
             text=(
-                "Пришлите файл таблицы (XLSX) сообщением в этот чат.\n"
-                "Я разберу снимок и покажу предпросмотр: сколько строк, какие "
-                "периоды и категории. В рабочие итоги ничего не попадёт до "
-                "вашего подтверждения."
+                "📥 Импорт из таблицы\n\nПришлите файл XLSX в этот чат.\n\nСначала "
+                "покажу найденные строки, периоды и категории. Проверьте их: "
+                "данные попадут в бюджет только после подтверждения."
             ),
             buttons=((Button("← Импорт и экспорт", callback("menu", "io")),),),
         )
@@ -167,14 +170,14 @@ async def handle_table_document(
 
     attachment = message.attachments[0] if message.attachments else None
     if attachment is None:
-        return [Reply(text="Не удалось получить файл.")]
+        return [Reply(text="⚠️ Не удалось получить файл.")]
     if attachment.size_bytes and attachment.size_bytes > settings.limits.max_attachment_bytes:
-        return [Reply(text="Файл больше допустимого размера. Разделите таблицу на части.")]
+        return [Reply(text="ℹ️ Файл больше допустимого размера.\n\nРазделите таблицу на части.")]
 
     try:
         content = await download_attachment(settings, file_id=attachment.file_id)
     except DomainError as exc:
-        return [Reply(text=f"Не удалось загрузить файл: {exc.message}")]
+        return [Reply(text=f"⚠️ Не удалось загрузить файл: {exc.message}")]
 
     workspace_id = actor.require_workspace()
     today = dt.datetime.now(ZoneInfo(workspace.timezone)).date()
@@ -188,7 +191,7 @@ async def handle_table_document(
             return [
                 Reply(
                     text=(
-                        "Не удалось разобрать таблицу. Проверьте, что это снимок "
+                        "⚠️ Не удалось разобрать таблицу.\n\nПроверьте, что это снимок "
                         "бюджета в формате XLSX, и пришлите файл снова."
                     )
                 )
@@ -210,22 +213,24 @@ async def handle_table_document(
             difference = preview.reconciliation.difference_minor
 
     lines = [
-        f"Предпросмотр импорта: строк {rows}.",
-        f"Расхождение сверки: {difference} минимальных единиц.",
+        "📥 Проверьте импорт",
+        "",
+        f"Найдено строк: {rows}",
+        f"Расхождение при сверке: {Money(difference, workspace.currency).format()}",
     ]
     if new_categories:
-        lines.append("Новые статьи: " + ", ".join(new_categories[:8]))
+        lines.append("\n🗂 Новые категории: " + ", ".join(new_categories[:8]))
     if blocked:
-        lines.append(f"Применение недоступно: {blocked_reason}")
+        lines.append(f"\n⚠️ Применение недоступно: {blocked_reason}")
         return [Reply(text="\n".join(lines))]
-    lines.append("Подтвердите применение — до этого рабочие итоги не меняются.")
+    lines.append("\nВсё верно? Подтвердите импорт. До этого итоги бюджета не меняются.")
     return [
         Reply(
             text="\n".join(lines),
             buttons=(
                 (
-                    Button("Применить импорт", callback("imp", "commit", short(batch_id))),
-                    Button("Отменить", callback("imp", "cancel", short(batch_id))),
+                    Button("✅ Применить импорт", callback("imp", "commit", short(batch_id))),
+                    Button("✕ Отменить", callback("imp", "cancel", short(batch_id))),
                 ),
             ),
         )
@@ -246,7 +251,7 @@ async def import_action(
     if action == "start":
         return await import_start(settings, actor=actor, workspace=workspace)
     if not rest:
-        return [Reply(text="Кнопка устарела. Откройте «Импорт и экспорт» заново.")]
+        return [Reply(text="🔄 Кнопка устарела.\n\nОткройте «Импорт и экспорт» заново.")]
 
     workspace_id = actor.require_workspace()
     async with session_scope(
@@ -278,7 +283,7 @@ async def import_action(
             batch.version += 1
         return [
             Reply(
-                text="Импорт отменён: рабочие итоги не изменились.",
+                text="ℹ️ Импорт отменён: рабочие итоги не изменились.",
                 buttons=((Button("← Импорт и экспорт", callback("menu", "io")),),),
             )
         ]
@@ -299,18 +304,20 @@ async def import_action(
                 max_rows=settings.limits.max_import_rows,
             )
         except DomainError as exc:
-            return [Reply(text=exc.message)]
+            return [Reply(text=f"⚠️ {exc.message}")]
     return [
         Reply(
             text=(
-                "Импорт применён.\n"
-                f"Сумма источника: {report.total_source_minor} минимальных единиц, "
-                f"перенесено: {report.total_import_minor}."
+                "✅ Импорт применён\n\nСумма источника: "
+                f"{Money(report.total_source_minor, workspace.currency).format()}"
+                "\nПеренесено: "
+                f"{Money(report.total_import_minor, workspace.currency).format()}"
+                "\n\nЗаписи доступны в истории бюджета."
             ),
             buttons=(
                 (
-                    Button("Бюджет", callback("menu", "budget")),
-                    Button("История", callback("menu", "history")),
+                    Button("📒 Бюджет", callback("menu", "budget")),
+                    Button("🧾 История", callback("menu", "history")),
                 ),
             ),
         )

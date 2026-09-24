@@ -167,8 +167,14 @@ async def due_analyses(
             )
         )
 
-    if schedule.closing_enabled and 0 <= (today - period.start_date).days < CLOSING_GRACE_DAYS:
+    if (
+        schedule.closing_enabled
+        and period.sequence > 1
+        and 0 <= (today - period.start_date).days < CLOSING_GRACE_DAYS
+    ):
         # Закрытие относится к прошлому периоду: анализируется его дата.
+        # У самого первого периода предшественника нет: дата накануне лежит
+        # вне календаря бюджета и не должна останавливать весь планировщик.
         closed_day = period.start_date - dt.timedelta(days=1)
         closed = await period_for_date(session, workspace_id=workspace_id, day=closed_day)
         due.append(

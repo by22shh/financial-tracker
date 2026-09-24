@@ -70,7 +70,9 @@ async def test_new_payment_button_enters_form(bot, test_settings):
     user = make_user(test_settings, 99004004)
     await create_budget(user)
     await user.send("напомни оплатить интернет 1000")
-    await user.press(user.button_data("Создать платёж"))
+    # Название и сумма уже известны из текста: бот спрашивает только дату.
+    assert "Когда платить" in user.text(), user.text()
+    await user.press("pay:new")
     assert "Кнопка устарела" not in user.text(), user.text()
 
 
@@ -174,7 +176,9 @@ async def test_payment_done_links_record_to_occurrence(owner_session, test_setti
     await owner_session.commit()
     user = make_user(test_settings, f.user.telegram_user_id)
     await user.press("menu:payments")
-    await user.press(user.button_data("Оплачено"))
+    await user.press(user.button_data("Интернет"))
+    # Другая сумма вводится текстом и закрывает этот же платёж.
+    await user.press(user.button_data("Другая сумма"))
     await post(user, "оплатил интернет 1000")
     async with session_scope(test_settings, RuntimeRole.OWNER) as session:
         value = await session.get(Occurrence, occurrence_id)
@@ -190,7 +194,7 @@ async def test_comment_search_survives_page_navigation(bot, test_settings):
     await user.send("/history отпуск")
     assert "из 9" in user.text(), user.text()
     await user.press(user.button_data("Ещё →"))
-    assert "из 9" in user.text() and "Поиск по комментарию" in user.text(), user.text()
+    assert "из 9" in user.text() and "Поиск: «" in user.text(), user.text()
 
 
 async def test_reply_to_old_author_card_does_not_edit_latest_record(owner_session, test_settings):
@@ -278,7 +282,7 @@ async def test_limit_button_changes_existing_limit(bot, test_settings):
     if user.has_button("Подтвердить"):
         await user.press(user.button_data("Подтвердить"))
     await user.send("/categories")
-    assert "8\u00a0000,00" in user.text(), user.text()
+    assert "8\u00a0000" in user.text(), user.text()
 
 
 async def test_confirm_incomplete_batch_never_partially_posts(bot, media_environment):
@@ -291,7 +295,7 @@ async def test_confirm_incomplete_batch_never_partially_posts(bot, media_environ
     payload["question"] = "Сколько стоили продукты?"
     provider.responses.append(json.dumps(payload))
     await user.send("Вчера бензин 3000, купил продукты")
-    assert "сумма неизвестна" in user.text(), user.text()
+    assert "сумма не указана" in user.text(), user.text()
     await user.press(user.button_data("Записать"))
     async with session_scope(test_settings, RuntimeRole.OWNER) as session:
         transactions = list((await session.execute(select(Transaction.id))).scalars())

@@ -22,15 +22,15 @@ async def test_weekly_review_available_by_command_and_button(
 
     await user.send("/review")
     text = user.text()
-    assert "Обзор за" in text
-    assert "Учтённые расходы" in text
+    assert "Обзор недели" in text
+    assert "Потрачено" in text
     assert "Полнота учёта" in text
-    assert text.count("Предлагаемое действие:") == 1
+    assert text.count("💡 Что сделать") == 1
 
     await user.send("/report")
     assert user.has_button("Обзор недели")
     await user.press(user.button_data("Обзор недели"))
-    assert "Обзор за" in user.text()
+    assert "Обзор недели" in user.text()
 
 
 async def test_period_summary_and_next_plan(bot: None, test_settings: Settings) -> None:
@@ -41,18 +41,18 @@ async def test_period_summary_and_next_plan(bot: None, test_settings: Settings) 
 
     await user.send("/summary")
     text = user.text()
-    assert "Итог периода" in text
-    assert "Потребительские расходы" in text
+    assert "Итоги периода" in text
+    assert "Расходы:" in text
     # Остаток лимита не называется экономией без подтверждённой полноты.
     assert "сэкономил" not in text.lower()
-    assert user.has_button("План на следующий")
+    assert user.has_button("Следующий план")
 
-    await user.press(user.button_data("План на следующий"))
+    await user.press(user.button_data("Следующий план"))
     plan = user.text()
     assert "План на" in plan
-    assert "Имеющийся остаток на счетах" in plan
     assert "Ожидаемый доход" in plan
-    assert "Основание повторения" in plan
+    assert "Ожидаемый доход" in plan
+    assert "🔁 " in plan
 
 
 async def test_plan_command_keeps_income_and_balance_separate(
@@ -63,10 +63,11 @@ async def test_plan_command_keeps_income_and_balance_separate(
     await create_budget(user, limits="Продукты 20000")
     await user.send("/plan")
     text = user.text()
-    balance_line = next(line for line in text.splitlines() if "Имеющийся остаток" in line)
     income_line = next(line for line in text.splitlines() if "Ожидаемый доход" in line)
-    assert balance_line != income_line
-    assert "Строки плана:" in text
+    # Без счетов с полным отслеживанием остаток не выдумывается.
+    assert "На счетах" not in income_line
+    assert "На счетах сейчас: 0" not in text
+    assert "Лимиты по категориям" in text
 
 
 async def test_help_lists_review_commands(bot: None, test_settings: Settings) -> None:

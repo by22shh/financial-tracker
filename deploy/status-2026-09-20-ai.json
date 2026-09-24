@@ -1,0 +1,65 @@
+{
+  "checked_at": "2026-09-20T14:47:11+00:00",
+  "host": "2.26.231.184",
+  "bot": "https://t.me/budzhet_ai_bot",
+  "image": "fintracker:ux-polish-20260920-r7",
+  "image_id": "sha256:b7c5e3ddd945ff63fd5384453e4ac0c996ecd7ccae7163fd1a1d97dd852c7bfe",
+  "manifest_sha256": "c57cc789f172512854902008a31c8777b17743f50c5beec67bea577171a98991",
+  "source": "releases/ux-polish-20260920-r7",
+  "services": {
+    "api": "healthy",
+    "polling": "healthy",
+    "postgres": "healthy",
+    "scheduler": "healthy",
+    "worker": "healthy"
+  },
+  "readiness": {
+    "ready": true,
+    "database": true,
+    "schema_current": true,
+    "schema_revision": "0018_history_query",
+    "storage_writable": true,
+    "integrations": {
+      "ai": true,
+      "asr": false,
+      "telegram": true
+    },
+    "detail": null
+  },
+  "ai": {
+    "provider": "openai",
+    "api": "responses",
+    "model": "gpt-5.6-luna",
+    "reasoning_effort": "medium",
+    "service_tier": "default",
+    "prompt_version": "extraction-1.1",
+    "live_structured_output": "passed",
+    "live_telegram_extraction": "passed",
+    "category": "Продукты питания",
+    "financial_mutation_created": false
+  },
+  "asr": {
+    "enabled": false,
+    "reason": "Модель транскрипции ещё не выбрана"
+  },
+  "backup": "/opt/fintracker/backups/20260920T144214Z",
+  "package_files_verified": 160,
+  "package_mismatches": [],
+  "jobs_by_state": {
+    "queued": 12,
+    "succeeded": 1913
+  },
+  "tests": {
+    "profiled": {
+      "passed": 26
+    },
+    "ruff": "passed",
+    "format": "passed",
+    "mypy_strict": "passed",
+    "shell_syntax": "passed"
+  },
+  "runtime": {
+    "errors_after_deploy": 0,
+    "secret_markers_in_logs": 0
+  }
+}

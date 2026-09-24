@@ -118,6 +118,8 @@ class WizardState:
     income_max_minor: int | None = None
     income_sources: list[dict[str, Any]] = field(default_factory=list)
     categories: list[DraftCategory] = field(default_factory=list)
+    limit_category: str | None = None
+    limits_page: int = 0
     beneficiaries: list[str] = field(default_factory=list)
     people: list[str] = field(default_factory=list)
     accounts: list[dict[str, Any]] = field(default_factory=list)
@@ -129,6 +131,9 @@ class WizardState:
     # набранный участником текст не теряется (FR-84, G-14).
     commitments: list[dict[str, Any]] = field(default_factory=list)
     goals: list[dict[str, Any]] = field(default_factory=list)
+    # Одно поле можно исправить из итоговой проверки и вернуться обратно,
+    # не проходя весь мастер заново.
+    return_to_review_after: str | None = None
 
     def to_payload(self) -> dict[str, Any]:
         return {
@@ -156,6 +161,8 @@ class WizardState:
                 }
                 for category in self.categories
             ],
+            "limit_category": self.limit_category,
+            "limits_page": self.limits_page,
             "beneficiaries": self.beneficiaries,
             "people": self.people,
             "accounts": self.accounts,
@@ -165,6 +172,7 @@ class WizardState:
             "overall_limit_minor": self.overall_limit_minor,
             "commitments": self.commitments,
             "goals": self.goals,
+            "return_to_review_after": self.return_to_review_after,
         }
 
     @classmethod
@@ -197,6 +205,8 @@ class WizardState:
                 )
                 for item in (payload.get("categories") or [])
             ],
+            limit_category=payload.get("limit_category"),
+            limits_page=int(payload.get("limits_page") or 0),
             beneficiaries=list(payload.get("beneficiaries") or []),
             people=list(payload.get("people") or []),
             accounts=list(payload.get("accounts") or []),
@@ -206,6 +216,7 @@ class WizardState:
             overall_limit_minor=payload.get("overall_limit_minor"),
             commitments=list(payload.get("commitments") or []),
             goals=list(payload.get("goals") or []),
+            return_to_review_after=payload.get("return_to_review_after"),
         )
 
     def policy(self) -> PeriodPolicy:
@@ -317,6 +328,8 @@ async def save_draft(
     draft.payload = state.to_payload()
     draft.step = step.value
     draft.version += 1
+    # Время последнего шага: давно брошенная настройка не перехватывает траты.
+    draft.updated_at = dt.datetime.now(dt.UTC)
     await session.flush()
 
 
@@ -608,11 +621,11 @@ async def _materialize_workspace(
             workspace_id=workspace.id,
             period_id=first_period.id,
             precision=state.income_precision,
-            basis="monthly_total" if state.income_monthly_minor else "period_total",
+            basis=("monthly_total" if state.income_monthly_minor is not None else "period_total"),
             monthly_amount_minor=state.income_monthly_minor,
             period_amount_minor=funding.income_minor,
             min_minor=state.income_min_minor,
-            expected_minor=state.income_monthly_minor or state.income_period_minor,
+            expected_minor=funding.income_minor,
             max_minor=state.income_max_minor,
             detailed_by_sources=bool(state.income_sources),
             unknown_reason=None if funding.income_known else "Основание дохода периода не задано",
@@ -673,9 +686,13 @@ async def _create_planned(
         anchor_date = today
         raw_due = entry.get("due")
         if raw_due:
-            parsed = resolve_date_expression(str(raw_due), reference=today)
-            if parsed is not None:
-                anchor_date = parsed.value
+            parsed = resolve_date_expression(str(raw_due), reference=today, prefer_future=True)
+            if parsed is None:
+                raise ValidationFailed(
+                    f"Не удалось разобрать дату платежа «{entry['name']}». "
+                    "Укажите дату, например 25.09.2026."
+                )
+            anchor_date = parsed.value
         await create_schedule(
             session,
             uow,

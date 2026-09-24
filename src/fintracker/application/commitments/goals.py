@@ -372,3 +372,50 @@ async def goal_progress(
             max(0, goal.target_minor - goal.allocated_minor) if goal.target_minor else None
         ),
     )
+
+
+async def edit_goal(
+    session: AsyncSession,
+    uow: UnitOfWork,
+    *,
+    actor: ActorContext,
+    goal_id: uuid.UUID,
+    name: str | None = None,
+    target: Money | None = None,
+) -> Goal:
+    """Переименовать цель или изменить целевую сумму; отложенное не меняется."""
+    workspace_id = actor.require_workspace()
+    goal = await _locked_goal(session, workspace_id=workspace_id, goal_id=goal_id)
+    if name is not None:
+        cleaned = " ".join(name.split())[:120]
+        if not cleaned:
+            raise ValidationFailed("Название цели не может быть пустым")
+        goal.name = cleaned
+    if target is not None:
+        if target.minor <= 0:
+            raise ValidationFailed("Целевая сумма должна быть больше нуля")
+        goal.target_minor = target.minor
+        goal.status = "reached" if goal.allocated_minor >= target.minor else "active"
+    goal.version += 1
+    await session.flush()
+    await uow.bump_revisions(workspace_id, plan=True)
+    return goal
+
+
+async def close_goal(
+    session: AsyncSession,
+    uow: UnitOfWork,
+    *,
+    actor: ActorContext,
+    goal_id: uuid.UUID,
+) -> Goal:
+    """Удалить цель из списка. Отложенные деньги сначала возвращаются в бюджет."""
+    workspace_id = actor.require_workspace()
+    goal = await _locked_goal(session, workspace_id=workspace_id, goal_id=goal_id)
+    if goal.allocated_minor:
+        raise ConflictError("На цели ещё есть отложенные деньги: сначала верните их в бюджет")
+    goal.status = "closed"
+    goal.version += 1
+    await session.flush()
+    await uow.bump_revisions(workspace_id, plan=True)
+    return goal

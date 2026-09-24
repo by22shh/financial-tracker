@@ -14,9 +14,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fintracker.core.money import Money
-from fintracker.db.models.access import Beneficiary, Person, User, Workspace
-from fintracker.db.models.catalog import Category
-from fintracker.db.models.ledger import Allocation, Transaction, TransactionRevision
+from fintracker.db.models.access import Beneficiary, Membership, Person, Workspace
+from fintracker.db.models.catalog import Account, Category
+from fintracker.db.models.ledger import Allocation, CashLeg, Transaction, TransactionRevision
 
 RU_MONTHS = (
     "января",
@@ -49,25 +49,63 @@ def format_range(start: dt.date, end_inclusive: dt.date) -> str:
     return f"{left} — {right}"
 
 
-async def _actor_name(session: AsyncSession, user_id: uuid.UUID | None) -> str:
+def _transaction_event_title(transaction_type: str, event_type: str) -> str:
+    forms = {
+        "expense": ("Расход", "записан", "изменён", "отменён"),
+        "income": ("Доход", "записан", "изменён", "отменён"),
+        "refund": ("Возврат", "записан", "изменён", "отменён"),
+        "transfer": ("Перевод", "записан", "изменён", "отменён"),
+        "mixed_payment": ("Покупка", "записана", "изменена", "отменена"),
+        "external_funding": ("Пополнение", "записано", "изменено", "отменено"),
+        "loan_received": ("Получение займа", "записано", "изменено", "отменено"),
+        "loan_principal_payment": (
+            "Платёж по займу",
+            "записан",
+            "изменён",
+            "отменён",
+        ),
+        "receivable_settlement": ("Возврат долга", "записан", "изменён", "отменён"),
+        "adjustment": ("Корректировка", "записана", "изменена", "отменена"),
+    }
+    kind, posted, revised, voided = forms.get(
+        transaction_type,
+        ("Операция", "записана", "изменена", "отменена"),
+    )
+    icon, state = {
+        "TransactionPosted": ("✅", posted),
+        "TransactionRevised": ("✏️", revised),
+        "TransactionVoided": ("↩️", voided),
+    }[event_type]
+    return f"{icon} {kind} {state}"
+
+
+async def _actor_name(
+    session: AsyncSession, user_id: uuid.UUID | None, *, workspace_id: uuid.UUID
+) -> str:
+    """Имя участника в этом бюджете; Telegram ID другим не показывается (FR-04)."""
     if user_id is None:
-        return "Система"
+        return "Бот"
     person = (
-        (await session.execute(select(Person.name).where(Person.user_id == user_id)))
+        (
+            await session.execute(
+                select(Person.name)
+                .join(
+                    Membership,
+                    (Membership.workspace_id == Person.workspace_id)
+                    & (Membership.person_id == Person.id),
+                )
+                .where(Membership.workspace_id == workspace_id, Membership.user_id == user_id)
+            )
+        )
         .scalars()
         .first()
     )
-    if person:
-        return str(person)
-    telegram_id = (
-        await session.execute(select(User.telegram_user_id).where(User.id == user_id))
-    ).scalar_one_or_none()
-    return f"Участник {telegram_id}" if telegram_id else "Участник"
+    return str(person) if person else "Участник бюджета"
 
 
 async def _transaction_summary(
     session: AsyncSession, *, workspace: Workspace, transaction_id: uuid.UUID
-) -> tuple[str, TransactionRevision] | None:
+) -> tuple[str, TransactionRevision, str | None] | None:
     transaction = (
         await session.execute(
             select(Transaction).where(
@@ -118,7 +156,34 @@ async def _transaction_summary(
             label = f"{label} — {Money(row[0], revision.currency).format()}"
         parts.append(label)
     detail = "; ".join(parts) if parts else "Без категории"
-    return f"{amount.format()} — {detail}", revision
+    cash_rows = (
+        await session.execute(
+            select(CashLeg.signed_minor, Account.name)
+            .outerjoin(
+                Account,
+                (Account.workspace_id == CashLeg.workspace_id) & (Account.id == CashLeg.account_id),
+            )
+            .where(
+                CashLeg.workspace_id == workspace.id,
+                CashLeg.transaction_id == transaction_id,
+                CashLeg.revision == revision.revision,
+            )
+        )
+    ).all()
+    outgoing = next((name for signed, name in cash_rows if signed < 0 and name), None)
+    incoming = next((name for signed, name in cash_rows if signed > 0 and name), None)
+    account_flow = f"{outgoing} → {incoming}" if outgoing and incoming else None
+    text = (
+        amount.format()
+        if revision.transaction_type == "transfer"
+        else f"{amount.format()} — {detail}"
+    )
+    return text, revision, account_flow
+
+
+# Кнопки уведомления открывают раздел новым сообщением: само уведомление
+# (напоминание, обзор, предупреждение) остаётся в чате.
+KEEP_SOURCE_PREFIX = "+"
 
 
 async def render_event(
@@ -130,7 +195,38 @@ async def render_event(
     recipient_user_id: uuid.UUID,
 ) -> tuple[str | None, list[list[dict[str, str]]] | None]:
     """Текст и кнопки уведомления; None означает «нечего показывать»."""
-    header = workspace.name
+    text, buttons = await _render_event(
+        session,
+        workspace=workspace,
+        event_type=event_type,
+        payload=payload,
+        recipient_user_id=recipient_user_id,
+    )
+    if buttons:
+        buttons = [
+            [
+                {
+                    **button,
+                    "callback_data": button["callback_data"]
+                    if button["callback_data"].startswith(KEEP_SOURCE_PREFIX)
+                    else KEEP_SOURCE_PREFIX + button["callback_data"],
+                }
+                for button in row
+            ]
+            for row in buttons
+        ]
+    return text, buttons
+
+
+async def _render_event(
+    session: AsyncSession,
+    *,
+    workspace: Workspace,
+    event_type: str,
+    payload: dict[str, Any],
+    recipient_user_id: uuid.UUID,
+) -> tuple[str | None, list[list[dict[str, str]]] | None]:
+    header = f"📒 {workspace.name}"
 
     if event_type in {"TransactionPosted", "TransactionRevised", "TransactionVoided"}:
         raw_id = payload.get("transaction_id")
@@ -141,25 +237,30 @@ async def render_event(
         )
         if summary is None:
             return None, None
-        text_body, revision = summary
-        author = await _actor_name(session, revision.changed_by)
-        verb = {
-            "TransactionPosted": "добавил расход",
-            "TransactionRevised": "исправил запись",
-            "TransactionVoided": "отменил запись",
-        }[event_type]
+        text_body, revision, account_flow = summary
+        author = await _actor_name(session, revision.changed_by, workspace_id=workspace.id)
+        verb = _transaction_event_title(revision.transaction_type, event_type)
         lines = [
+            verb,
+            "",
+            text_body,
+            "",
             header,
-            f"{author} {verb}: {text_body}",
+            f"{'Изменено' if event_type != 'TransactionPosted' else 'Добавлено'}: {author}",
             f"Дата: {format_date(revision.occurred_date, with_year=True)}",
         ]
+        if revision.transaction_type == "transfer" and account_flow:
+            lines.insert(3, f"Счета: {account_flow}")
         if revision.note:
-            preview = revision.note.strip().splitlines()[0][:120]
-            lines.append(f"Комментарий: {preview}")
+            preview = revision.note.strip()
+            lines.extend(["", f"💬 Комментарий: {preview}"])
         buttons = [
             [
-                {"text": "Открыть операцию", "callback_data": f"tx:{raw_id}"},
-                {"text": "Бюджет", "callback_data": "menu:budget"},
+                {
+                    "text": "🧾 Открыть операцию",
+                    "callback_data": f"tx:open:{uuid.UUID(str(raw_id)).hex[:16]}",
+                },
+                {"text": "📒 Бюджет", "callback_data": "menu:budget"},
             ]
         ]
         return "\n".join(lines), buttons
@@ -168,8 +269,9 @@ async def render_event(
         start = dt.date.fromisoformat(str(payload["start_date"]))
         end = dt.date.fromisoformat(str(payload["end_inclusive"]))
         return (
-            f"{header}\nОткрыт новый период: {format_range(start, end)}",
-            [[{"text": "Открыть бюджет", "callback_data": "menu:budget"}]],
+            f"📅 Открыт новый период\n\n{header}\n{format_range(start, end)}\n\n"
+            "Можно записывать новые траты и проверить план на этот период.",
+            [[{"text": "📒 Открыть бюджет", "callback_data": "menu:budget"}]],
         )
 
     if event_type == "BudgetPeriodEnded":
@@ -179,13 +281,16 @@ async def render_event(
             "confirmed_complete": "полнота подтверждена участником",
         }.get(str(payload.get("completeness")), "полнота не подтверждена")
         return (
-            f"{header}\nПериод завершён. Полнота: {completeness}.",
-            [[{"text": "Итог периода", "callback_data": "menu:report"}]],
+            f"📋 Период завершён\n\n{header}\n\nПолнота: {completeness}.\n\n"
+            "Откройте итоги, чтобы сравнить расходы с планом.",
+            [[{"text": "📋 Итог периода", "callback_data": "menu:summary"}]],
         )
 
     if event_type in {"MemberJoined", "MemberLeft", "MemberRemoved", "AdminTransferred"}:
         actor = await _actor_name(
-            session, payload.get("user_id") and uuid.UUID(str(payload["user_id"]))
+            session,
+            payload.get("user_id") and uuid.UUID(str(payload["user_id"])),
+            workspace_id=workspace.id,
         )
         verb = {
             "MemberJoined": "присоединился к бюджету",
@@ -193,11 +298,27 @@ async def render_event(
             "MemberRemoved": "исключён из бюджета",
             "AdminTransferred": "стал администратором бюджета",
         }[event_type]
-        return f"{header}\n{actor} {verb}.", None
+        return f"👥 Изменение участников\n\n{header}\n\n{actor} {verb}.", None
+
+    if event_type == "AdminTransferProposed":
+        if str(payload.get("to_user_id")) != str(recipient_user_id):
+            return None, None
+        proposal = str(payload.get("proposal_id") or "").replace("-", "")[:16]
+        return (
+            f"👑 Вам предлагают управление бюджетом\n\n{header}\n\n"
+            "Администратор приглашает, добавляет участников и может удалить бюджет. "
+            "Примите роль или откажитесь.",
+            [
+                [
+                    {"text": "✅ Принять роль", "callback_data": f"ws:acceptadmin:{proposal}"},
+                    {"text": "✕ Отказаться", "callback_data": f"ws:declineadmin:{proposal}"},
+                ]
+            ],
+        )
 
     if event_type == "BudgetDeletionRequested":
         # Служебное терминальное сообщение без пересылки финансовых данных.
-        return f"Бюджет «{workspace.name}» удалён администратором.", None
+        return f"🗑 Бюджет удалён\n\nАдминистратор удалил бюджет «{workspace.name}».", None
 
     if event_type in {"CategoryCreated", "CategoryChanged", "CategoryArchived", "CategoryRestored"}:
         raw_id = payload.get("category_id")
@@ -221,7 +342,7 @@ async def render_event(
             "CategoryArchived": "категория убрана в архив",
             "CategoryRestored": "категория восстановлена",
         }[event_type]
-        return f"{header}\n{verb.capitalize()}: {name}", None
+        return f"🗂 {verb.capitalize()}\n\n{name}\n\n{header}", None
 
     if event_type == "PaymentReminder":
         # Актуальность проверяется в момент отправки: оплаченный или отменённый
@@ -257,29 +378,36 @@ async def render_event(
             else "сумма не задана"
         )
         lines = [
-            workspace.name,
-            f"Плановый платёж: {name}",
-            f"Срок: {format_date(occurrence.due_date, with_year=True)} · {amount}",
-            "Это ожидаемый платёж, а не проведённый расход.",
+            "🔔 Напоминание о платеже",
+            "",
+            f"{name} · {amount}",
+            f"Срок: {format_date(occurrence.due_date, with_year=True)}",
+            "",
+            header,
+            "",
+            "Уже оплатили? Нажмите «Оплачено», чтобы записать расход.",
+            "Пока это ожидаемый платёж — в расходы он не включён.",
         ]
         buttons = [
             [
-                {"text": "Оплачено", "callback_data": f"pay:done:{occurrence.id.hex[:16]}"},
-                {"text": "Перенести", "callback_data": f"pay:move:{occurrence.id.hex[:16]}"},
+                {"text": "✅ Оплачено", "callback_data": f"pay:done:{occurrence.id.hex[:16]}"},
+                {"text": "📅 Перенести", "callback_data": f"pay:move:{occurrence.id.hex[:16]}"},
             ],
-            [{"text": "Пропустить", "callback_data": f"pay:skip:{occurrence.id.hex[:16]}"}],
+            [{"text": "Пропустить →", "callback_data": f"pay:skip:{occurrence.id.hex[:16]}"}],
         ]
         return "\n".join(lines), buttons
 
     if event_type == "PlanReviewDue":
         end = dt.date.fromisoformat(str(payload["end_inclusive"]))
         return (
-            f"{header}\nПериод заканчивается {format_date(end, with_year=True)}.\n"
-            "Проверьте план следующего периода: суммы не меняются без вашего решения.",
+            f"📅 Пора проверить следующий план\n\n{header}\n"
+            f"Текущий период заканчивается {format_date(end, with_year=True)}.\n\n"
+            "Откройте план следующего периода и проверьте лимиты. "
+            "Суммы не меняются без вашего решения.",
             [
                 [
-                    {"text": "План на следующий", "callback_data": "menu:nextplan"},
-                    {"text": "Итог периода", "callback_data": "menu:summary"},
+                    {"text": "📅 Следующий план", "callback_data": "menu:nextplan"},
+                    {"text": "📋 Итог периода", "callback_data": "menu:summary"},
                 ]
             ],
         )
@@ -288,9 +416,10 @@ async def render_event(
         # Одна сводка вместо рассылки по каждой импортированной строке (A63).
         rows = int(payload.get("rows") or 0)
         return (
-            f"{header}\nИмпорт завершён: перенесено записей — {rows}.\n"
+            f"✅ Импорт завершён\n\n{header}\nПеренесено записей: {rows}\n\n"
+            "Можно проверить историю и обновлённые итоги. "
             "Предупреждения по прошлым периодам не рассылаются.",
-            [[{"text": "Открыть бюджет", "callback_data": "menu:budget"}]],
+            [[{"text": "📒 Открыть бюджет", "callback_data": "menu:budget"}]],
         )
 
     if event_type == "ThresholdCrossed":

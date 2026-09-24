@@ -1,0 +1,22 @@
+{
+  "head": "5646887f8e5f61b475cccb36bc3ff068eef80ba7",
+  "source_or_project_tests_changed_since_snapshot": [],
+  "authoritative_run": "run-20260914T114344Z",
+  "passed": 2,
+  "failed": 6,
+  "errors": 0,
+  "skipped": 0,
+  "closed": [
+    "G-02",
+    "G-21",
+    "G-22",
+    "G-24",
+    "G-27"
+  ],
+  "partial": [
+    "G-03",
+    "G-04",
+    "G-20",
+    "G-23"
+  ]
+}

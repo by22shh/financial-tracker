@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="6" skipped="0" tests="8" time="5.453" timestamp="2026-09-14T18:43:44.858967+07:00" hostname="Bayramov-N-mb"><testcase classname="tests.integration.test_async_recheck" name="test_notification_rechecks_authority_after_render[expired_lease]" time="1.631"><failure message="AssertionError: Financial notification sent after expired_lease: [{'chat_id': 493932572, 'text': 'Тестовый бюджет\nДобавлена категория: Продукты', 'buttons': None}]&#10;assert [{'buttons': ...я: Продукты'}] == []&#10;  &#10;  Left contains one more item: {'buttons': None, 'chat_id': 493932572, 'text': 'Тестовый бюджет\nДобавлена категория: Продукты'}&#10;  Use -v to get more diff">tests/integration/test_async_recheck.py:68: in test_notification_rechecks_authority_after_render
+    assert sender.sent == [], f"Financial notification sent after {invalidation}: {sender.sent}"
+E   AssertionError: Financial notification sent after expired_lease: [{'chat_id': 493932572, 'text': 'Тестовый бюджет\nДобавлена категория: Продукты', 'buttons': None}]
+E   assert [{'buttons': ...я: Продукты'}] == []
+E     
+E     Left contains one more item: {'buttons': None, 'chat_id': 493932572, 'text': 'Тестовый бюджет\nДобавлена категория: Продукты'}
+E     Use -v to get more diff</failure></testcase><testcase classname="tests.integration.test_async_recheck" name="test_notification_rechecks_authority_after_render[security_fence]" time="0.218"><failure message="AssertionError: Financial notification sent after security_fence: [{'chat_id': 448901191, 'text': 'Тестовый бюджет\nДобавлена категория: Продукты', 'buttons': None}]&#10;assert [{'buttons': ...я: Продукты'}] == []&#10;  &#10;  Left contains one more item: {'buttons': None, 'chat_id': 448901191, 'text': 'Тестовый бюджет\nДобавлена категория: Продукты'}&#10;  Use -v to get more diff">tests/integration/test_async_recheck.py:68: in test_notification_rechecks_authority_after_render
+    assert sender.sent == [], f"Financial notification sent after {invalidation}: {sender.sent}"
+E   AssertionError: Financial notification sent after security_fence: [{'chat_id': 448901191, 'text': 'Тестовый бюджет\nДобавлена категория: Продукты', 'buttons': None}]
+E   assert [{'buttons': ...я: Продукты'}] == []
+E     
+E     Left contains one more item: {'buttons': None, 'chat_id': 448901191, 'text': 'Тестовый бюджет\nДобавлена категория: Продукты'}
+E     Use -v to get more diff</failure></testcase><testcase classname="tests.integration.test_async_recheck" name="test_notification_rechecks_authority_after_render[quarantined]" time="0.221"><failure message="AssertionError: Financial notification sent after quarantined: [{'chat_id': 214674499, 'text': 'Тестовый бюджет\nДобавлена категория: Продукты', 'buttons': None}]&#10;assert [{'buttons': ...я: Продукты'}] == []&#10;  &#10;  Left contains one more item: {'buttons': None, 'chat_id': 214674499, 'text': 'Тестовый бюджет\nДобавлена категория: Продукты'}&#10;  Use -v to get more diff">tests/integration/test_async_recheck.py:68: in test_notification_rechecks_authority_after_render
+    assert sender.sent == [], f"Financial notification sent after {invalidation}: {sender.sent}"
+E   AssertionError: Financial notification sent after quarantined: [{'chat_id': 214674499, 'text': 'Тестовый бюджет\nДобавлена категория: Продукты', 'buttons': None}]
+E   assert [{'buttons': ...я: Продукты'}] == []
+E     
+E     Left contains one more item: {'buttons': None, 'chat_id': 214674499, 'text': 'Тестовый бюджет\nДобавлена категория: Продукты'}
+E     Use -v to get more diff</failure></testcase><testcase classname="tests.integration.test_async_recheck" name="test_paused_notification_remains_runnable_after_security_gate_clears" time="0.222"><failure message="AssertionError: Pending notification stranded after temporary ACL fence: [('9dd5e817-4582-4457-868d-cb1505036868', 'succeeded')]&#10;assert []">tests/integration/test_async_recheck.py:83: in test_paused_notification_remains_runnable_after_security_gate_clears
+    assert runnable, f"Pending notification stranded after temporary ACL fence: {states}"
+E   AssertionError: Pending notification stranded after temporary ACL fence: [('9dd5e817-4582-4457-868d-cb1505036868', 'succeeded')]
+E   assert []</failure></testcase><testcase classname="tests.integration.test_async_recheck" name="test_older_security_journal_does_not_confirm_current_database" time="0.306"><failure message="AssertionError: Access open: DB revision 3, journal revision 2&#10;assert False&#10; +  where False = &lt;fintracker.db.models.access.Workspace object at 0x10ea6d350&gt;.quarantined">tests/integration/test_async_recheck.py:104: in test_older_security_journal_does_not_confirm_current_database
+    assert workspace.quarantined, f"Access open: DB revision {workspace.acl_revision}, journal revision {old.proposed_acl_revision}"
+E   AssertionError: Access open: DB revision 3, journal revision 2
+E   assert False
+E    +  where False = &lt;fintracker.db.models.access.Workspace object at 0x10ea6d350&gt;.quarantined</failure></testcase><testcase classname="tests.integration.test_async_recheck" name="test_published_recommendation_is_not_current_after_new_expense" time="0.340"><failure message="AssertionError: Old recommendation presented as current after a real posted expense: Расходы на рестораны растут быстрее плана&#10;  Эффект не рассчитан: Цена альтернативы неизвестна&#10;  Условия: Известны четыре доставки по 900 ₽; proposed=1&#10;assert 'Расходы на ...ыстрее плана' not in 'Расходы на ...вки по 900 ₽'&#10;  &#10;  'Расходы на рестора...астут быстрее плана' is contained here:&#10;    Расходы на рестораны растут быстрее плана&#10;    Эффект не рассчитан: Цена альтернативы неизвестна&#10;    Условия: Известны четыре доставки по 900 ₽">tests/integration/test_async_recheck.py:122: in test_published_recommendation_is_not_current_after_new_expense
+    assert "Расходы на рестораны растут быстрее плана" not in text, f"Old recommendation presented as current after a real posted expense: {text}; proposed={len(proposed)}"
+E   AssertionError: Old recommendation presented as current after a real posted expense: Расходы на рестораны растут быстрее плана
+E     Эффект не рассчитан: Цена альтернативы неизвестна
+E     Условия: Известны четыре доставки по 900 ₽; proposed=1
+E   assert 'Расходы на ...ыстрее плана' not in 'Расходы на ...вки по 900 ₽'
+E     
+E     'Расходы на рестора...астут быстрее плана' is contained here:
+E       Расходы на рестораны растут быстрее плана
+E       Эффект не рассчитан: Цена альтернативы неизвестна
+E       Условия: Известны четыре доставки по 900 ₽</failure></testcase><testcase classname="tests.integration.test_async_recheck" name="test_cancelled_receipt_releases_slot_and_preserves_unknown_cost" time="0.189" /><testcase classname="tests.integration.test_async_recheck" name="test_maintenance_frees_abandoned_slot_without_erasing_cost" time="1.834" /></testsuite></testsuites>

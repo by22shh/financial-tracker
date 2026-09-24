@@ -31,6 +31,7 @@ from fintracker.db.models.access import (
 )
 from fintracker.db.models.platform import (
     ConsumerReceipt,
+    InboundEvent,
     NotificationDelivery,
     OutboxEvent,
     RecipientDayQuota,
@@ -60,6 +61,7 @@ EVENT_DELIVERY_CLASS: dict[str, str] = {
     "MemberLeft": "shared_change",
     "MemberRemoved": "shared_change",
     "AdminTransferred": "shared_change",
+    "AdminTransferProposed": "shared_change",
     "BudgetPeriodOpened": "review",
     "BudgetPeriodEnded": "review",
     "ImportCommitted": "review",
@@ -69,6 +71,8 @@ EVENT_DELIVERY_CLASS: dict[str, str] = {
     "AnalysisCompleted": "review",
     "BudgetDeletionRequested": "terminal",
 }
+
+TRANSACTION_EVENTS = frozenset({"TransactionPosted", "TransactionRevised", "TransactionVoided"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -139,12 +143,39 @@ async def expand_event(
     )
 
     now = dt.datetime.now(dt.UTC)
+    # Telegram-команда уже имеет долговечный direct reply автору. Для
+    # финансовой операции в том же correlation потоке не создаём второе,
+    # фактически одинаковое уведомление; остальные участники по-прежнему
+    # получают shared_change. Операции из API/фоновых задач без inbound
+    # события сохраняют прежнюю author_card доставку.
+    has_interactive_reply = False
+    if event.event_type in TRANSACTION_EVENTS and event.actor_user_id is not None:
+        has_interactive_reply = (
+            await session.execute(
+                select(InboundEvent.id)
+                .where(
+                    InboundEvent.workspace_id == event.workspace_id,
+                    InboundEvent.actor_user_id == event.actor_user_id,
+                    InboundEvent.correlation_id == event.correlation_id,
+                    InboundEvent.chat_id.is_not(None),
+                )
+                .limit(1)
+            )
+        ).scalar_one_or_none() is not None
     created = 0
     skipped = 0
     for membership in members:
         if event.audience == "admin" and membership.role != "admin":
             continue
+        if event.event_type == "AdminTransferProposed" and str(membership.user_id) != str(
+            (event.payload or {}).get("to_user_id")
+        ):
+            # Предложение роли адресовано одному участнику.
+            continue
         is_author = membership.user_id == event.actor_user_id
+        if is_author and has_interactive_reply:
+            skipped += 1
+            continue
         if is_author and event.audience == "members":
             # Автор действия не получает дубликат своей карточки (FR-86).
             effective_class = "author_card"
@@ -693,5 +724,5 @@ async def _merge_pending_digest(
         merged.append(delivery.id)
     if not merged:
         return text, buttons, []
-    header = f"Сводка по бюджету «{workspace.name}»:"
+    header = f"📬 Сводка по бюджету «{workspace.name}»"
     return "\n\n".join([header, *parts]), buttons, merged

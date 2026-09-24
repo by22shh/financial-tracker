@@ -309,14 +309,23 @@ def validate_extraction(
         fields.evidence = {
             key: value for key, value in raw.evidence.model_dump().items() if isinstance(value, str)
         }
-        fields.ambiguities.extend(
-            {
-                "field": item.field,
-                "reason": item.reason,
-                "options": item.options,
-            }
-            for item in raw.ambiguities
-        )
+        for item in raw.ambiguities:
+            # Отсутствующие необязательные поля не требуют диалога. Модель
+            # иногда отмечает их как неоднозначные, хотя сервер по контракту
+            # использует текущую дату, а получателя/плательщика можно не задавать.
+            if item.field == "date" and not raw.date_expression and not raw.evidence.date:
+                continue
+            if item.field == "beneficiary" and not raw.evidence.beneficiary:
+                continue
+            if item.field == "spender" and not raw.evidence.spender:
+                continue
+            fields.ambiguities.append(
+                {
+                    "field": item.field,
+                    "reason": item.reason,
+                    "options": item.options,
+                }
+            )
         candidates.append(fields)
 
     question = response.question

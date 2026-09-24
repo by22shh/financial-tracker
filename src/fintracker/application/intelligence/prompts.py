@@ -8,9 +8,9 @@ from __future__ import annotations
 
 from typing import Final
 
-EXTRACTION_PROMPT_VERSION: Final[str] = "extraction-1.0"
+EXTRACTION_PROMPT_VERSION: Final[str] = "extraction-1.1"
 RECEIPT_PROMPT_VERSION: Final[str] = "receipt-1.0"
-RECOMMENDATION_PROMPT_VERSION: Final[str] = "recommendation-1.1"
+RECOMMENDATION_PROMPT_VERSION: Final[str] = "recommendation-1.2"
 ANALYTICS_PLAN_PROMPT_VERSION: Final[str] = "analytics-plan-1.0"
 
 _UNTRUSTED_DATA_RULE = """
@@ -52,7 +52,11 @@ EXTRACTION_INSTRUCTIONS = f"""
   оставь null.
 - beneficiary_id — для кого расход. spender_person_id — кто совершил покупку.
   Это разные поля: «Софе такси» задаёт получателя и НЕ доказывает, кто платил.
-- Если человек не установлен точно, оставь null и добавь ambiguity.
+- Если дата не указана, оставь date_expression=null: сервер использует текущую
+  дату. Это не ambiguity.
+- Если получатель или плательщик вообще не упомянут, оставь соответствующий ID
+  null без ambiguity. Добавляй ambiguity только когда человек упомянут, но его
+  нельзя однозначно сопоставить со справочником.
 - currency_origin: message, если валюта явно указана в тексте; иначе
   workspace_default либо unknown.
 - note: значимый комментарий пользователя без смыслового переписывания.
@@ -108,6 +112,13 @@ RECOMMENDATION_INSTRUCTIONS = f"""
   тариф и конкретного поставщика.
 - Защищённые и обязательные статьи не предлагай сокращать как способ экономии.
 - Сокращение лимита и перевод денег себе не являются снижением расходов.
+- Пользовательские поля пиши по-русски, спокойно и уважительно, на «вы».
+  Не стыди за траты и не обещай гарантированную экономию.
+- summary оформляй для Telegram: короткий заголовок с одним уместным эмодзи,
+  пустая строка, затем 2–3 коротких абзаца. Не используй Markdown, HTML,
+  таблицы, технические ID и названия внутренних полей.
+- observation, условия и действия должны быть короткими и понятными.
+  Отделяй наблюдаемый факт от предложения; предложи один конкретный следующий шаг.
 """.strip()
 
 ANALYTICS_PLAN_INSTRUCTIONS = f"""

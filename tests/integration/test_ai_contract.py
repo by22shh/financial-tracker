@@ -183,6 +183,43 @@ async def test_server_resolves_date_and_money(
     assert candidate.currency == "RUB"
 
 
+async def test_missing_optional_date_and_people_do_not_force_clarification(
+    clean_db: None, ai_settings: Settings, owner_session: AsyncSession
+) -> None:
+    """Текущая дата и пустые роли людей являются допустимыми значениями."""
+    fixture = await build_fixture(owner_session)
+    catalog = await load_catalog(
+        owner_session, workspace_id=fixture.workspace.id, currency="RUB", timezone=TZ
+    )
+    response = ExtractionResponse.model_validate_json(
+        extraction_json(
+            candidate={
+                "date_expression": None,
+                "evidence": {"amount": "450"},
+                "ambiguities": [
+                    {"field": "date", "reason": "Дата не указана", "options": []},
+                    {
+                        "field": "beneficiary",
+                        "reason": "Получатель не указан",
+                        "options": [],
+                    },
+                    {
+                        "field": "spender",
+                        "reason": "Плательщик не указан",
+                        "options": [],
+                    },
+                ],
+            }
+        )
+    )
+
+    result = validate_extraction(response, catalog=catalog, reference_date=DAY)
+
+    assert result.candidates[0].occurred_date == DAY
+    assert result.candidates[0].ambiguities == []
+    assert result.question is None
+
+
 async def test_extra_fields_and_bad_types_are_rejected() -> None:
     """AI-03: дополнительные поля запрещены, невалидный JSON не исполняется."""
     from pydantic import ValidationError

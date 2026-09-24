@@ -24,7 +24,7 @@ from fintracker.application.conversation.entry import (
     create_draft_with_candidates,
     find_message_draft,
 )
-from fintracker.application.conversation.keyboards import Button, callback, confirm_candidate
+from fintracker.application.conversation.keyboards import Button, callback
 from fintracker.application.conversation.types import Attachment as MediaAttachment
 from fintracker.application.conversation.types import IncomingMessage, MessageKind, Reply
 from fintracker.application.intelligence.extraction import (
@@ -166,7 +166,7 @@ async def _process_voice(
     workspace_id = actor.require_workspace()
     attachment = message.attachments[0] if message.attachments else None
     if attachment is None:
-        return [Reply(text="Не удалось получить голосовое сообщение.")]
+        return [Reply(text="⚠️ Не удалось получить голосовое сообщение.")]
 
     local_date = message.received_at.astimezone(ZoneInfo(workspace.timezone)).date()
     prepared = await _prepare_media(settings, actor=actor, workspace=workspace, message=message)
@@ -177,7 +177,7 @@ async def _process_voice(
     try:
         audio = await download_attachment(settings, file_id=attachment.file_id)
     except ProviderUnavailable as exc:
-        return [Reply(text=f"Не удалось загрузить запись: {exc.message}")]
+        return [Reply(text=f"⚠️ Не удалось загрузить запись: {exc.message}")]
 
     asr = build_asr(settings.asr)
     try:
@@ -193,13 +193,13 @@ async def _process_voice(
         return [
             Reply(
                 text=(
-                    "Не удалось распознать речь. Черновик сохранён — повторите запись "
-                    "или введите сумму текстом."
+                    "🎙 Не удалось распознать речь\n\nЧерновик сохранён. Повторите "
+                    "разбор или введите сумму вручную."
                 ),
                 buttons=(
                     (
-                        Button("Повторить разбор", callback("dr", "retry", draft_id.hex[:16])),
-                        Button("Ручной ввод", callback("menu", "add")),
+                        Button("🔄 Повторить разбор", callback("dr", "retry", draft_id.hex[:16])),
+                        Button("✍️ Ручной ввод", callback("menu", "add")),
                     ),
                 ),
             )
@@ -213,10 +213,10 @@ async def _process_voice(
         return [
             Reply(
                 text=(
-                    "В записи не распознана речь. Черновик сохранён — повторите "
-                    "или введите сумму текстом."
+                    "🎙 Не удалось услышать речь\n\nЧерновик сохранён. Запишите "
+                    "сообщение ещё раз или введите сумму текстом."
                 ),
-                buttons=((Button("Ручной ввод", callback("menu", "add")),),),
+                buttons=((Button("✍️ Ручной ввод", callback("menu", "add")),),),
             )
         ]
 
@@ -256,7 +256,7 @@ async def _process_voice(
         draft_id=draft_id,
         expected_version=draft_version,
         extraction=extraction,
-        source_note=f"Распознано: «{transcript.text}»",
+        source_note=f"🎙 Распознано\n\n«{transcript.text}»",
         voice_amount_check=True,
     )
 
@@ -267,13 +267,13 @@ async def _process_image(
     """Чек или платёжный документ (FR-14–FR-17)."""
     attachment = message.attachments[0] if message.attachments else None
     if attachment is None:
-        return [Reply(text="Не удалось получить изображение.")]
+        return [Reply(text="⚠️ Не удалось получить изображение.")]
 
     local_date = message.received_at.astimezone(ZoneInfo(workspace.timezone)).date()
     try:
         image = await download_attachment(settings, file_id=attachment.file_id)
     except ProviderUnavailable as exc:
-        return [Reply(text=f"Не удалось загрузить изображение: {exc.message}")]
+        return [Reply(text=f"⚠️ Не удалось загрузить изображение: {exc.message}")]
 
     # Проверяются настоящие байты, а не заявленные Telegram тип и размеры:
     # текст под видом JPEG не должен дойти до платной модели (SEC-07, G-26).
@@ -290,8 +290,9 @@ async def _process_image(
         return [
             Reply(
                 text=(
-                    f"Файл не удалось прочитать как изображение: {exc}. "
-                    "Пришлите фото чека ещё раз или введите сумму текстом."
+                    "⚠️ Файл не удалось прочитать как изображение: "
+                    f"{exc}"
+                    ".\n\nПришлите фото чека ещё раз или введите сумму текстом."
                 )
             )
         ]
@@ -356,13 +357,13 @@ async def _process_image(
         return [
             Reply(
                 text=(
-                    "Не удалось разобрать изображение. Черновик сохранён — повторите "
-                    "или введите сумму текстом."
+                    "🧾 Не удалось прочитать чек\n\nЧерновик сохранён. Попробуйте "
+                    "повторить разбор или введите сумму вручную."
                 ),
                 buttons=(
                     (
-                        Button("Повторить разбор", callback("dr", "retry", draft_id.hex[:16])),
-                        Button("Ручной ввод", callback("menu", "add")),
+                        Button("🔄 Повторить разбор", callback("dr", "retry", draft_id.hex[:16])),
+                        Button("✍️ Ручной ввод", callback("menu", "add")),
                     ),
                 ),
             )
@@ -389,12 +390,13 @@ async def _process_image(
         return [
             Reply(
                 text=(
-                    f"Это похоже на {kind_label}, а не на подтверждённую оплату.\n"
-                    "Платёж уже совершён?"
+                    "✍️ Это похоже на "
+                    f"{kind_label}"
+                    ", а не на подтверждённую оплату.\n\nПлатёж уже совершён?"
                 ),
                 buttons=(
                     (
-                        Button("Да, оплачено", callback("dr", "paid", draft_id.hex[:16])),
+                        Button("✅ Да, оплачено", callback("dr", "paid", draft_id.hex[:16])),
                         Button("Нет", callback("dr", "cancel", draft_id.hex[:16])),
                     ),
                 ),
@@ -434,8 +436,11 @@ async def _receipt_to_draft(
         )
         return [
             Reply(
-                text="Не удалось прочитать итог чека. Введите сумму текстом.",
-                buttons=((Button("Ручной ввод", callback("menu", "add")),),),
+                text=(
+                    "🧾 Нужна сумма чека\n\nНе удалось прочитать итог. Отправьте сумму"
+                    " текстом или выберите ручной ввод."
+                ),
+                buttons=((Button("✍️ Ручной ввод", callback("menu", "add")),),),
             )
         ]
 
@@ -448,8 +453,11 @@ async def _receipt_to_draft(
         return [
             Reply(
                 text=(
-                    f"Чек в валюте {currency}, а бюджет ведётся в {workspace.currency}.\n"
-                    "Укажите фактически списанную сумму в валюте бюджета — курс "
+                    "ℹ️ Чек в валюте "
+                    f"{currency}"
+                    ", а бюджет ведётся в "
+                    f"{workspace.currency}"
+                    ".\n\nУкажите фактически списанную сумму в валюте бюджета — курс "
                     "не подставляется автоматически."
                 )
             )
@@ -528,12 +536,12 @@ async def _receipt_to_draft(
         candidates=fields_list,
         question=check.reason,
     )
-    summary_lines = [f"Чек на {total.format()}"]
+    summary_lines = [f"🧾 Чек на {total.format()}", ""]
     if receipt.merchant:
         summary_lines.append(f"Продавец: {receipt.merchant}")
     parts = list(fields_list[0].parts) if fields_list else []
     if len(parts) > 1:
-        summary_lines.append(f"Распределение по {len(parts)} статьям")
+        summary_lines.append(f"\n🗂 Категорий в чеке: {len(parts)}")
         summary_lines.extend(
             f"• {part.get('label') or 'Позиция'}: "
             f"{Money(int(part['amount_minor']), currency).format()}"
@@ -612,14 +620,15 @@ async def _finalize_extraction(
             )
         draft.state = "needs_clarification" if extraction.question else "ready"
         draft.version += 1
-        candidate_fields = list(extraction.candidates)
 
-    summary = sections.draft_summary(candidate_fields, workspace.currency)
-    header = extraction.question or "Проверьте запись перед сохранением:"
-    text = f"{source_note}\n\n{header}\n{summary}"
+    open_question, summary, buttons = await sections.draft_card(
+        settings, actor=actor, workspace=workspace, draft_id=draft_id
+    )
+    header = open_question or extraction.question or "🧾 Проверьте запись перед сохранением"
+    text = f"{source_note.rstrip()}\n\n{header}\n\n{summary}"
     if voice_amount_check:
         text += "\n\nРасшифровку можно исправить перед записью."
-    return [Reply(text=text, buttons=confirm_candidate(draft_id))]
+    return [Reply(text=text, buttons=buttons)]
 
 
 async def _mark_draft(
@@ -725,8 +734,8 @@ async def retry_media_draft(
         return [
             Reply(
                 text=(
-                    "Исходный файл больше не сохранён: пришлите его ещё раз "
-                    "или введите сумму текстом."
+                    "⚠️ Исходный файл больше не сохранён: пришлите его ещё раз или "
+                    "введите сумму текстом."
                 )
             )
         ]
@@ -751,8 +760,8 @@ async def confirm_invoice_paid(
         return [
             Reply(
                 text=(
-                    "Разобранный документ не сохранён: пришлите чек ещё раз "
-                    "или введите сумму текстом."
+                    "⚠️ Разобранный документ не сохранён: пришлите чек ещё раз или "
+                    "введите сумму текстом."
                 )
             )
         ]

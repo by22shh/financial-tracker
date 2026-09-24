@@ -145,7 +145,7 @@ async def test_qa02_corrupted_image_is_rejected_before_paid_call(
     )
     replies = await handle_media(test_settings, unsupported, user_id=user_id)
     assert "не поддерживается" in replies[0].text
-    assert "Исходное сообщение сохранено" in replies[0].text
+    assert "JPEG, PNG или WebP" in replies[0].text
     assert ensure_user is not None
 
 

@@ -1,0 +1,24 @@
+{
+  "api": {
+    "dsn_overrides": {},
+    "storage_root": "/var/lib/fintracker/objects"
+  },
+  "worker": {
+    "dsn_overrides": {},
+    "storage_root": "/var/lib/fintracker/objects"
+  },
+  "scheduler": {
+    "dsn_overrides": {},
+    "storage_root": "/var/lib/fintracker/objects"
+  },
+  "default_db": {
+    "api_dsn": {
+      "host": "localhost",
+      "port": 55432
+    },
+    "worker_dsn": {
+      "host": "localhost",
+      "port": 55432
+    }
+  }
+}

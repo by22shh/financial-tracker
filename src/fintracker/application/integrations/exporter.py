@@ -18,9 +18,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fintracker.application.conversation.context import category_paths
 from fintracker.core.money import Money
 from fintracker.db.models.access import Beneficiary, Person, User, Workspace
-from fintracker.db.models.catalog import Tag, TransactionTag
+from fintracker.db.models.catalog import Category, Tag, TransactionTag
+from fintracker.db.models.commitments import Goal
 from fintracker.db.models.ledger import Allocation, Transaction, TransactionRevision
-from fintracker.db.models.planning import BudgetPeriod, PeriodPolicyRow
+from fintracker.db.models.planning import BudgetLine, BudgetPeriod, BudgetVersion, PeriodPolicyRow
 
 # Символы, с которых начинается формула в табличных редакторах.
 _FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
@@ -63,6 +64,9 @@ class ExportSnapshot:
     generated_at: dt.datetime
     rows: tuple[ExportRow, ...]
     periods: tuple[dict[str, str], ...]
+    categories: tuple[dict[str, str], ...] = ()
+    plans: tuple[dict[str, str], ...] = ()
+    goals: tuple[dict[str, str], ...] = ()
 
 
 async def build_snapshot(
@@ -195,12 +199,86 @@ async def build_snapshot(
             .order_by(BudgetPeriod.start_date)
         )
     ).all()
+    categories = (
+        await session.scalars(
+            select(Category)
+            .where(Category.workspace_id == workspace.id)
+            .order_by(Category.sort_order, Category.id)
+        )
+    ).all()
+    plans = (
+        await session.execute(
+            select(BudgetVersion, BudgetLine)
+            .outerjoin(
+                BudgetLine,
+                (BudgetLine.workspace_id == BudgetVersion.workspace_id)
+                & (BudgetLine.budget_version_id == BudgetVersion.id),
+            )
+            .where(BudgetVersion.workspace_id == workspace.id)
+            .order_by(
+                BudgetVersion.period_id, BudgetVersion.kind, BudgetVersion.version, BudgetLine.id
+            )
+        )
+    ).all()
+    goals = (
+        await session.scalars(
+            select(Goal).where(Goal.workspace_id == workspace.id).order_by(Goal.created_at, Goal.id)
+        )
+    ).all()
     return ExportSnapshot(
         workspace_name=workspace.name,
         currency=workspace.currency,
         data_revision=workspace.data_revision,
         generated_at=dt.datetime.now(dt.UTC),
         rows=tuple(export_rows),
+        categories=tuple(
+            {
+                "category_id": str(row.id),
+                "name": row.name,
+                "path": paths.get(row.id, row.name),
+                "parent_id": str(row.parent_id or ""),
+                "archived_at": row.archived_at.isoformat() if row.archived_at else "",
+                "merged_into_id": str(row.merged_into_id or ""),
+            }
+            for row in categories
+        ),
+        plans=tuple(
+            {
+                "period_id": str(version.period_id),
+                "version_id": str(version.id),
+                "kind": version.kind,
+                "version": str(version.version),
+                "status": version.plan_status,
+                "origin": version.origin,
+                "overall_limit_minor": str(version.overall_limit_minor)
+                if version.overall_limit_minor is not None
+                else "",
+                "category_id": str(line.category_id) if line else "",
+                "category": paths.get(line.category_id, "") if line else "",
+                "beneficiary_id": str(line.beneficiary_id or "") if line else "",
+                "limit_minor": str(line.limit_minor)
+                if line and line.limit_minor is not None
+                else "",
+                "rollover_mode": line.rollover_mode if line else "",
+            }
+            for version, line in plans
+        ),
+        goals=tuple(
+            {
+                "goal_id": str(row.id),
+                "name": row.name,
+                "kind": row.kind,
+                "currency": row.currency,
+                "status": row.status,
+                "target_minor": str(row.target_minor) if row.target_minor is not None else "",
+                "allocated_minor": str(row.allocated_minor),
+                "contribution_minor": str(row.contribution_minor)
+                if row.contribution_minor is not None
+                else "",
+                "due_date": row.due_date.isoformat() if row.due_date else "",
+            }
+            for row in goals
+        ),
         periods=tuple(
             {
                 "budget_id": str(workspace.id),
@@ -277,7 +355,7 @@ def to_csv(snapshot: ExportSnapshot) -> bytes:
 
 
 def to_xlsx(snapshot: ExportSnapshot) -> bytes:
-    """XLSX с листами «Операции», «Распределения», «Периоды», «Описание полей»."""
+    """XLSX: журнал, распределения, периоды, категории, версии планов и цели."""
     from openpyxl import Workbook
 
     workbook = Workbook()
@@ -329,6 +407,51 @@ def to_xlsx(snapshot: ExportSnapshot) -> bytes:
         for period in snapshot.periods:
             periods.append([sanitize_cell(value) for value in period.values()])
 
+    for title, records, empty_columns in (
+        (
+            "Категории",
+            snapshot.categories,
+            ("category_id", "name", "path", "parent_id", "archived_at", "merged_into_id"),
+        ),
+        (
+            "Бюджеты",
+            snapshot.plans,
+            (
+                "period_id",
+                "version_id",
+                "kind",
+                "version",
+                "status",
+                "origin",
+                "overall_limit_minor",
+                "category_id",
+                "category",
+                "beneficiary_id",
+                "limit_minor",
+                "rollover_mode",
+            ),
+        ),
+        (
+            "Цели",
+            snapshot.goals,
+            (
+                "goal_id",
+                "name",
+                "kind",
+                "currency",
+                "status",
+                "target_minor",
+                "allocated_minor",
+                "contribution_minor",
+                "due_date",
+            ),
+        ),
+    ):
+        sheet = workbook.create_sheet(title)
+        sheet.append(list(records[0]) if records else list(empty_columns))
+        for record in records:
+            sheet.append([sanitize_cell(value) for value in record.values()])
+
     description = workbook.create_sheet("Описание полей")
     description.append(["Поле", "Значение"])
     for field_name, explanation in (
@@ -342,6 +465,14 @@ def to_xlsx(snapshot: ExportSnapshot) -> bytes:
             "Суммы распределений не складываются с суммой операции: "
             "это разные листы одного события",
         ),
+        (
+            "Бюджеты",
+            "Все версии планов: baseline — исходный, working — рабочий. "
+            "Для текущих лимитов используйте последнюю рабочую версию периода; "
+            "версии не складываются.",
+        ),
+        ("limit_minor", "Пусто — лимит не задан; 0 — расходы не запланированы"),
+        ("allocated_minor", "Резерв цели, не подтверждённый баланс банковского счёта"),
         ("end_date_inclusive", "Дата конца периода включительно"),
         ("Валюта", snapshot.currency),
         ("Версия данных", str(snapshot.data_revision)),

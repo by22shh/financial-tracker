@@ -26,7 +26,7 @@ async def test_a168_member_leaves_and_loses_access(bot: None, test_settings: Set
     admin, member = await _budget_with_member(test_settings, 920001, 920002, categories="Продукты")
     await member.send("продукты 500")
     await member.press(member.button_data("Записать"))
-    assert "Записано 500,00 ₽" in member.text()
+    assert "Расход записан · 500 ₽" in member.text()
 
     await member.send("/members")
     await member.press(member.button_data("Выйти из бюджета"))
@@ -42,7 +42,7 @@ async def test_a168_member_leaves_and_loses_access(bot: None, test_settings: Set
 
     # Общая история сохранила запись ушедшего участника.
     await admin.send("/budget")
-    assert "Учтённые расходы: 500,00 ₽" in admin.text()
+    assert "Учтённые расходы: 500 ₽" in admin.text()
 
 
 async def test_a169_old_buttons_do_not_restore_access(bot: None, test_settings: Settings) -> None:
@@ -91,7 +91,7 @@ async def test_a173_admin_transfer_swaps_roles_atomically(
 
     # Повторное принятие не меняет роли снова.
     await member.press("ws:acceptadmin:x")
-    assert "Активного предложения передачи нет" in member.text()
+    assert "Предложение уже неактуально" in member.text()
 
     await admin.send("/members")
     assert not admin.has_button("Пригласить"), "прежний администратор стал участником"
@@ -201,7 +201,7 @@ async def test_a176_a177_delete_closes_budget_and_spares_other(
     await admin.send("/settings")
     await admin.press(admin.button_data("Удалить бюджет"))
     assert "Удалить бюджет «Первый бюджет»" in admin.text()
-    assert "операций 1" in admin.text()
+    assert "операции: 1" in admin.text()
 
     await admin.send("удалить Первый бюджет")
     assert "удалён" in admin.text()
@@ -222,8 +222,9 @@ async def test_a175_member_cannot_delete_budget(bot: None, test_settings: Settin
     await member.press("ws:delete")
     assert "только администратор" in member.text().lower()
 
+    # Фраза без кнопки удаления не трогает бюджет ни у кого.
     await member.send("удалить Общий бюджет")
-    assert "только администратор" in member.text().lower()
+    assert "удалён" not in member.text().lower()
 
     await admin.send("/budget")
     assert "Общий бюджет" in admin.text(), "бюджет остался активен"

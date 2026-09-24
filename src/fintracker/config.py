@@ -63,6 +63,8 @@ class TelegramSettings(BaseSettings):
     webhook_secret: SecretStr = SecretStr("")
     webhook_base_url: str = ""
     bot_id: int = 0
+    # Имя бота без «@»: из него строится ссылка-приглашение t.me/<имя>?start=…
+    bot_username: str = ""
     # Режим аудитории (OPEN-04 / BL-05). По умолчанию закрытый пилот.
     creation_mode: Literal["open", "allowlist"] = "allowlist"
     creation_allowlist: str = ""
@@ -100,9 +102,9 @@ class AISettings(BaseSettings):
     max_concurrent_interactive: int = 4
     max_concurrent_review: int = 1
     max_concurrent_per_workspace: int = 2
-    price_input_per_mtok: Decimal = Decimal("1.25")
-    price_cached_input_per_mtok: Decimal = Decimal("0.125")
-    price_output_per_mtok: Decimal = Decimal("10.00")
+    price_input_per_mtok: Decimal = Decimal("0.20")
+    price_cached_input_per_mtok: Decimal = Decimal("0.02")
+    price_output_per_mtok: Decimal = Decimal("1.20")
 
     @field_validator("model")
     @classmethod

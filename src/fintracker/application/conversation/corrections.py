@@ -10,6 +10,7 @@ from decimal import Decimal
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from fintracker.application.conversation.keyboards import (
     MAX_CALLBACK_BYTES,
@@ -18,6 +19,8 @@ from fintracker.application.conversation.keyboards import (
     short,
 )
 from fintracker.application.conversation.types import IncomingMessage, Reply
+from fintracker.application.delivery.render import format_date
+from fintracker.application.delivery.thresholds import refresh_thresholds
 from fintracker.application.ledger.service import (
     load_current_spec,
     restore_transaction,
@@ -52,6 +55,20 @@ _CATEGORY_MOVE = re.compile(
 )
 
 
+def _with_notice(replies: list[Reply], notice: str) -> list[Reply]:
+    if not replies:
+        return replies
+    first = replies[0]
+    return [
+        Reply(
+            text=f"{notice}\n\n{first.text}",
+            buttons=first.buttons,
+            transaction_id=first.transaction_id,
+        ),
+        *replies[1:],
+    ]
+
+
 async def try_handle_correction(
     settings: Settings, *, actor: ActorContext, workspace: Workspace, message: IncomingMessage
 ) -> list[Reply] | None:
@@ -72,10 +89,10 @@ async def try_handle_correction(
         return [
             Reply(
                 text=(
-                    "Не понял, какую запись исправить. Ответьте на её карточку "
+                    "⚠️ Не понял, какую запись исправить.\n\nОтветьте на её карточку "
                     "или откройте историю и выберите операцию."
                 ),
-                buttons=((Button("История", callback("menu", "history")),),),
+                buttons=((Button("🧾 История", callback("menu", "history")),),),
             )
         ]
     if isinstance(target, list):
@@ -86,7 +103,7 @@ async def try_handle_correction(
     if intent is Intent.ADD_NOTE:
         match = _NOTE_ADD.search(text)
         if match is None:
-            return [Reply(text="Напишите «Добавь комментарий: текст».")]
+            return [Reply(text="✍️ Напишите «Добавь комментарий: текст».")]
         return await apply_note(
             settings,
             actor=actor,
@@ -166,10 +183,10 @@ async def _resolve_target(
             return [
                 Reply(
                     text=(
-                        "Не нашёл запись, к которой относится этот ответ. "
-                        "Откройте историю и выберите операцию."
+                        "⚠️ Не нашёл запись, к которой относится этот ответ.\n\nОткройте "
+                        "историю и выберите операцию."
                     ),
-                    buttons=((Button("История", callback("menu", "history")),),),
+                    buttons=((Button("🧾 История", callback("menu", "history")),),),
                 )
             ]
 
@@ -205,15 +222,16 @@ async def _resolve_target(
             if len(unique) == 1:
                 return unique[0]
             if len(unique) > 1:
+                labels = await _transaction_labels(session, workspace_id, unique[:5])
                 buttons = tuple(
-                    (Button(f"Запись {index + 1}", callback("tx", "open", item.hex[:16])),)
-                    for index, item in enumerate(unique[:5])
+                    (Button(labels.get(item, "Запись"), callback("tx", "open", item.hex[:16])),)
+                    for item in unique[:5]
                 )
                 return [
                     Reply(
                         text=(
-                            "Под исправление подходит несколько записей. "
-                            "Выберите нужную — наугад ничего не меняю."
+                            "ℹ️ Подходит несколько записей\n\nВыберите нужную — наугад "
+                            "ничего не меняю."
                         ),
                         buttons=buttons,
                     )
@@ -269,18 +287,22 @@ async def _propose_amount_or_date(
         return [
             Reply(
                 text=(
-                    "Что именно исправить? Укажите новую сумму, например "
-                    "«Здесь было 800, а не 1800», или новую дату."
-                )
+                    "✍️ Что именно исправить?\n\nНапишите новую сумму — «исправь 1800 на "
+                    "800» — или дату — «это было вчера». Удобнее всего: откройте запись "
+                    "и нажмите «✏️ Изменить»."
+                ),
+                buttons=((Button("🧾 История", callback("menu", "history")),),),
             )
         ]
 
-    lines = ["Изменение записи:"]
+    lines = ["✏️ Изменить запись?", ""]
     if new_amount is not None:
         lines.append(f"Сумма: {current_amount.format()} → {new_amount.format()}")
     if new_date is not None and new_date != current_date:
-        lines.append(f"Дата: {current_date.isoformat()} → {new_date.isoformat()}")
-    lines.append("Подтвердите изменение.")
+        lines.append(
+            f"Дата: {format_date(current_date, with_year=True)} → "
+            f"{format_date(new_date, with_year=True)}"
+        )
     payload_parts = [transaction_id.hex[:16], str(entity_version)]
     if new_amount is not None:
         payload_parts.append(str(new_amount.minor))
@@ -292,18 +314,47 @@ async def _propose_amount_or_date(
             text="\n".join(lines),
             buttons=(
                 (
-                    Button("Подтвердить", callback("fix", "apply", *payload_parts)),
-                    Button("Отмена", callback("noop", "x")),
+                    Button("✅ Подтвердить", callback("fix", "apply", *payload_parts)),
+                    Button("✕ Отмена", callback("noop", "nochange")),
                 ),
             ),
         )
     ]
 
 
-def session_local_date(timezone: str):  # type: ignore[no-untyped-def]
-    import datetime as dt
-
+def session_local_date(timezone: str) -> dt.date:
     return dt.datetime.now(ZoneInfo(timezone)).date()
+
+
+async def _transaction_labels(
+    session: AsyncSession, workspace_id: uuid.UUID, ids: list[uuid.UUID]
+) -> dict[uuid.UUID, str]:
+    """Подписи кнопок выбора: дата, сумма и описание вместо «Запись 1»."""
+    rows = (
+        await session.execute(
+            select(
+                Transaction.id,
+                TransactionRevision.occurred_date,
+                TransactionRevision.amount_minor,
+                TransactionRevision.currency,
+                TransactionRevision.description,
+            )
+            .join(
+                TransactionRevision,
+                (TransactionRevision.workspace_id == Transaction.workspace_id)
+                & (TransactionRevision.transaction_id == Transaction.id)
+                & (TransactionRevision.revision == Transaction.current_revision),
+            )
+            .where(Transaction.workspace_id == workspace_id, Transaction.id.in_(ids))
+        )
+    ).all()
+    return {
+        row[0]: (
+            f"{row[1]:%d.%m} · {Money(row[2], row[3]).format()}"
+            + (f" · {row[4][:20]}" if row[4] else "")
+        )
+        for row in rows
+    }
 
 
 async def apply_amount_correction(
@@ -357,11 +408,13 @@ async def apply_amount_correction(
             new_spec=updated,
             expected_version=expected_version,
         )
+        await refresh_thresholds(session, uow, workspace=workspace)
     from fintracker.application.conversation.sections import transaction_card_reply
 
-    return await transaction_card_reply(
+    replies = await transaction_card_reply(
         settings, actor=actor, workspace=workspace, transaction_id=transaction_id
     )
+    return _with_notice(replies, "✅ Запись изменена")
 
 
 async def propose_edit_correction(
@@ -394,12 +447,15 @@ async def propose_edit_correction(
     if changed_amount is None and changed_date is None:
         return None
 
-    lines = ["Сообщение изменено. Обновить прежнюю запись?"]
+    lines = ["✏️ Сообщение изменено. Обновить запись?", ""]
     if changed_amount is not None:
         lines.append(f"Сумма: {current_amount.format()} → {changed_amount.format()}")
     if changed_date is not None:
-        lines.append(f"Дата: {current_date.isoformat()} → {changed_date.isoformat()}")
-    lines.append("Новая отдельная трата не создана.")
+        lines.append(
+            f"Дата: {format_date(current_date, with_year=True)} → "
+            f"{format_date(changed_date, with_year=True)}"
+        )
+    lines.extend(["", "Вторая трата не создана."])
     payload_parts = [
         transaction_id.hex[:16],
         str(entity_version),
@@ -411,8 +467,8 @@ async def propose_edit_correction(
             text="\n".join(lines),
             buttons=(
                 (
-                    Button("Обновить запись", callback("fix", "apply", *payload_parts)),
-                    Button("Оставить как есть", callback("noop", "x")),
+                    Button("✅ Обновить запись", callback("fix", "apply", *payload_parts)),
+                    Button("Оставить как есть", callback("noop", "keep")),
                 ),
             ),
         )
@@ -434,17 +490,18 @@ async def _propose_void(
     return [
         Reply(
             text=(
-                f"Отменить запись {amount.format()} от "
-                f"{revision.occurred_date.isoformat()}?\n"
-                "Отмена не создаёт банковского возврата, запись останется в истории."
+                f"↩️ Отменить запись {amount.format()} от "
+                f"{format_date(revision.occurred_date, with_year=True)}?\n\n"
+                "Она перестанет учитываться в расходах, но останется в истории — её "
+                "можно будет восстановить. Деньги на карту это не вернёт."
             ),
             buttons=(
                 (
                     Button(
-                        "Отменить запись",
+                        "↩️ Отменить запись",
                         callback("tx", "voidok", target.hex[:16], str(version)),
                     ),
-                    Button("Оставить", callback("noop", "x")),
+                    Button("Оставить", callback("noop", "keep")),
                 ),
             ),
         )
@@ -472,6 +529,7 @@ async def apply_void(
             transaction_id=transaction_id,
             expected_version=expected_version,
         )
+        await refresh_thresholds(session, uow, workspace=workspace)
     from fintracker.application.conversation.sections import transaction_card_reply
 
     replies = await transaction_card_reply(
@@ -481,7 +539,10 @@ async def apply_void(
         Reply(
             text=replies[0].text,
             buttons=(
-                (Button("Восстановить", callback("tx", "restore", transaction_id.hex[:16])),),
+                (
+                    Button("↩️ Восстановить", callback("tx", "restore", transaction_id.hex[:16])),
+                    Button("🧾 История", callback("menu", "history")),
+                ),
             ),
         )
     ]
@@ -501,11 +562,13 @@ async def apply_restore(
         uow = UnitOfWork(session=session, correlation_id=actor.correlation_id)
         await uow.lock_workspace(workspace_id, actor=actor)
         await restore_transaction(session, uow, actor=actor, transaction_id=transaction_id)
+        await refresh_thresholds(session, uow, workspace=workspace)
     from fintracker.application.conversation.sections import transaction_card_reply
 
-    return await transaction_card_reply(
+    replies = await transaction_card_reply(
         settings, actor=actor, workspace=workspace, transaction_id=transaction_id
     )
+    return _with_notice(replies, "✅ Запись восстановлена")
 
 
 async def apply_note(
@@ -545,6 +608,10 @@ async def apply_note(
         if combined is not None:
             stripped = combined.strip()
             combined = stripped or None
+        if combined is not None and len(combined) > settings.limits.max_note_chars:
+            raise ValidationFailed(
+                f"Общий комментарий длиннее {settings.limits.max_note_chars} символов"
+            )
         await revise_transaction(
             session,
             uow,
@@ -617,13 +684,14 @@ async def _propose_category_move(
             return [
                 Reply(
                     text=(
-                        "У операции несколько частей: откройте карточку и измените "
+                        "ℹ️ У операции несколько частей: откройте карточку и измените "
                         "нужную часть отдельно."
                     ),
                     buttons=(
                         (
                             Button(
-                                "Открыть карточку", callback("tx", "open", transaction_id.hex[:16])
+                                "🧾 Открыть карточку",
+                                callback("tx", "open", transaction_id.hex[:16]),
                             ),
                         ),
                     ),
@@ -646,22 +714,22 @@ async def _propose_category_move(
             current_name = row or current_name
 
     if current_category_id == category_id:
-        return [Reply(text=f"Операция уже отнесена к статье «{category_name}».")]
+        return [Reply(text=f"ℹ️ Операция уже отнесена к категории «{category_name}».")]
     return [
         Reply(
             text=(
-                f"Перенести запись: {current_name} → {category_name}?\n"
-                "Прошлые записи не переклассифицируются."
+                f"🗂 Перенести запись в «{category_name}»?\n\n"
+                f"Сейчас: {current_name}. Другие записи не изменятся."
             ),
             buttons=(
                 (
                     Button(
-                        "Подтвердить",
+                        "✅ Подтвердить",
                         callback(
                             "fix", "cat", transaction_id.hex[:16], str(version), short(category_id)
                         ),
                     ),
-                    Button("Отмена", callback("noop", "x")),
+                    Button("✕ Отмена", callback("noop", "nochange")),
                 ),
             ),
         )
@@ -696,6 +764,7 @@ async def apply_category_correction(
             new_spec=replace(spec, allocations=(allocation,)),
             expected_version=expected_version,
         )
+        await refresh_thresholds(session, uow, workspace=workspace)
         keyword = (revision.merchant or revision.description or revision.note or "").strip()
 
     from fintracker.application.conversation.sections import transaction_card_reply
@@ -703,13 +772,14 @@ async def apply_category_correction(
     replies = await transaction_card_reply(
         settings, actor=actor, workspace=workspace, transaction_id=transaction_id
     )
+    replies = _with_notice(replies, "✅ Категория изменена")
     if not keyword:
         return replies
     # Однократная покупка не переназначает прошлые расходы (FR-24).
     offer = Reply(
         text=(
-            f"Всегда относить «{keyword}» к статье этой записи?\n"
-            "Правило подействует только для новых записей."
+            f"🧠 Запомнить: «{keyword[:40]}» — всегда в эту категорию?\n\n"
+            "Правило сработает для новых записей, старые не изменятся."
         ),
         buttons=(
             (
@@ -717,7 +787,7 @@ async def apply_category_correction(
                     "Всегда сюда",
                     callback("fix", "rule", transaction_id.hex[:16], short(category_id)),
                 ),
-                Button("Только эту", callback("noop", "x")),
+                Button("Только эту", callback("noop", "once")),
             ),
         ),
     )
@@ -745,7 +815,7 @@ async def remember_category_rule(
         )
         keyword = (revision.merchant or revision.description or revision.note or "").strip()
         if not keyword:
-            return [Reply(text="Не удалось определить условие правила.")]
+            return [Reply(text="⚠️ Не удалось определить условие правила.")]
         rule = await learn_from_correction(
             session,
             uow,
@@ -756,11 +826,11 @@ async def remember_category_rule(
     return [
         Reply(
             text=(
-                f"Запомнил: «{rule.keyword}» → {rule.category_name}.\n"
-                "Правило личное и действует только для новых записей. "
-                "Изменить можно в разделе «Мои настройки»."
+                f"✅ Запомнил: «{rule.keyword}» → {rule.category_name}\n\n"
+                "Правило личное и действует для новых записей. Изменить его можно "
+                "в «Мои настройки» → «Правила»."
             ),
-            buttons=((Button("Мои правила", callback("set", "rules")),),),
+            buttons=((Button("🧠 Мои правила", callback("set", "rules")),),),
         )
     ]
 
@@ -776,7 +846,7 @@ async def _offer_new_category(
     """«Создать категорию и перенести сюда эту запись» (A115, FR-21, FR-33).
 
     Общий расход при этом не меняется: переносится только принадлежность
-    записи к статье.
+    записи к категории.
     """
     from fintracker.application.catalog.normalize import normalize_name
 
@@ -803,21 +873,26 @@ async def _offer_new_category(
         return [
             Reply(
                 text=(
-                    f"Статьи «{name}» пока нет. Создайте её сообщением "
-                    f"«Создай категорию {name}», затем повторите перенос."
+                    "ℹ️ Категории «"
+                    f"{name}"
+                    "» пока нет.\n\nСоздайте её сообщением «Создай категорию "
+                    f"{name}"
+                    "», затем повторите перенос."
                 )
             )
         ]
     return [
         Reply(
             text=(
-                f"Статьи «{name}» пока нет.\n"
-                "Создать её и перенести сюда эту запись? Общий расход не изменится."
+                "✍️ Категории «"
+                f"{name}"
+                "» пока нет.\n\nСоздать её и перенести сюда эту запись?\n\nОбщий "
+                "расход не изменится."
             ),
             buttons=(
                 (
                     Button("Создать и перенести", data),
-                    Button("Отмена", callback("noop", "x")),
+                    Button("✕ Отмена", callback("noop", "nochange")),
                 ),
             ),
         )
@@ -833,7 +908,7 @@ async def create_category_and_move(
     expected_version: int,
     name: str,
 ) -> list[Reply]:
-    """Создать статью и перенести в неё запись одним подтверждением (A115)."""
+    """Создать категорию и перенести в неё запись одним подтверждением (A115)."""
     from fintracker.application.catalog.categories import create_category
 
     workspace_id = actor.require_workspace()

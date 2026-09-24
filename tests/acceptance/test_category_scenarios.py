@@ -49,7 +49,7 @@ async def test_a118_archive_keeps_expenses_in_reports(bot: None, test_settings: 
 
     await user.press("cat:manage")
     await user.press(user.button_data("Рестораны"))
-    assert "Связанных операций: 1" in user.text()
+    assert "Записей за всё время: 1" in user.text()
     await user.press(user.button_data("Убрать в архив"))
     assert "убрана в архив" in user.text()
 
@@ -68,7 +68,7 @@ async def test_a120_reassign_shows_links_before_archive(bot: None, test_settings
     """A120: перед переносом показаны связи, будущие записи не идут в архив."""
     user = make_user(test_settings, 911003)
     await create_budget(user, categories=CATEGORIES)
-    await _post(user, "кофе 800")
+    await _post(user, "шоколадка 800")
     await user.send("Перенеси в Рестораны")
     if user.has_button("Подтвердить"):
         await user.press(user.button_data("Подтвердить"))
@@ -80,7 +80,7 @@ async def test_a120_reassign_shows_links_before_archive(bot: None, test_settings
     await user.press(user.button_data("Перенести и убрать"))
     text = user.text()
     assert "Куда перенести записи" in text
-    assert "Правил классификации" in text
+    assert "Сохранённых правил" in text
 
     await user.press(user.button_data("Продукты"))
     assert "Записи перенесены" in user.text()

@@ -14,7 +14,8 @@ from sqlalchemy import Select, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fintracker.application.analytics.reports import FilterSpec, _apply_transaction_filters
-from fintracker.db.models.ledger import Allocation, Transaction, TransactionRevision
+from fintracker.db.models.catalog import Account
+from fintracker.db.models.ledger import Allocation, CashLeg, Transaction, TransactionRevision
 
 SORT_MODES = ("occurred", "added")
 
@@ -33,6 +34,7 @@ class JournalEntry:
     note: str | None
     merchant: str | None
     category_ids: tuple[uuid.UUID | None, ...]
+    account_flow: tuple[str, str] | None
     created_at: dt.datetime
 
 
@@ -123,6 +125,7 @@ async def list_journal(
 
     ids = [row[0].id for row in rows]
     allocations: dict[uuid.UUID, list[uuid.UUID | None]] = {}
+    account_flows: dict[uuid.UUID, tuple[str, str]] = {}
     if ids:
         allocation_rows = (
             await session.execute(
@@ -141,6 +144,40 @@ async def list_journal(
         ).all()
         for transaction_id, category_id in allocation_rows:
             allocations.setdefault(transaction_id, []).append(category_id)
+        cash_rows = (
+            await session.execute(
+                select(
+                    CashLeg.transaction_id,
+                    CashLeg.signed_minor,
+                    Account.name,
+                )
+                .join(
+                    Transaction,
+                    (Transaction.workspace_id == CashLeg.workspace_id)
+                    & (Transaction.id == CashLeg.transaction_id)
+                    & (Transaction.current_revision == CashLeg.revision),
+                )
+                .outerjoin(
+                    Account,
+                    (Account.workspace_id == CashLeg.workspace_id)
+                    & (Account.id == CashLeg.account_id),
+                )
+                .where(
+                    CashLeg.workspace_id == workspace_id,
+                    CashLeg.transaction_id.in_(ids),
+                )
+            )
+        ).all()
+        cash_by_transaction: dict[uuid.UUID, list[tuple[int, str]]] = {}
+        for transaction_id, signed_minor, account_name in cash_rows:
+            cash_by_transaction.setdefault(transaction_id, []).append(
+                (signed_minor, account_name or "Неизвестный счёт")
+            )
+        for transaction_id, legs in cash_by_transaction.items():
+            outgoing = next((name for signed, name in legs if signed < 0), None)
+            incoming = next((name for signed, name in legs if signed > 0), None)
+            if outgoing and incoming:
+                account_flows[transaction_id] = (outgoing, incoming)
 
     entries = tuple(
         JournalEntry(
@@ -156,6 +193,7 @@ async def list_journal(
             note=revision.note,
             merchant=revision.merchant,
             category_ids=tuple(allocations.get(transaction.id, [])),
+            account_flow=account_flows.get(transaction.id),
             created_at=transaction.created_at,
         )
         for transaction, revision in rows

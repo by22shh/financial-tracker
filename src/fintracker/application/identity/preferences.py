@@ -50,13 +50,13 @@ class PersonalPreferences:
     version: int
 
     def describe(self) -> str:
-        lines = ["Мои уведомления:"]
+        lines = ["Как приходят уведомления:"]
         labels = {
             "shared_change": "Изменения участников",
-            "threshold": "Пороги лимитов",
+            "threshold": "Предупреждения о лимитах",
             "review": "Обзоры и анализ",
             "reminder": "Напоминания о платежах",
-            "author_card": "Мои карточки записей",
+            "author_card": "Подтверждения моих операций",
         }
         for family in NOTIFICATION_FAMILIES:
             mode = self.families.get(family, "immediate")
@@ -67,12 +67,12 @@ class PersonalPreferences:
             }[mode]
             lines.append(f"• {labels[family]}: {state}")
         lines.append(
-            f"Тихие часы: {self.quiet_hours_start}:00–{self.quiet_hours_end}:00"
+            f"\n🌙 Тихие часы: {self.quiet_hours_start:02d}:00–{self.quiet_hours_end:02d}:00"
             + (f" ({self.timezone})" if self.timezone else "")
         )
         lines.append(
-            "Настройка личная: она не меняет доставку другим участникам и не "
-            "скрывает ваши расходы из общей аналитики."
+            "\nЭти настройки действуют только для вас. Участники по-прежнему "
+            "видят ваши записи в общем бюджете."
         )
         return "\n".join(lines)
 
@@ -175,6 +175,7 @@ async def set_quiet_hours(
     start_hour: int,
     end_hour: int,
     timezone: str | None = None,
+    expected_version: int | None = None,
 ) -> PersonalPreferences:
     """Тихие часы в личном поясе получателя (FR-53, LIM-07)."""
     if not (0 <= start_hour <= 23 and 0 <= end_hour <= 23):
@@ -201,6 +202,8 @@ async def set_quiet_hours(
         .first()
     )
     if row is None:
+        if expected_version not in (None, 0):
+            raise ConflictError("Настройки уведомлений изменились в другой сессии")
         row = NotificationPreference(
             user_id=user_id,
             workspace_id=workspace_id,
@@ -211,6 +214,8 @@ async def set_quiet_hours(
         )
         session.add(row)
     else:
+        if expected_version is not None and row.version != expected_version:
+            raise ConflictError("Настройки уведомлений изменились в другой сессии")
         row.quiet_hours_start = start_hour
         row.quiet_hours_end = end_hour
         if timezone is not None:
@@ -227,6 +232,7 @@ async def set_input_preferences(
     autopost: bool | None = None,
     assume_self_spender: bool | None = None,
     large_amount_threshold_minor: int | None = None,
+    clear_large_amount_threshold: bool = False,
     expected_version: int | None = None,
 ) -> Membership:
     """Личный режим ввода: автозапись и порог крупной суммы (FR-19, CMD-26).
@@ -253,7 +259,9 @@ async def set_input_preferences(
         row.autopost_enabled = autopost
     if assume_self_spender is not None:
         row.assume_self_spender = assume_self_spender
-    if large_amount_threshold_minor is not None:
+    if clear_large_amount_threshold:
+        row.large_amount_threshold_minor = None
+    elif large_amount_threshold_minor is not None:
         if large_amount_threshold_minor <= 0:
             raise ValidationFailed("Порог крупной суммы должен быть положительным")
         row.large_amount_threshold_minor = large_amount_threshold_minor

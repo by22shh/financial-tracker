@@ -41,7 +41,7 @@ async def test_history_filter_toggle_narrows_journal(bot: None, test_settings: S
     await _post(user, "рестораны 800")
     await user.send("/history")
     await user.press(user.button_data("Фильтры"))
-    assert "Отметьте условия" in user.text()
+    assert "Выберите нужные условия" in user.text()
 
     await user.press(user.button_data("С комментарием"))
     assert "✓ С комментарием" in "".join(
@@ -76,7 +76,7 @@ async def test_history_search_by_comment_text(bot: None, test_settings: Settings
 
     await user.send("/history подарок")
     text = user.text()
-    assert "Поиск по комментарию" in text
+    assert "Поиск: «" in text
     assert "из 1" in text
 
     await user.send("/history отсутствует")
@@ -105,8 +105,11 @@ async def test_transaction_card_shows_history_and_links(bot: None, test_settings
     await _post(user, "продукты 1000")
     await user.send("Здесь было 800, а не 1000")
     await user.press(user.button_data("Подтвердить"))
+    assert user.text().__contains__("🧾 Расход ·")
+    assert "История изменений" not in user.text()
+    await user.press(user.button_data("Подробнее"))
     card = user.text()
-    assert "История изменения" in card
+    assert "История изменений" in card
     assert "исправлена" in card
 
 

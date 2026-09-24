@@ -17,9 +17,9 @@ async def test_fr05_new_user_sees_two_paths(bot: None, test_settings: Settings) 
     user = make_user(test_settings, 912001)
     await user.send("/start")
     text = user.text()
-    assert "личный или общий бюджет" in text
+    assert "самостоятельно или вместе" in text
     assert user.has_button("Создать бюджет")
-    assert user.has_button("Присоединиться по коду")
+    assert user.has_button("Войти по коду")
     assert not user.has_button("Мои бюджеты")
 
 
@@ -51,6 +51,8 @@ async def test_fr05_repeat_start_does_not_duplicate_budget(
     text = user.text()
     assert "С возвращением" in text
     assert text.count("Основной бюджет") == 1
+    assert "10 сентября — 9 октября" in text
+    assert user.has_button("Открыть бюджет")
     assert user.has_button("Мои бюджеты")
 
     await user.send("/budget")

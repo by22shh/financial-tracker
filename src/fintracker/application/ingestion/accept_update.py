@@ -87,6 +87,12 @@ def sanitize_payload(update: dict[str, Any]) -> tuple[dict[str, Any], str | None
                 invite_code = normalize_invite_code(deeplink.group("token"))
             elif command and command.group("code"):
                 invite_code = normalize_invite_code(command.group("code"))
+            else:
+                # Код после кнопки «Войти по коду» приходит обычным текстом:
+                # он так же не сохраняется в открытом виде (SEC-04).
+                from fintracker.application.conversation.guards import invite_code_in_text
+
+                invite_code = invite_code_in_text(text)
     if invite_code is None:
         return update, None
 
@@ -336,3 +342,11 @@ async def accept_telegram_update(
     return AcceptedUpdate(
         inbound_event_id=inserted_id, duplicate=False, job_id=job_id, event_type=kind
     )
+
+
+def callback_ack(update: dict[str, Any]) -> dict[str, Any] | None:
+    """Ответ answerCallbackQuery для нажатой кнопки, иначе None."""
+    query = update.get("callback_query")
+    if not isinstance(query, dict) or not query.get("id"):
+        return None
+    return {"method": "answerCallbackQuery", "callback_query_id": str(query["id"])}

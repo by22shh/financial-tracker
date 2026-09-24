@@ -1,0 +1,132 @@
+FFFFFFFFF                                                                [100%]
+=================================== FAILURES ===================================
+_ test_history_query_fits_buttons_even_with_category[\u043a\u043e\u043c\u043c\u0435\u043d\u0442\u0430\u0440\u0438\u0439 \u0434\u043b\u044f \u0441\u0435\u043c\u0435\u0439\u043d\u043e\u0433\u043e \u043e\u0442\u043f\u0443\u0441\u043a\u0430] _
+.planning/audits/2026-09-15-recheck-597029c/test_boundaries.py:32: in test_history_query_fits_buttons_even_with_category
+    await user.send("/history " + query)
+tests/acceptance/conftest.py:59: in send
+    self.last_replies = await handle(self.settings, message)
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src/fintracker/application/conversation/service.py:73: in handle
+    return await _route(settings, message)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src/fintracker/application/conversation/service.py:106: in _route
+    return await _handle_command(settings, message, user_id, command)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src/fintracker/application/conversation/service.py:214: in _handle_command
+    return await sections.history_view(
+src/fintracker/application/conversation/sections.py:131: in history_view
+    replies = await journal_view(
+src/fintracker/application/conversation/history_flow.py:158: in journal_view
+    (Button("Фильтры", callback("hist", "filters", *view.parts())),),
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src/fintracker/application/conversation/keyboards.py:21: in callback
+    raise ValueError(f"Слишком длинные данные кнопки: {data}")
+E   ValueError: Слишком длинные данные кнопки: hist:filters:-:o:0:-:комментарий для семейного отпуска
+----------------------------- Captured stdout call -----------------------------
+2026-09-15 00:26:49 [info     ] security_change_completed      acl_revision=2 kind=workspace_create operation_id=4270e8b2-7bab-44d4-aa5b-1cf9a0a57533
+_ test_history_query_fits_buttons_even_with_category[xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx] _
+.planning/audits/2026-09-15-recheck-597029c/test_boundaries.py:33: in test_history_query_fits_buttons_even_with_category
+    await user.press(user.button_data("Фильтры"))
+tests/acceptance/conftest.py:71: in press
+    self.last_replies = await handle(self.settings, message)
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src/fintracker/application/conversation/service.py:73: in handle
+    return await _route(settings, message)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src/fintracker/application/conversation/service.py:102: in _route
+    return await dispatch_callback(settings, message=message, user_id=user_id)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src/fintracker/application/conversation/callbacks.py:244: in dispatch_callback
+    return await history_action(
+src/fintracker/application/conversation/history_flow.py:294: in history_action
+    return await filters_view(
+src/fintracker/application/conversation/history_flow.py:263: in filters_view
+    callback("hist", "cat", short(category_id), *view.parts()),
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src/fintracker/application/conversation/keyboards.py:21: in callback
+    raise ValueError(f"Слишком длинные данные кнопки: {data}")
+E   ValueError: Слишком длинные данные кнопки: hist:cat:58542c49cb654c09:-:o:0:-:xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+----------------------------- Captured stdout call -----------------------------
+2026-09-15 00:26:49 [info     ] security_change_completed      acl_revision=2 kind=workspace_create operation_id=7751a1c5-e041-4685-b56b-6064d4329567
+_____ test_nested_provider_null_allowed_by_schema_is_accepted[ambiguities] _____
+.planning/audits/2026-09-15-recheck-597029c/test_boundaries.py:48: in test_nested_provider_null_allowed_by_schema_is_accepted
+    result = await OpenAIResponsesProvider(test_settings.ai).structured(
+src/fintracker/infra/ai/openai_client.py:220: in structured
+    raise ValidationFailed(f"Модель не вернула корректный результат по схеме: {last_error}")
+E   fintracker.core.errors.ValidationFailed: Модель не вернула корректный результат по схеме: Input should be a valid list
+----------------------------- Captured stdout call -----------------------------
+2026-09-15 00:26:49 [info     ] ai_schema_invalid              attempt=0 schema=audit
+2026-09-15 00:26:49 [info     ] ai_schema_invalid              attempt=1 schema=audit
+______ test_nested_provider_null_allowed_by_schema_is_accepted[evidence] _______
+.planning/audits/2026-09-15-recheck-597029c/test_boundaries.py:48: in test_nested_provider_null_allowed_by_schema_is_accepted
+    result = await OpenAIResponsesProvider(test_settings.ai).structured(
+src/fintracker/infra/ai/openai_client.py:220: in structured
+    raise ValidationFailed(f"Модель не вернула корректный результат по схеме: {last_error}")
+E   fintracker.core.errors.ValidationFailed: Модель не вернула корректный результат по схеме: Input should be a valid dictionary or instance of Evidence
+----------------------------- Captured stdout call -----------------------------
+2026-09-15 00:26:49 [info     ] ai_schema_invalid              attempt=0 schema=audit
+2026-09-15 00:26:49 [info     ] ai_schema_invalid              attempt=1 schema=audit
+_____________ test_malformed_model_json_gets_bounded_schema_retry ______________
+.planning/audits/2026-09-15-recheck-597029c/test_boundaries.py:64: in test_malformed_model_json_gets_bounded_schema_retry
+    result = await OpenAIResponsesProvider(test_settings.ai).structured(
+src/fintracker/infra/ai/openai_client.py:195: in structured
+    _normalize_null_defaults(response_model, text)
+src/fintracker/infra/ai/openai_client.py:225: in _normalize_null_defaults
+    payload = json.loads(text)
+              ^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.13.15-macos-aarch64-none/lib/python3.13/json/__init__.py:352: in loads
+    return _default_decoder.decode(s)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.13.15-macos-aarch64-none/lib/python3.13/json/decoder.py:345: in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.13.15-macos-aarch64-none/lib/python3.13/json/decoder.py:363: in raw_decode
+    raise JSONDecodeError("Expecting value", s, err.value) from None
+E   json.decoder.JSONDecodeError: Expecting value: line 1 column 19 (char 18)
+________________ test_reserve_retry_after_commit_is_idempotent _________________
+.planning/audits/2026-09-15-recheck-597029c/test_boundaries.py:93: in test_reserve_retry_after_commit_is_idempotent
+    assert allocated == 500000, (allocated, movements)
+E   AssertionError: (1000000, [500000, 500000])
+E   assert 1000000 == 500000
+----------------------------- Captured stdout call -----------------------------
+2026-09-15 00:26:50 [info     ] security_change_completed      acl_revision=2 kind=workspace_create operation_id=b94c8903-a24c-4a05-ae69-e37bc23b9881
+_______________ test_second_text_does_not_steal_payment_binding ________________
+.planning/audits/2026-09-15-recheck-597029c/test_boundaries.py:119: in test_second_text_does_not_steal_payment_binding
+    assert occurrence.settled_minor == 100000, (occurrence.state, occurrence.settled_minor, user.text())
+E   AssertionError: ('planned', 0, 'Бюджет: Тестовый бюджет
+E     Записано 1\xa0000,00\xa0₽ — Продукты
+E     12 сентября 2026
+E     Период: 10 сентября — 9 октября
+E     По статье: Лимит не задан')
+E   assert 0 == 100000
+E    +  where 0 = <fintracker.db.models.commitments.Occurrence object at 0x10e66b5c0>.settled_minor
+_________________ test_receipt_payment_is_bound_to_occurrence __________________
+.planning/audits/2026-09-15-recheck-597029c/test_boundaries.py:132: in test_receipt_payment_is_bound_to_occurrence
+    assert occurrence.settled_minor == 45000, (occurrence.state, occurrence.settled_minor, user.text())
+E   AssertionError: ('planned', 0, 'Бюджет: Тестовый бюджет
+E     Записано 450,00\xa0₽ — Без категории
+E     12 сентября 2026
+E     Период: 10 сентября — 9 октября')
+E   assert 0 == 45000
+E    +  where 0 = <fintracker.db.models.commitments.Occurrence object at 0x10e889d00>.settled_minor
+----------------------------- Captured stdout call -----------------------------
+2026-09-15 00:26:51 [info     ] image_type_mismatch            declared=image/jpeg detected=image/png
+__________________ test_invalid_reserve_amount_keeps_pending ___________________
+.planning/audits/2026-09-15-recheck-597029c/test_boundaries.py:148: in test_invalid_reserve_amount_keeps_pending
+    assert kind == "goal_allocate", (kind, user.text())
+E   AssertionError: (None, 'Сумма выделения должна быть положительной')
+E   assert None == 'goal_allocate'
+----------------------------- Captured stdout call -----------------------------
+2026-09-15 00:26:51 [info     ] security_change_completed      acl_revision=2 kind=workspace_create operation_id=4c32fb58-2ded-461b-a720-77b0d6e9284a
+- generated xml file: /Users/Bayramov_N/Desktop/Other/financial-tracker/.planning/audits/2026-09-15-recheck-597029c/boundaries-junit.xml -
+=========================== short test summary info ============================
+FAILED .planning/audits/2026-09-15-recheck-597029c/test_boundaries.py::test_history_query_fits_buttons_even_with_category[\u043a\u043e\u043c\u043c\u0435\u043d\u0442\u0430\u0440\u0438\u0439 \u0434\u043b\u044f \u0441\u0435\u043c\u0435\u0439\u043d\u043e\u0433\u043e \u043e\u0442\u043f\u0443\u0441\u043a\u0430]
+FAILED .planning/audits/2026-09-15-recheck-597029c/test_boundaries.py::test_history_query_fits_buttons_even_with_category[xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx]
+FAILED .planning/audits/2026-09-15-recheck-597029c/test_boundaries.py::test_nested_provider_null_allowed_by_schema_is_accepted[ambiguities]
+FAILED .planning/audits/2026-09-15-recheck-597029c/test_boundaries.py::test_nested_provider_null_allowed_by_schema_is_accepted[evidence]
+FAILED .planning/audits/2026-09-15-recheck-597029c/test_boundaries.py::test_malformed_model_json_gets_bounded_schema_retry
+FAILED .planning/audits/2026-09-15-recheck-597029c/test_boundaries.py::test_reserve_retry_after_commit_is_idempotent
+FAILED .planning/audits/2026-09-15-recheck-597029c/test_boundaries.py::test_second_text_does_not_steal_payment_binding
+FAILED .planning/audits/2026-09-15-recheck-597029c/test_boundaries.py::test_receipt_payment_is_bound_to_occurrence
+FAILED .planning/audits/2026-09-15-recheck-597029c/test_boundaries.py::test_invalid_reserve_amount_keeps_pending
+9 failed in 4.97s

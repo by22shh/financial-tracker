@@ -10,15 +10,17 @@ import asyncio
 import datetime as dt
 import uuid
 from collections.abc import Sequence
+from dataclasses import replace as dataclass_replace
 from typing import Any
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import select, update
 
-from fintracker.application.conversation import sections
+from fintracker.application.conversation import sections, views
 from fintracker.application.conversation.context import (
     HELP_TEXT,
     active_context,
+    current_status,
     load_actor,
     no_budget_reply,
 )
@@ -33,7 +35,6 @@ from fintracker.application.conversation.entry import (
 from fintracker.application.conversation.keyboards import (
     Button,
     callback,
-    confirm_candidate,
     main_menu,
     start_menu,
 )
@@ -51,7 +52,7 @@ from fintracker.core.errors import (
 from fintracker.core.logging import get_logger
 from fintracker.core.money import Money
 from fintracker.db.models.access import Membership, Workspace
-from fintracker.db.models.platform import Candidate, Draft
+from fintracker.db.models.platform import Draft
 from fintracker.db.session import RuntimeRole, session_scope
 from fintracker.domain.parsing.intent import Intent
 
@@ -79,7 +80,7 @@ async def handle(settings: Settings, message: IncomingMessage) -> list[Reply]:
                     code=exc.code.value,
                     correlation_id=message.correlation_id,
                 )
-                return [Reply(text=exc.message)]
+                return [error_reply(exc.message)]
             await asyncio.sleep(ACCESS_RETRY_DELAY * (attempt + 1))
         except DomainError as exc:
             logger.info(
@@ -87,14 +88,35 @@ async def handle(settings: Settings, message: IncomingMessage) -> list[Reply]:
                 code=exc.code.value,
                 correlation_id=message.correlation_id,
             )
-            return [Reply(text=exc.message)]
-    return [Reply(text="Бюджет занят изменением доступа, повторите через несколько секунд.")]
+            return [error_reply(exc.message)]
+    return [
+        Reply(
+            text=(
+                "⏳ Бюджет сейчас обновляет доступ участников\n\n"
+                "Повторите действие через несколько секунд."
+            )
+        )
+    ]
+
+
+def error_reply(message: str) -> Reply:
+    """Понятная ошибка с дорогой назад: действие не заканчивается тупиком."""
+    body = message.strip()
+    if body and body[-1] not in ".!?…»)":
+        body += "."
+    return Reply(
+        text=f"⚠️ {body}",
+        buttons=((Button("🏠 Меню", callback("menu", "main")),),),
+    )
 
 
 async def _route(settings: Settings, message: IncomingMessage) -> list[Reply]:
     async with session_scope(settings, RuntimeRole.API) as session:
         user = await ensure_user(session, telegram_user_id=message.telegram_user_id)
         user_id = user.id
+
+    if message.display_name:
+        await _link_profile(settings, user_id=user_id, message=message)
 
     if message.kind is MessageKind.CALLBACK and message.callback_data:
         from fintracker.application.conversation.callbacks import dispatch_callback
@@ -113,7 +135,48 @@ async def _route(settings: Settings, message: IncomingMessage) -> list[Reply]:
     if message.kind is MessageKind.TEXT and message.text:
         return await _handle_free_text(settings, message, user_id)
 
-    return [Reply(text="Не понял сообщение. Отправьте /help, чтобы увидеть возможности.")]
+    return not_understood_reply(None)
+
+
+def not_understood_reply(text: str | None) -> list[Reply]:
+    """Непонятое сообщение: пример с тем же словом и дорога в меню."""
+    words = (text or "").strip()
+    example = f"«{words[:30]} 250»" if words and len(words.split()) <= 3 else "«кофе 250»"
+    return [
+        Reply(
+            text=(
+                "🤔 Не понял, что сделать\n\n"
+                f"Чтобы записать трату, добавьте сумму: {example}.\n"
+                "Остальное — в меню или в /help."
+            ),
+            buttons=(
+                (
+                    Button("🏠 Меню", callback("menu", "main")),
+                    Button("❔ Помощь", callback("menu", "help")),
+                ),
+            ),
+        )
+    ]
+
+
+async def _link_profile(
+    settings: Settings, *, user_id: uuid.UUID, message: IncomingMessage
+) -> None:
+    """Подписать участника его именем из Telegram в текущем бюджете (FR-04)."""
+    from fintracker.application.identity.profile import ensure_member_profile
+
+    try:
+        workspace_id = await active_context(settings, user_id=user_id, message=message)
+        if workspace_id is not None:
+            await ensure_member_profile(
+                settings,
+                user_id=user_id,
+                workspace_id=workspace_id,
+                name=message.display_name,
+            )
+    except DomainError:
+        # Профиль — удобство подписи: его сбой не мешает самой команде.
+        logger.info("profile_link_skipped", correlation_id=message.correlation_id)
 
 
 async def _handle_command(
@@ -142,24 +205,44 @@ async def _handle_command(
         # Повторный /start не создаёт второй бюджет и не сбрасывает планы (FR-05).
         unfinished = await has_active_wizard(settings, user_id=user_id)
         if budgets:
-            names = "\n".join(
-                f"• {item.name} ({item.role.value}, ID {item.short_id})" for item in budgets
+            active_budget = next(
+                (item for item in budgets if item.is_active_context and item.state == "active"),
+                None,
             )
-            text = f"С возвращением! Ваши бюджеты:\n{names}"
+            if active_budget is not None:
+                actor, workspace = await load_actor(
+                    settings,
+                    user_id=user_id,
+                    workspace_id=active_budget.workspace_id,
+                    correlation_id=message.correlation_id,
+                )
+                status = await current_status(settings, actor=actor, workspace=workspace)
+                text = (
+                    "👋 С возвращением!\n\n"
+                    f"📒 Бюджет: {workspace.name}\n"
+                    f"Период: {views.format_range(status.start_date, status.end_inclusive)}\n\n"
+                    "Чтобы записать трату, просто напишите её: «кофе 250»."
+                )
+            else:
+                text = "👋 С возвращением!\n\nВыберите бюджет, с которым хотите продолжить работу."
             if unfinished:
-                text += "\nЕсть незавершённая настройка бюджета."
+                text += "\n\nЕсть незавершённая настройка нового бюджета — её можно продолжить."
             return [
                 Reply(
                     text=text,
-                    buttons=start_menu(returning=True, unfinished=unfinished),
+                    buttons=start_menu(
+                        returning=True,
+                        unfinished=unfinished,
+                        active=active_budget is not None,
+                    ),
                 )
             ]
         if unfinished:
             return [
                 Reply(
                     text=(
-                        "С возвращением! Настройка бюджета не завершена — "
-                        "можно продолжить с того же шага."
+                        "👋 С возвращением!\n\nНастройка бюджета ещё не завершена. Всё, "
+                        "что вы уже указали, сохранено — продолжим с того же шага?"
                     ),
                     buttons=start_menu(returning=False, unfinished=True),
                 )
@@ -167,15 +250,22 @@ async def _handle_command(
         return [
             Reply(
                 text=(
-                    "Добро пожаловать! Здесь можно вести личный или общий бюджет.\n\n"
-                    "Если бюджет уже создан другим человеком, попросите у него код "
-                    "приглашения."
+                    "👋 Добро пожаловать в «Бюджет»!\n\nЗдесь удобно записывать траты,"
+                    " следить за лимитами и планировать накопления — самостоятельно"
+                    " или вместе.\n\n📒 Создайте свой бюджет\nНастройте категории, "
+                    "доход и период учёта.\n\n🔑 Или присоединитесь к общему\nПопросите"
+                    " у администратора код приглашения и введите его здесь."
                 ),
                 buttons=start_menu(returning=False),
             )
         ]
 
     if command == "/help":
+        from fintracker.application.conversation.onboarding_flow import wizard_help
+
+        current_help = await wizard_help(settings, user_id=user_id)
+        if current_help is not None:
+            return current_help
         return [Reply(text=HELP_TEXT, buttons=main_menu())]
 
     if command == "/join":
@@ -245,62 +335,93 @@ async def _handle_command(
             from fintracker.application.conversation.io_flow import export_menu
 
             return await export_menu(settings, actor=actor, workspace=workspace)
+        case "/payments":
+            from fintracker.application.conversation.payments_flow import payments_view
+
+            return await payments_view(settings, actor=actor, workspace=workspace)
         case "/add":
             from fintracker.application.conversation.manual_form import start_manual_form
 
             return await start_manual_form(settings, actor=actor, workspace=workspace)
         case _:
-            return [Reply(text="Неизвестная команда. Отправьте /help.")]
+            return [
+                Reply(
+                    text="🤔 Такой команды нет\n\nСписок команд — в /help, разделы — в меню.",
+                    buttons=main_menu(),
+                )
+            ]
 
 
 async def _cancel_active(
     settings: Settings, *, user_id: uuid.UUID, workspace_id: uuid.UUID | None
 ) -> list[Reply]:
     """`/cancel` отменяет активный диалог или черновик, но не проведённую запись."""
+    from fintracker.application.conversation.onboarding_flow import cancel_wizard
     from fintracker.application.conversation.pending import clear_pending
 
+    if await cancel_wizard(settings, user_id=user_id):
+        return [
+            Reply(
+                text=(
+                    "↩️ Настройка бюджета отменена\n\nУже созданные бюджеты и записи не изменились."
+                ),
+                buttons=start_menu(returning=workspace_id is not None),
+            )
+        ]
+    from fintracker.application.conversation.keyboards import back_to_menu
+    from fintracker.application.conversation.pending import peek_pending
+
+    pending = await peek_pending(settings, user_id=user_id, workspace_id=workspace_id)
     await clear_pending(settings, user_id=user_id, workspace_id=workspace_id)
+    if pending is not None:
+        return [
+            Reply(
+                text=(
+                    "↩️ Ввод отменён\n\nНичего не изменено. Можно выбрать раздел или записать трату."
+                ),
+                buttons=back_to_menu(),
+            )
+        ]
     if workspace_id is None:
-        return [Reply(text="Отменять нечего.")]
+        return [Reply(text="✅ Отменять нечего.", buttons=start_menu(returning=False))]
+    # Несохранённые записи не отменяются скопом: каждая видна в своём
+    # списке и отменяется отдельно, чтобы не потерять нужную.
     async with session_scope(
         settings, RuntimeRole.API, user_id=user_id, workspace_id=workspace_id
     ) as session:
-        drafts = (
+        from sqlalchemy import func
+
+        waiting = int(
             (
                 await session.execute(
-                    select(Draft).where(
+                    select(func.count())
+                    .select_from(Draft)
+                    .where(
                         Draft.workspace_id == workspace_id,
                         Draft.owner_user_id == user_id,
-                        Draft.state.in_(("received", "processing", "needs_clarification", "ready")),
+                        Draft.state.in_(("needs_clarification", "ready")),
                     )
                 )
-            )
-            .scalars()
-            .all()
+            ).scalar_one()
         )
-        for draft in drafts:
-            draft.state = "cancelled"
-            draft.version += 1
-        if drafts:
-            from sqlalchemy import update
-
-            await session.execute(
-                update(Candidate)
-                .where(
-                    Candidate.workspace_id == workspace_id,
-                    Candidate.draft_id.in_([draft.id for draft in drafts]),
-                    Candidate.state != "posted",
-                )
-                .values(state="cancelled")
+    if waiting:
+        return [
+            Reply(
+                text=(
+                    "✅ Отменять нечего\n\n"
+                    f"Есть несохранённые записи: {waiting}. Их можно открыть и сохранить "
+                    "или отменить по одной."
+                ),
+                buttons=(
+                    (Button("✍️ Открыть несохранённые", callback("menu", "drafts")),),
+                    *back_to_menu(),
+                ),
             )
-    if not drafts:
-        return [Reply(text="Незавершённое действие отменено.")]
+        ]
     return [
         Reply(
-            text=(
-                f"Отменено незавершённых записей: {len(drafts)}. "
-                "Уже проведённые операции не затронуты."
-            )
+            text="✅ Отменять нечего. Можно записать новую трату или выбрать раздел.",
+            buttons=back_to_menu(),
         )
     ]
 
@@ -308,20 +429,46 @@ async def _cancel_active(
 async def _handle_free_text(
     settings: Settings, message: IncomingMessage, user_id: uuid.UUID
 ) -> list[Reply]:
+    from fintracker.application.conversation.guards import (
+        invite_code_in_text,
+        is_greeting,
+        looks_like_new_entry,
+    )
     from fintracker.application.conversation.onboarding_flow import (
         continue_wizard_input,
         has_active_wizard,
+        submit_join_code,
     )
 
     assert message.text is not None
+    text = message.text.strip()
 
-    if await has_active_wizard(settings, user_id=user_id):
-        handled = await continue_wizard_input(settings, user_id=user_id, message=message)
-        if handled is not None:
-            return handled
+    if text.casefold().strip(" .!") in {"отмена", "отменить", "стоп", "cancel"}:
+        cancel_workspace = await active_context(settings, user_id=user_id, message=message)
+        return await _cancel_active(settings, user_id=user_id, workspace_id=cancel_workspace)
+
+    # Код приглашения после кнопки «Войти по коду» — обычный текст (FR-78).
+    code = invite_code_in_text(text)
+    if code is not None:
+        return await submit_join_code(settings, user_id=user_id, raw_code=code, message=message)
 
     workspace_id = await active_context(settings, user_id=user_id, message=message)
+    wizard_notice: str | None = None
+    if await has_active_wizard(settings, user_id=user_id):
+        handled = await continue_wizard_input(
+            settings, user_id=user_id, message=message, has_budget=workspace_id is not None
+        )
+        if handled is not None:
+            return handled
+        if workspace_id is not None and looks_like_new_entry(text):
+            wizard_notice = (
+                "ℹ️ Настройка нового бюджета не потеряна: продолжить её можно через "
+                "/start → «Продолжить настройку»."
+            )
+
     if workspace_id is None:
+        if is_greeting(text):
+            return await _handle_command(settings, message, user_id, "/start")
         return no_budget_reply()
 
     actor, workspace = await load_actor(
@@ -330,23 +477,41 @@ async def _handle_free_text(
         workspace_id=workspace_id,
         correlation_id=message.correlation_id,
     )
-    if message.text.strip().lower().startswith("удалить "):
-        from fintracker.application.identity.membership import delete_workspace
-
-        confirmation = message.text.strip()[len("удалить ") :].strip()
-        await delete_workspace(
-            settings,
-            workspace_id=workspace_id,
-            admin_user_id=actor.user_id,
-            confirmation_name=confirmation,
-            correlation_id=message.correlation_id or uuid.uuid4().hex,
-        )
-        return [Reply(text=f"Бюджет «{workspace.name}» удалён.")]
 
     # Кнопка, обещавшая продолжение, получает следующее сообщение (G-13…G-16).
-    continued = await _continue_pending(settings, actor=actor, workspace=workspace, message=message)
-    if continued is not None:
-        return continued
+    # Самостоятельная трата не должна тихо попасть в чужое поле ввода.
+    abandoned = await _abandon_pending_for_new_entry(settings, actor=actor, text=text)
+    if not abandoned:
+        continued = await _continue_pending(
+            settings, actor=actor, workspace=workspace, message=message
+        )
+        if continued is not None:
+            return continued
+
+    replies = await _free_text_in_budget(
+        settings, actor=actor, workspace=workspace, message=message
+    )
+    notice = (
+        "ℹ️ Прошлое действие отменено: сообщение записано как новая трата."
+        if abandoned
+        else wizard_notice
+    )
+    if notice and replies:
+        first = replies[0]
+        replies[0] = dataclass_replace(first, text=f"{notice}\n\n{first.text}")
+    return replies
+
+
+async def _free_text_in_budget(
+    settings: Settings, *, actor: ActorContext, workspace: Workspace, message: IncomingMessage
+) -> list[Reply]:
+    """Свободный текст в выбранном бюджете после всех ожидаемых ответов."""
+    from fintracker.application.conversation.guards import bare_date, is_greeting
+
+    assert message.text is not None
+    text = message.text.strip()
+    if is_greeting(text):
+        return await _main_menu_reply(settings, actor=actor, workspace=workspace, greeting=True)
 
     from fintracker.application.conversation.clarify import try_answer_open_question
 
@@ -356,6 +521,20 @@ async def _handle_free_text(
     if answered is not None:
         return answered
 
+    date_only = bare_date(text)
+    if date_only is not None:
+        # «25.09» без контекста — дата, а не трата на 25,09 (FR-10).
+        return [
+            Reply(
+                text=(
+                    f"📅 Похоже, это дата: {views.format_date(date_only)}\n\n"
+                    "Чтобы записать трату, отправьте описание и сумму, например "
+                    "«такси 450». Дату можно добавить в начало: «вчера такси 450»."
+                ),
+                buttons=((Button("🏠 Меню", callback("menu", "main")),),),
+            )
+        ]
+
     from fintracker.application.conversation.corrections import try_handle_correction
 
     corrected = await try_handle_correction(
@@ -364,14 +543,70 @@ async def _handle_free_text(
     if corrected is not None:
         return corrected
 
-    if "|" in message.text:
+    if "|" in text:
         from fintracker.application.conversation.manual_form import submit_manual_form
 
-        return await submit_manual_form(
-            settings, actor=actor, workspace=workspace, text=message.text
-        )
+        return await submit_manual_form(settings, actor=actor, workspace=workspace, text=text)
 
     return await record_free_text(settings, actor=actor, workspace=workspace, message=message)
+
+
+async def _main_menu_reply(
+    settings: Settings, *, actor: ActorContext, workspace: Workspace, greeting: bool = False
+) -> list[Reply]:
+    status = await current_status(settings, actor=actor, workspace=workspace)
+    title = "👋 Здравствуйте!" if greeting else f"📒 {workspace.name}"
+    lines = [title]
+    if greeting:
+        lines.append(f"\n📒 Бюджет: {workspace.name}")
+    lines.append(f"Период: {views.format_range(status.start_date, status.end_inclusive)}")
+    lines.append("\nЧтобы записать трату, просто напишите её: «кофе 250».")
+    return [Reply(text="\n".join(lines), buttons=main_menu())]
+
+
+# Ожидания, в которые обычно вводится число или дата. Фраза «такси 700»
+# в них — новая трата, а не ответ: ожидание снимается (G-13, G-16).
+_VALUE_PENDING_KINDS = frozenset(
+    {
+        "category_limit",
+        "draft_edit",
+        "goal_allocate",
+        "goal_use",
+        "goal_release",
+        "manual_form",
+        "payment_new",
+        "goal_new",
+        "transaction_edit",
+    }
+)
+
+
+async def _abandon_pending_for_new_entry(
+    settings: Settings, *, actor: ActorContext, text: str
+) -> bool:
+    from fintracker.application.conversation.guards import (
+        bare_date,
+        looks_like_new_entry,
+        single_amount,
+    )
+    from fintracker.application.conversation.pending import clear_pending, peek_pending
+
+    if not looks_like_new_entry(text) or single_amount(text) or bare_date(text):
+        return False
+    pending = await peek_pending(settings, user_id=actor.user_id, workspace_id=actor.workspace_id)
+    if pending is None or pending.kind not in _VALUE_PENDING_KINDS:
+        return False
+    step = str(pending.payload.get("step") or "")
+    action = str(pending.payload.get("action") or "")
+    # Названия и комментарии могут содержать цифры: «Отпуск 2027», «2 кофе».
+    if pending.kind in {"goal_new", "payment_new"} and step in {"", "name"}:
+        return False
+    if pending.kind == "manual_form" and step == "comment":
+        return False
+    if pending.kind == "transaction_edit" and action == "note":
+        return False
+    await clear_pending(settings, user_id=actor.user_id, workspace_id=actor.workspace_id)
+    return True
 
 
 async def _continue_pending(
@@ -391,8 +626,8 @@ async def _continue_pending(
         return [
             Reply(
                 text=(
-                    "Предыдущее действие относилось к другому бюджету и отменено. "
-                    "Повторите команду в текущем бюджете."
+                    "📒 Вы сменили бюджет\n\nНезавершённое действие осталось в "
+                    "предыдущем бюджете и отменено. Повторите команду в текущем."
                 )
             )
         ]
@@ -401,6 +636,17 @@ async def _continue_pending(
 
     clear_after = True
     match pending.kind:
+        case "transaction_edit" | "transfer_account":
+            from fintracker.application.conversation.transaction_flow import (
+                account_input,
+                edit_input,
+            )
+
+            handler = edit_input if pending.kind == "transaction_edit" else account_input
+            replies = await handler(
+                settings, actor=actor, workspace=workspace, pending=pending, text=text
+            )
+            clear_after = not any(reply.retry_input for reply in replies)
         case "category_rename":
             replies = await category_flow.apply_pending_rename(
                 settings,
@@ -416,21 +662,37 @@ async def _continue_pending(
                 workspace=workspace,
                 category_id=uuid.UUID(str(pending.payload["category_id"])),
                 text=text,
+                target_period_id=(
+                    uuid.UUID(str(pending.payload["target_period_id"]))
+                    if pending.payload.get("target_period_id")
+                    else None
+                ),
             )
-            clear_after = not any(reply.text.startswith("Не понял") for reply in replies)
+            clear_after = not any(reply.retry_input for reply in replies)
         case "draft_edit":
             replies = await sections.apply_draft_edit(
                 settings,
                 actor=actor,
                 workspace=workspace,
                 draft_id=uuid.UUID(str(pending.payload["draft_id"])),
+                candidate_id=(
+                    uuid.UUID(str(pending.payload["candidate_id"]))
+                    if pending.payload.get("candidate_id")
+                    else None
+                ),
+                expected_version=pending.payload.get("candidate_version"),
                 text=text,
             )
+            clear_after = not any(reply.retry_input for reply in replies)
         case "goal_new":
             replies = await goals_flow.create_goal_from_text(
-                settings, actor=actor, workspace=workspace, text=text
+                settings,
+                actor=actor,
+                workspace=workspace,
+                text=text,
+                pending_payload=pending.payload,
             )
-            clear_after = not any(reply.text.startswith("Не понял") for reply in replies)
+            clear_after = not any(reply.retry_input for reply in replies)
         case "goal_allocate" | "goal_use" | "goal_release":
             operation = pending.kind.removeprefix("goal_")
             replies = await goals_flow.apply_goal_amount(
@@ -442,15 +704,56 @@ async def _continue_pending(
                 text=text,
                 idempotency_key=message.source_key,
             )
-            clear_after = not any(
-                reply.text.startswith(("Не понял", "Сумма", "Валюта", "Неоднозначная"))
-                for reply in replies
-            )
+            clear_after = not any(reply.retry_input for reply in replies)
         case "payment_new":
             replies = await payments_flow.create_payment_from_text(
-                settings, actor=actor, workspace=workspace, text=text
+                settings,
+                actor=actor,
+                workspace=workspace,
+                text=text,
+                pending_payload=pending.payload,
             )
-            clear_after = not any(reply.text.startswith("Не понял") for reply in replies)
+            clear_after = not any(reply.retry_input for reply in replies)
+        case "manual_form":
+            from fintracker.application.conversation.manual_form import continue_manual_form
+
+            replies = await continue_manual_form(
+                settings,
+                actor=actor,
+                workspace=workspace,
+                text=text,
+                payload=pending.payload,
+            )
+            clear_after = not any(reply.retry_input for reply in replies)
+        case "workspace_delete":
+            replies = await _confirm_workspace_delete(
+                settings, actor=actor, workspace=workspace, text=text, message=message
+            )
+            clear_after = not any(reply.retry_input for reply in replies)
+        case "category_new":
+            replies = await category_flow.create_category_from_name(
+                settings, actor=actor, workspace=workspace, name=text
+            )
+            clear_after = not any(reply.retry_input for reply in replies)
+        case "profile_name":
+            from fintracker.application.conversation.settings_flow import apply_profile_name
+
+            replies = await apply_profile_name(
+                settings, actor=actor, workspace=workspace, name=text
+            )
+            clear_after = not any(reply.retry_input for reply in replies)
+        case "budget_rename":
+            from fintracker.application.conversation.settings_flow import apply_budget_rename
+
+            replies = await apply_budget_rename(
+                settings, actor=actor, workspace=workspace, name=text
+            )
+            clear_after = not any(reply.retry_input for reply in replies)
+        case "goal_edit":
+            replies = await goals_flow.apply_goal_edit(
+                settings, actor=actor, workspace=workspace, payload=pending.payload, text=text
+            )
+            clear_after = not any(reply.retry_input for reply in replies)
         case "occurrence_settle":
             # Ожидание оплаты сохраняется до подтверждения самой траты.
             from fintracker.application.conversation.pending import set_pending
@@ -464,10 +767,58 @@ async def _continue_pending(
             )
             return None
         case _:
-            replies = [Reply(text="Кнопка устарела. Повторите действие из меню.")]
+            replies = [Reply(text="🔄 Кнопка устарела.\n\nПовторите действие из меню.")]
     if clear_after:
         await clear_pending(settings, user_id=actor.user_id, workspace_id=actor.workspace_id)
     return replies
+
+
+async def _confirm_workspace_delete(
+    settings: Settings,
+    *,
+    actor: ActorContext,
+    workspace: Workspace,
+    text: str,
+    message: IncomingMessage,
+) -> list[Reply]:
+    """Удаление только после нажатой кнопки и точного названия (FR-83).
+
+    Фраза «удалить …» вне этого шага не удаляет бюджет: иначе обычная просьба
+    вроде «удалить последнюю трату» могла бы закрыть общий бюджет.
+    """
+    from fintracker.application.identity.membership import delete_workspace
+
+    typed = text.strip()
+    if typed.casefold().startswith("удалить "):
+        typed = typed[len("удалить ") :].strip()
+    if typed.strip("«»\"' ").casefold() != workspace.name.strip().casefold():
+        return [
+            Reply(
+                text=(
+                    "⚠️ Название не совпало\n\n"
+                    f"Чтобы удалить бюджет, отправьте его название: {workspace.name}\n\n"
+                    "Передумали — нажмите «Отмена»."
+                ),
+                buttons=((Button("✕ Отмена", callback("noop", "keepws")),),),
+                retry_input=True,
+            )
+        ]
+    await delete_workspace(
+        settings,
+        workspace_id=actor.require_workspace(),
+        admin_user_id=actor.user_id,
+        confirmation_name=workspace.name,
+        correlation_id=message.correlation_id or uuid.uuid4().hex,
+    )
+    return [
+        Reply(
+            text=(
+                f"🗑 Бюджет «{workspace.name}» удалён\n\n"
+                "Участники потеряли к нему доступ. Остальные ваши бюджеты не изменились."
+            ),
+            buttons=start_menu(returning=True),
+        )
+    ]
 
 
 async def _existing_message_reply(
@@ -607,6 +958,14 @@ async def record_free_text(
     guard_reply = _guard_reply(extraction.intent)
     if guard_reply is not None:
         return guard_reply
+    if extraction.intent is Intent.REMINDER:
+        from fintracker.application.conversation.payments_flow import (
+            start_payment_from_reminder,
+        )
+
+        return await start_payment_from_reminder(
+            settings, actor=actor, workspace=workspace, text=message.text
+        )
     if extraction.intent is Intent.QUESTION:
         from fintracker.application.conversation.analytics_flow import answer_question
 
@@ -636,7 +995,7 @@ async def record_free_text(
             return guard_reply
 
     if not extraction.candidates:
-        return [Reply(text="Не понял сообщение. Отправьте /help, чтобы увидеть примеры.")]
+        return not_understood_reply(message.text)
     if not workspace.currency:  # pragma: no cover - защита контракта
         raise ValidationFailed("У бюджета не задана валюта")
 
@@ -694,23 +1053,12 @@ async def record_free_text(
             extraction=extraction,
         )
 
-    if extraction.question:
-        summary = sections.draft_summary(candidate_fields, workspace.currency)
-        return [
-            Reply(
-                text=f"{extraction.question}\n\nЧто уже распознано:\n{summary}",
-                buttons=confirm_candidate(draft_id),
-            )
-        ]
-
-    if not _autopost_allowed(candidate_fields, autopost=autopost, large_threshold=large_threshold):
-        summary = sections.draft_summary(candidate_fields, workspace.currency)
-        return [
-            Reply(
-                text=f"Проверьте запись перед сохранением:\n{summary}",
-                buttons=confirm_candidate(draft_id),
-            )
-        ]
+    if extraction.question or not _autopost_allowed(
+        candidate_fields, autopost=autopost, large_threshold=large_threshold
+    ):
+        return await sections.draft_reply(
+            settings, actor=actor, workspace=workspace, draft_id=draft_id
+        )
 
     return await sections.confirm_draft(
         settings, actor=actor, workspace=workspace, draft_id=draft_id, origin="telegram_text"
@@ -785,37 +1133,27 @@ def _guard_reply(intent: Intent) -> list[Reply] | None:
             return [
                 Reply(
                     text=(
-                        "Это сценарий, а не совершённая покупка — расход не записан.\n"
-                        "Откройте «Бюджет», чтобы увидеть остаток по статье."
+                        "💭 Пока это только план\n\nНичего не записано. В «Бюджете» видно, "
+                        "сколько осталось по категориям."
                     ),
-                    buttons=((Button("Бюджет", callback("menu", "budget")),),),
+                    buttons=((Button("📒 Бюджет", callback("menu", "budget")),),),
                 )
             ]
         case Intent.NEGATED:
-            return [Reply(text="Понял, покупка не состоялась — ничего не записал.")]
-        case Intent.REMINDER:
             return [
                 Reply(
-                    text=(
-                        "Добавить напоминание об этом платеже?\n"
-                        "Заметка сама по себе не создаёт платёж или автоматизацию."
-                    ),
-                    buttons=(
-                        (
-                            Button("Создать платёж", callback("pay", "new")),
-                            Button("Не нужно", callback("noop", "x")),
-                        ),
-                    ),
+                    text="👌 Понял, покупки не было — ничего не записано.",
+                    buttons=((Button("🏠 Меню", callback("menu", "main")),),),
                 )
             ]
         case Intent.CHANGE_LIMIT:
             return [
                 Reply(
                     text=(
-                        "Изменение лимита проходит через карточку подтверждения. "
-                        "Откройте «Категории» и выберите статью."
+                        "💰 Лимиты меняются в разделе «Категории»\n\nОткройте «⚙️ Управление», "
+                        "выберите категорию и нажмите «💰 Лимит»."
                     ),
-                    buttons=((Button("Категории", callback("menu", "categories")),),),
+                    buttons=((Button("🗂 Категории", callback("cat", "manage")),),),
                 )
             ]
         case _:

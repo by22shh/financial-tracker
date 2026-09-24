@@ -40,6 +40,12 @@ class Reply:
     transaction_id: uuid.UUID | None = None
     # Ответ автору на только что введённую операцию показывается сразу (FR-53).
     immediate: bool = True
+    # Управление диалогом не должно зависеть от формулировки или эмодзи ответа.
+    retry_input: bool = False
+    # Callback-навигация по возможности обновляет исходную карточку, чтобы
+    # диалог не превращался в ленту одинаковых меню. Транспорт обязан
+    # безопасно перейти к sendMessage, если редактирование недоступно.
+    edit_message_id: int | None = None
 
     def keyboard(self) -> list[list[dict[str, str]]] | None:
         if not self.buttons:
@@ -79,6 +85,8 @@ class IncomingMessage:
     # Проверочное значение кода приглашения: открытый код не переносится (SEC-04).
     invite_digest: str | None = None
     correlation_id: str = ""
+    # Имя из профиля Telegram: подпись участника в общем бюджете (FR-04).
+    display_name: str | None = None
 
     @property
     def source_key(self) -> str | None:

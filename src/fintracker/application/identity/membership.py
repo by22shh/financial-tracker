@@ -375,6 +375,15 @@ async def propose_admin_transfer(
     )
     session.add(row)
     await session.flush()
+    # Получатель узнаёт о предложении сразу, а не только открыв «Участники».
+    await uow.emit(
+        workspace_id=workspace_id,
+        event_type="AdminTransferProposed",
+        aggregate_type="workspace",
+        aggregate_id=workspace_id,
+        payload={"proposal_id": str(row.id), "to_user_id": str(to_user_id)},
+        actor_user_id=from_user_id,
+    )
     return row
 
 

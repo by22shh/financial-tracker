@@ -89,7 +89,7 @@ async def test_a199_note_scope_is_clarified_for_two_expenses(
     assert "500" in text
     assert "300" in text
     # Заметка не приписывается наугад одной из двух записей.
-    assert "относится ко всем тратам или к одной" in text
+    assert "К чему относится комментарий?" in text
 
 
 async def test_a184_note_append_is_idempotent(bot: None, test_settings: Settings) -> None:

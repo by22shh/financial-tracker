@@ -66,7 +66,8 @@ async def test_a20_audio_without_speech_keeps_problem_state(
     # Запись не считается нулевым расходом: журнал пуст.
     await user.send("/history")
     assert (
-        "нет записанных операций" in user.text().lower() or "Подходящих записей нет" in user.text()
+        "пока сохранённых записей нет" in user.text().lower()
+        or "Подходящих записей нет" in user.text()
     )
 
 
@@ -96,13 +97,16 @@ async def test_a21_long_audio_is_refused_before_paid_call(bot: None, ai_enabled:
     assert provider.calls == 0, "платный вызов не выполнялся"
 
 
-async def test_a31_photo_without_ai_key_keeps_draft(bot: None, test_settings: Settings) -> None:
-    """A31, FR-18: без ключа AI фото сохраняется черновиком, ссылки не открываются."""
+async def test_a31_photo_without_ai_key_offers_manual_entry(
+    bot: None, test_settings: Settings
+) -> None:
+    """A31, FR-18: без AI доступен ручной ввод, ссылки не открываются."""
     user = make_user(test_settings, 915004)
     await create_budget(user)
     await user.send_photo(caption="Чек с QR")
     text = user.text()
-    assert "черновик" in text.lower()
+    assert "Распознавание чеков пока недоступно" in text
+    assert "/add" in text
     assert user.has_button("Ручной ввод")
     # Внешняя ссылка из QR не открывается и не превращается в действие.
     assert "http" not in text.lower()
@@ -205,7 +209,8 @@ async def test_a19_ambiguous_voice_amount_asks_once(
 
     await user.send("/history")
     assert (
-        "нет записанных операций" in user.text().lower() or "Подходящих записей нет" in user.text()
+        "пока сохранённых записей нет" in user.text().lower()
+        or "Подходящих записей нет" in user.text()
     )
 
 

@@ -26,6 +26,7 @@ from fintracker.db.models.platform import HistoryQueryState
 from fintracker.db.session import RuntimeRole, session_scope
 
 PAGE_SIZE = 8
+CATEGORY_PAGE_SIZE = 6
 
 # Флаги фильтра: одна буква на условие, чтобы уложиться в лимит кнопки (LIM-10).
 FLAG_LABELS = {
@@ -85,10 +86,18 @@ class JournalView:
 
     def described(self) -> str:
         active = [FLAG_LABELS[flag] for flag in self.flags if flag in FLAG_LABELS]
+        if self.category:
+            active.append("выбрана категория")
+        if self.note_query:
+            active.append("поиск по тексту")
         order = "по дате операции" if self.sort == "o" else "по времени добавления"
         if not active:
             return f"Фильтры: без ограничений · {order}"
         return f"Фильтры: {', '.join(active)} · {order}"
+
+
+def _parts_label(count: int) -> str:
+    return f"{count} {views.plural(count, 'категория', 'категории', 'категорий')}"
 
 
 async def journal_view(
@@ -178,28 +187,29 @@ async def journal_view(
         return [
             Reply(
                 text=(
-                    f"{view.described()}\nПодходящих записей нет. "
-                    "Снимите часть условий или измените период."
+                    f"🔎 Подходящих записей нет\n\n{view.described()}\n\n"
+                    "Снимите часть условий или попробуйте другое слово для поиска."
                 ),
                 buttons=(
-                    (Button("Фильтры", callback("hist", "filters", *view.parts())),),
+                    (Button("🔎 Фильтры", callback("hist", "filters", *view.parts())),),
                     (Button("← Меню", callback("menu", "main")),),
                 ),
             )
         ]
 
-    lines = [view.described()]
+    lines = ["🧾 История операций", "", view.described()]
     if note_query:
-        lines.append(f"Поиск по комментарию: «{note_query}»")
+        lines.append(f"Поиск: «{note_query}»")
     shown_to = view.offset + len(page.entries)
-    lines.append(f"Записи {view.offset + 1}–{shown_to} из {page.total}:")
+    lines.extend(["", f"Записи {view.offset + 1}–{shown_to} из {page.total}:"])
     for entry in page.entries:
         if len(entry.category_ids) > 1:
-            path = f"{len(entry.category_ids)} статей"
+            path = _parts_label(len(entry.category_ids))
         elif entry.category_ids and entry.category_ids[0]:
             path = paths.get(entry.category_ids[0], "Без категории")
         else:
             path = "Без категории"
+        lines.append("")
         lines.append(
             views.history_line(
                 transaction_id=entry.transaction_id,
@@ -210,18 +220,39 @@ async def journal_view(
                 author=authors.get(entry.author_user_id),
                 is_voided=entry.status == "voided",
                 has_note=bool(entry.note),
+                transaction_type=entry.transaction_type,
+                account_flow=(
+                    " → ".join(entry.account_flow) if entry.account_flow is not None else None
+                ),
             )
         )
 
-    rows: list[tuple[Button, ...]] = [
-        tuple(
-            Button(
-                f"Запись {index + 1}",
-                callback("tx", "open", entry.transaction_id.hex[:16]),
-            )
-            for index, entry in enumerate(page.entries[:4])
+    entry_buttons = [
+        Button(
+            views.history_button_label(
+                amount_minor=entry.amount_minor,
+                currency=entry.currency,
+                occurred_date=entry.occurred_date,
+                transaction_type=entry.transaction_type,
+                category_path=(
+                    _parts_label(len(entry.category_ids))
+                    if len(entry.category_ids) > 1
+                    else (
+                        paths.get(entry.category_ids[0], "Без категории")
+                        if entry.category_ids and entry.category_ids[0]
+                        else "Без категории"
+                    )
+                ),
+                account_flow=(
+                    " → ".join(entry.account_flow) if entry.account_flow is not None else None
+                ),
+            ),
+            callback("tx", "open", entry.transaction_id.hex[:16]),
         )
+        for entry in page.entries
     ]
+    # По одной записи в строке: на телефоне подпись не обрезается до «12.09 · Рас…».
+    rows: list[tuple[Button, ...]] = [(button,) for button in entry_buttons]
     paging: list[Button] = []
     if view.offset:
         paging.append(
@@ -241,7 +272,7 @@ async def journal_view(
         rows.append(tuple(paging))
     rows.append(
         (
-            Button("Фильтры", callback("hist", "filters", *view.parts())),
+            Button("🔎 Фильтры", callback("hist", "filters", *view.parts())),
             Button(
                 "Последние добавленные" if view.sort == "o" else "По дате операции",
                 callback("hist", "sort", *view.parts(offset=0)),
@@ -253,7 +284,12 @@ async def journal_view(
 
 
 async def filters_view(
-    settings: Settings, *, actor: ActorContext, workspace: Workspace, view: JournalView
+    settings: Settings,
+    *,
+    actor: ActorContext,
+    workspace: Workspace,
+    view: JournalView,
+    category_page: int = 0,
 ) -> list[Reply]:
     """Экран выбора условий журнала (FR-07)."""
     workspace_id = actor.require_workspace()
@@ -262,10 +298,18 @@ async def filters_view(
     ) as session:
         paths = await category_paths(session, workspace_id=workspace_id)
 
+    categories = sorted(paths.items(), key=lambda item: (item[1].casefold(), item[0].hex))
+    last_page = max(0, (len(categories) - 1) // CATEGORY_PAGE_SIZE)
+    category_page = max(0, min(category_page, last_page))
+
     lines = [
+        "🔎 Фильтры истории",
+        "",
         view.described(),
-        "Отметьте условия: повторное нажатие снимает их.",
-        "Поиск по комментарию: отправьте «/history слово».",
+        "",
+        "Выберите нужные условия. Повторное нажатие уберёт условие.",
+        "",
+        "🔎 Чтобы найти запись по описанию или комментарию, отправьте:\n/history кофе",
     ]
     rows: list[tuple[Button, ...]] = []
     flags = list(FLAG_LABELS)
@@ -274,27 +318,66 @@ async def filters_view(
             tuple(
                 Button(
                     ("✓ " if flag in view.flags else "") + FLAG_LABELS[flag],
-                    callback("hist", "flag", flag, *view.parts()),
+                    callback("hist", "flag", flag, *view.parts(), str(category_page)),
                 )
                 for flag in flags[index : index + 2]
             )
         )
     if view.category:
-        rows.append((Button("Снять статью", callback("hist", "cat", "-", *view.parts())),))
-    else:
-        for category_id, path in list(paths.items())[:4]:
-            rows.append(
-                (
-                    Button(
-                        f"Статья: {path}"[:40],
-                        callback("hist", "cat", short(category_id), *view.parts()),
+        selected = next((path for cid, path in categories if short(cid) == view.category), None)
+        if selected:
+            lines.extend(["", f"Выбрана категория: {selected}"])
+        rows.append(
+            (
+                Button(
+                    "Снять категорию",
+                    callback(
+                        "hist", "cat", "-", *replace(view, category="").parts(), str(category_page)
                     ),
+                ),
+            )
+        )
+    start = category_page * CATEGORY_PAGE_SIZE
+    for category_id, path in categories[start : start + CATEGORY_PAGE_SIZE]:
+        rows.append(
+            (
+                Button(
+                    ("✓ " if short(category_id) == view.category else "")
+                    + f"Категория: {path}"[:40],
+                    # The selected category replaces the old value; do not encode both
+                    # UUID prefixes alongside the stored note-query token (Telegram 64B).
+                    callback(
+                        "hist",
+                        "cat",
+                        short(category_id),
+                        *replace(view, category="").parts(),
+                        str(category_page),
+                    ),
+                ),
+            )
+        )
+    if last_page:
+        lines.extend(["", f"Категории · страница {category_page + 1} из {last_page + 1}"])
+        navigation = []
+        if category_page:
+            navigation.append(
+                Button(
+                    "← Категории",
+                    callback("hist", "cats", str(category_page - 1), *view.parts()),
                 )
             )
+        if category_page < last_page:
+            navigation.append(
+                Button(
+                    "Категории →",
+                    callback("hist", "cats", str(category_page + 1), *view.parts()),
+                )
+            )
+        rows.append(tuple(navigation))
     rows.append(
         (
-            Button("Показать", callback("hist", "page", *view.parts(offset=0))),
-            Button("Сбросить", callback("hist", "reset")),
+            Button("🔎 Показать", callback("hist", "page", *view.parts(offset=0))),
+            Button("↩️ Сбросить", callback("hist", "reset")),
         )
     )
     return [Reply(text="\n".join(lines), buttons=tuple(rows))]
@@ -321,6 +404,14 @@ async def history_action(
             return await filters_view(
                 settings, actor=actor, workspace=workspace, view=JournalView.parse(rest)
             )
+        case "cats" if rest:
+            return await filters_view(
+                settings,
+                actor=actor,
+                workspace=workspace,
+                view=JournalView.parse(rest[1:]),
+                category_page=int(rest[0]) if rest[0].isdigit() else 0,
+            )
         case "page":
             return await journal_view(
                 settings, actor=actor, workspace=workspace, view=JournalView.parse(rest)
@@ -338,12 +429,13 @@ async def history_action(
         case "flag" if rest:
             flag = rest[0]
             if flag not in FLAG_LABELS:
-                return [Reply(text="Кнопка устарела. Откройте журнал заново.")]
+                return [Reply(text="🔄 Кнопка устарела.\n\nОткройте журнал заново.")]
             return await filters_view(
                 settings,
                 actor=actor,
                 workspace=workspace,
                 view=JournalView.parse(rest[1:]).toggled(flag),
+                category_page=int(rest[6]) if len(rest) > 6 and rest[6].isdigit() else 0,
             )
         case "cat" if rest:
             current = JournalView.parse(rest[1:])
@@ -359,6 +451,7 @@ async def history_action(
                     category=chosen,
                     note_query=current.note_query,
                 ),
+                category_page=int(rest[6]) if len(rest) > 6 and rest[6].isdigit() else 0,
             )
         case _:
-            return [Reply(text="Кнопка устарела. Откройте журнал заново.")]
+            return [Reply(text="🔄 Кнопка устарела.\n\nОткройте журнал заново.")]

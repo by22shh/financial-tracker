@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import datetime as dt
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 from sqlalchemy import select, update
@@ -29,7 +29,7 @@ from fintracker.core.fencing import execution_fence
 from fintracker.core.logging import get_logger
 from fintracker.db.models.platform import InboundEvent, InboundPayload
 from fintracker.db.session import RuntimeRole, session_scope
-from fintracker.infra.telegram.sender import build_sender
+from fintracker.infra.telegram.sender import SendResult, build_sender
 
 logger = get_logger("ingestion.process")
 
@@ -55,6 +55,7 @@ def build_incoming(
             kind=MessageKind.CALLBACK,
             callback_data=callback.get("data"),
             message_id=message.get("message_id"),
+            display_name=_display_name(callback.get("from")),
             workspace_id=event.workspace_id,
             inbound_event_id=event.id,
             invite_digest=invite_digest,
@@ -62,6 +63,18 @@ def build_incoming(
             received_at=event.received_at,
         )
     return None
+
+
+def _display_name(sender: Any) -> str | None:
+    """Имя участника из Telegram без username и ID (FR-04)."""
+    if not isinstance(sender, dict):
+        return None
+    parts = [
+        str(sender.get("first_name") or "").strip(),
+        str(sender.get("last_name") or "").strip(),
+    ]
+    name = " ".join(part for part in parts if part)
+    return name[:60] or None
 
 
 def _from_message(
@@ -130,6 +143,7 @@ def _from_message(
         invite_digest=invite_digest,
         correlation_id=event.correlation_id,
         received_at=event.received_at,
+        display_name=_display_name(body.get("from")),
     )
 
 
@@ -174,8 +188,9 @@ class _EventContext:
 
 
 GROUP_HINT = (
-    "Финансовый бюджет доступен только в личном чате: откройте бота лично и "
-    "повторите команду. В группе бот не показывает суммы и список бюджетов."
+    "🔒 Продолжим в личном чате\n\nОткройте бота лично и повторите "
+    "команду. Суммы и список бюджетов в групповых чатах не "
+    "показываются."
 )
 
 
@@ -240,6 +255,7 @@ async def _store_reply(
                 "text": reply.text,
                 "buttons": reply.keyboard(),
                 "transaction_id": str(reply.transaction_id) if reply.transaction_id else None,
+                "edit_message_id": reply.edit_message_id,
             }
             for reply in replies
             if reply.text
@@ -326,7 +342,13 @@ async def _enqueue_reply(
         # Ответ вне бюджета не содержит его данных: приветствие, подсказка
         # для группового чата и приглашение создать бюджет.
         payload["messages"] = [
-            {"text": reply.text, "buttons": reply.keyboard()} for reply in replies if reply.text
+            {
+                "text": reply.text,
+                "buttons": reply.keyboard(),
+                "edit_message_id": reply.edit_message_id,
+            }
+            for reply in replies
+            if reply.text
         ]
     return await queue.enqueue(
         session,
@@ -522,6 +544,37 @@ async def _delivery_allowed(settings: Settings, context: _EventContext) -> bool:
     return not (workspace[1] or workspace[2] is not None)
 
 
+async def _send_reply_item(sender: Any, *, chat_id: int, item: dict[str, Any]) -> SendResult:
+    """Отредактировать callback-карточку или безопасно отправить новую.
+
+    ``getattr`` сохраняет совместимость со старыми транспортными адаптерами,
+    которые реализуют только ``send_message``.
+    """
+    result: SendResult | None = None
+    edit_message_id = item.get("edit_message_id")
+    edit_message = getattr(sender, "edit_message", None)
+    if edit_message_id is not None and edit_message is not None:
+        result = await edit_message(
+            chat_id=chat_id,
+            message_id=int(edit_message_id),
+            text=str(item["text"]),
+            buttons=item.get("buttons"),
+        )
+        if not result.ok:
+            logger.info(
+                "reply_edit_fallback",
+                chat_id=chat_id,
+                message_id=int(edit_message_id),
+                error=result.error,
+            )
+            result = None
+    if result is None:
+        result = await sender.send_message(
+            chat_id=chat_id, text=str(item["text"]), buttons=item.get("buttons")
+        )
+    return result
+
+
 async def handle_deliver_reply(settings: Settings, job: LeasedJob) -> None:
     """Отправить подготовленный ответ автору с повтором при сбое (AUD-11).
 
@@ -568,9 +621,7 @@ async def handle_deliver_reply(settings: Settings, job: LeasedJob) -> None:
         ):
             await _cancel_revoked_reply(settings, context, event_id)
             return
-        result = await sender.send_message(
-            chat_id=chat_id, text=str(item["text"]), buttons=item.get("buttons")
-        )
+        result = await _send_reply_item(sender, chat_id=chat_id, item=item)
         if result.ok and item.get("transaction_id") and result.message_id is not None:
             # Связь карточки с операцией: ответ на неё адресует эту операцию.
             links.append(
@@ -674,7 +725,20 @@ async def handle_process_inbound_event(settings: Settings, job: LeasedJob) -> No
     except DomainError as exc:
         # Ошибка домена превращается в понятный текст без раскрытия деталей.
         logger.info("inbound_domain_error", code=exc.code.value, event_id=str(event_id))
-        replies = [Reply(text=exc.message)]
+        from fintracker.application.conversation.service import error_reply
+
+        replies = [error_reply(exc.message)]
+
+    keeps_source = (message.callback_data or "").startswith("+")
+    if (
+        message.kind is MessageKind.CALLBACK
+        and message.message_id is not None
+        and replies
+        and not keeps_source
+    ):
+        # Первую карточку callback-ответа редактируем на месте. Дополнительные
+        # ответы остаются отдельными сообщениями, поэтому ничего не теряется.
+        replies = [replace(replies[0], edit_message_id=message.message_id), *replies[1:]]
 
     reply_job: uuid.UUID | None = None
     async with session_scope(

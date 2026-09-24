@@ -1,0 +1,77 @@
+{
+  "checked_at": "2026-09-20T10:09:48.877040+00:00",
+  "host": "2.26.231.184",
+  "bot": "https://t.me/budzhet_ai_bot",
+  "image": "fintracker:telegram-fixes-20260920-r4",
+  "image_id": "sha256:99831df1dafaacda38141d578f9b6d9318d7f6d44985a691c3eacfd1a238ba09",
+  "manifest_sha256": "8ea995119bd05e6cc0375933242e937cc95eea39874e2c44fd9cdc09055d7f51",
+  "source": "releases/telegram-fixes-20260920-r4",
+  "services": [
+    {
+      "Service": "api",
+      "State": "running",
+      "Health": "healthy",
+      "Image": "fintracker:telegram-fixes-20260920-r4"
+    },
+    {
+      "Service": "polling",
+      "State": "running",
+      "Health": "healthy",
+      "Image": "fintracker:telegram-fixes-20260920-r4"
+    },
+    {
+      "Service": "postgres",
+      "State": "running",
+      "Health": "healthy",
+      "Image": "postgres:17-alpine@sha256:f02121de6f74d30d8a94cd1d9584125e2178d7e6c377d8130112d4e52d867995"
+    },
+    {
+      "Service": "scheduler",
+      "State": "running",
+      "Health": "healthy",
+      "Image": "fintracker:telegram-fixes-20260920-r4"
+    },
+    {
+      "Service": "worker",
+      "State": "running",
+      "Health": "healthy",
+      "Image": "fintracker:telegram-fixes-20260920-r4"
+    }
+  ],
+  "readiness": {
+    "ready": true,
+    "database": true,
+    "schema_current": true,
+    "schema_revision": "0018_history_query",
+    "storage_writable": true,
+    "integrations": {
+      "ai": false,
+      "asr": false,
+      "telegram": true
+    },
+    "detail": null
+  },
+  "jobs_by_state": {
+    "queued": "10",
+    "succeeded": "1707"
+  },
+  "backup": "/opt/fintracker/backups/20260920T100823Z",
+  "package_files_verified": 160,
+  "package_mismatches": [],
+  "real_telegram_ui_rechecked": true,
+  "tests": {
+    "full_suite_before_final_copy_only_change": {
+      "passed": 659,
+      "skipped": 6,
+      "seconds": 247.1
+    },
+    "history_suite_after_final_copy_change": {
+      "passed": 9,
+      "skipped": 0
+    },
+    "ruff": "passed",
+    "format": "passed",
+    "mypy_strict": "passed",
+    "shell_syntax": "passed"
+  }
+}

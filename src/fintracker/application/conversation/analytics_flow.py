@@ -15,7 +15,7 @@ from fintracker.application.analytics.reports import (
 from fintracker.application.conversation.context import current_status
 from fintracker.application.conversation.keyboards import Button, callback, short
 from fintracker.application.conversation.types import Reply
-from fintracker.application.conversation.views import money
+from fintracker.application.conversation.views import format_range, money
 from fintracker.application.planning.periods import period_for_date
 from fintracker.config import Settings
 from fintracker.core.context import ActorContext
@@ -54,32 +54,37 @@ async def report_view(
         coverage=status.completeness,
     )
     lines = [format_report(report)]
-    lines.append("")
-    lines.append("Прогноз итога периода:")
-    lines.append(f"• Факт: {money(forecast.fact_minor, workspace.currency)}")
-    lines.append(
-        f"• Неисполненные обязательства: {money(forecast.commitments_minor, workspace.currency)}"
-    )
+    lines.extend(["", "🔮 Прогноз до конца периода"])
+    lines.append(f"Уже потрачено: {money(forecast.fact_minor, workspace.currency)}")
+    if forecast.commitments_minor:
+        lines.append(
+            f"Предстоящие платежи: {money(forecast.commitments_minor, workspace.currency)}"
+        )
     if forecast.flexible_forecast_minor is not None:
         lines.append(
-            f"• Прогноз гибких трат: {money(forecast.flexible_forecast_minor, workspace.currency)}"
+            "Остальные траты при нынешнем темпе: "
+            f"{money(forecast.flexible_forecast_minor, workspace.currency)}"
         )
     if forecast.total_minor is not None:
-        lines.append(f"Прогноз: {money(forecast.total_minor, workspace.currency)}")
+        lines.append(f"Итого к концу периода: ≈ {money(forecast.total_minor, workspace.currency)}")
+    elif status.completeness == "incomplete":
+        lines.append(
+            "Прогноз появится, когда вы отметите учёт полным: иначе пропущенные траты "
+            "исказят темп. Кнопка — в «Бюджет» → «Проверить учёт»."
+        )
     else:
-        lines.append("Числовой прогноз не строится: данных пока недостаточно.")
-    lines.append("Ограничения: " + "; ".join(forecast.limitations))
+        lines.append("Прогноз появится через неделю наблюдений: пока мало данных о темпе.")
     return [
         Reply(
             text="\n".join(lines),
             buttons=(
                 (
-                    Button("Рекомендации", callback("rec", "list")),
-                    Button("Категории", callback("menu", "categories")),
+                    Button("💡 Рекомендации", callback("rec", "list")),
+                    Button("🗂 Категории", callback("menu", "categories")),
                 ),
                 (
-                    Button("Обзор недели", callback("menu", "review")),
-                    Button("Итог периода", callback("menu", "summary")),
+                    Button("📊 Обзор недели", callback("menu", "review")),
+                    Button("📋 Итог периода", callback("menu", "summary")),
                 ),
                 (Button("← Меню", callback("menu", "main")),),
             ),
@@ -99,20 +104,24 @@ async def answer_question(
     today = dt.datetime.now(ZoneInfo(workspace.timezone)).date()
     lowered = question.lower()
 
+    direct = await _direct_answer(settings, actor=actor, workspace=workspace, question=question)
+    if direct is not None:
+        return direct
+
     if "я потратил" in lowered or "я потратила" in lowered:
         # «Сколько я потратил» допускает разные смыслы (FR-58).
         return [
             Reply(
                 text=(
-                    "Уточните разрез: показать записи, которые добавили вы, "
-                    "покупки, совершённые вами, или расходы, предназначенные вам?"
+                    "✍️ Уточните, что посчитать\n\nТраты, которые вы записали сами, "
+                    "которые оплатили вы, или сделанные для вас?"
                 ),
                 buttons=(
                     (
-                        Button("Я записал", callback("rep", "actor")),
-                        Button("Я потратил", callback("rep", "spender")),
+                        Button("✍️ Записал я", callback("rep", "actor")),
+                        Button("💳 Платил я", callback("rep", "spender")),
                     ),
-                    (Button("Для меня", callback("rep", "beneficiary")),),
+                    (Button("🎁 Для меня", callback("rep", "beneficiary")),),
                 ),
             )
         ]
@@ -129,10 +138,11 @@ async def answer_question(
             return [
                 Reply(
                     text=(
-                        "Ваш бюджетный период короче месяца: "
-                        f"{current.start_date.isoformat()} — "
-                        f"{(current.end_exclusive - dt.timedelta(days=1)).isoformat()}.\n"
-                        "Показать календарный месяц или текущий период?"
+                        "✍️ Ваш бюджетный период короче месяца: "
+                        + format_range(
+                            current.start_date, current.end_exclusive - dt.timedelta(days=1)
+                        )
+                        + ".\n\nПоказать календарный месяц или текущий период?"
                     ),
                     buttons=(
                         (
@@ -151,11 +161,11 @@ async def answer_question(
             date_from = today.replace(day=1)
             next_month = (date_from + dt.timedelta(days=32)).replace(day=1)
             date_to_exclusive = next_month
-            method_note = "календарный месяц"
+            method_note = "за календарный месяц"
         else:
             date_from = period.start_date
             date_to_exclusive = period.end_exclusive
-            method_note = "текущий бюджетный период"
+            method_note = "за текущий период бюджета"
         report = await spending_report(
             session,
             workspace=workspace,
@@ -163,13 +173,12 @@ async def answer_question(
             date_to_exclusive=date_to_exclusive,
             coverage="incomplete",
         )
-    header = f"Разрез: {method_note}"
     return [
         Reply(
-            text=f"{header}\n{format_report(report)}",
+            text=format_report(report, title=f"📊 Расходы {method_note}"),
             buttons=(
                 (
-                    Button("Детализация", callback("menu", "history")),
+                    Button("🔎 Детализация", callback("menu", "history")),
                     Button("Календарный месяц", callback("rep", "calendar")),
                 ),
             ),
@@ -186,7 +195,7 @@ async def report_slice(
     from fintracker.application.analytics.reports import FilterSpec
 
     filters = FilterSpec()
-    method_note = "текущий бюджетный период"
+    method_note = "за текущий период бюджета"
     async with session_scope(
         settings, RuntimeRole.API, user_id=actor.user_id, workspace_id=workspace_id
     ) as session:
@@ -197,36 +206,37 @@ async def report_slice(
             case "calendar":
                 date_from = today.replace(day=1)
                 date_to_exclusive = (date_from + dt.timedelta(days=32)).replace(day=1)
-                method_note = "календарный месяц"
+                method_note = "за календарный месяц"
             case "actor":
                 filters = FilterSpec(actor_user_ids=(actor.user_id,))
-                method_note = "записи, которые добавили вы"
+                method_note = "— записи, которые добавили вы"
             case "spender":
                 if actor.person_id is None:
                     return [
                         Reply(
                             text=(
-                                "Ваш личный профиль в этом бюджете не привязан, "
-                                "поэтому разрез «кто потратил» пока недоступен."
+                                "ℹ️ Бот пока не знает, какие покупки оплатили вы\n\n"
+                                "Укажите своё имя в разделе «Участники» — после этого можно "
+                                "будет считать ваши траты."
                             ),
-                            buttons=((Button("Участники", callback("menu", "members")),),),
+                            buttons=((Button("👥 Участники", callback("menu", "members")),),),
                         )
                     ]
                 filters = FilterSpec(spender_person_ids=(actor.person_id,))
-                method_note = "покупки, совершённые вами"
+                method_note = "— оплаченные вами"
             case "beneficiary":
                 if actor.beneficiary_id is None:
                     return [
                         Reply(
                             text=(
-                                "Получатель для вас в этом бюджете не задан, "
-                                "поэтому разрез «для меня» пока недоступен."
+                                "ℹ️ Бот пока не знает, какие траты сделаны для вас\n\n"
+                                "Укажите своё имя в разделе «Участники»."
                             ),
-                            buttons=((Button("Участники", callback("menu", "members")),),),
+                            buttons=((Button("👥 Участники", callback("menu", "members")),),),
                         )
                     ]
                 filters = FilterSpec(beneficiary_ids=(actor.beneficiary_id,))
-                method_note = "расходы, предназначенные вам"
+                method_note = "— сделанные для вас"
         report = await spending_report(
             session,
             workspace=workspace,
@@ -237,10 +247,10 @@ async def report_slice(
         )
     return [
         Reply(
-            text=f"Разрез: {method_note}\n{format_report(report)}",
+            text=format_report(report, title=f"📊 Расходы {method_note}"),
             buttons=(
                 (
-                    Button("Детализация", callback("menu", "history")),
+                    Button("🔎 Детализация", callback("menu", "history")),
                     Button("← Меню", callback("menu", "main")),
                 ),
             ),
@@ -281,8 +291,8 @@ async def recommendation_action(
             return [
                 Reply(
                     text=(
-                        "Готовых рекомендаций пока нет. Анализ выполняется по "
-                        "расписанию и при подготовке следующего плана."
+                        "💡 Рекомендаций пока нет\n\nБот предлагает идеи, когда накопится "
+                        "история трат: обычно после первого полного периода."
                     ),
                     buttons=((Button("← Меню", callback("menu", "main")),),),
                 )
@@ -290,7 +300,7 @@ async def recommendation_action(
         replies: list[Reply] = []
         groups_seen: set[str] = set()
         for row in rows:
-            body = [row.observation]
+            body = ["💡 Идея для вашего бюджета", "", row.observation, ""]
             if row.estimated_effect_minor is not None:
                 body.append(
                     f"Ожидаемый эффект: {money(row.estimated_effect_minor, workspace.currency)}"
@@ -311,12 +321,12 @@ async def recommendation_action(
                     text="\n".join(body),
                     buttons=(
                         (
-                            Button("Выбрать действие", callback("rec", "choose", code)),
-                            Button("Отложить", callback("rec", "snooze", code)),
+                            Button("✅ Выбрать действие", callback("rec", "choose", code)),
+                            Button("🕓 Отложить", callback("rec", "snooze", code)),
                         ),
                         (
-                            Button("Не подходит", callback("rec", "reject", code)),
-                            Button("Почему", callback("rec", "why", code)),
+                            Button("✕ Не подходит", callback("rec", "reject", code)),
+                            Button("🔎 Почему", callback("rec", "why", code)),
                         ),
                     ),
                 )
@@ -324,7 +334,7 @@ async def recommendation_action(
         return replies
 
     if not rest:
-        return [Reply(text="Кнопка устарела.")]
+        return [Reply(text="🔄 Кнопка устарела.\n\nОткройте нужный раздел заново.")]
     from fintracker.application.conversation.callbacks import _resolve_uuid
 
     recommendation_id = await _resolve_uuid(
@@ -350,17 +360,20 @@ async def recommendation_action(
                         select(Recommendation).where(Recommendation.id == recommendation_id)
                     )
                 ).scalar_one()
-                refs = ", ".join(str(item) for item in row.metric_refs) or "нет"
+                refs = str(len(row.metric_refs))
             return [
                 Reply(
                     text=(
-                        f"Основание: {row.observation}\n"
-                        f"Использованные показатели: {refs}\n"
-                        f"Версия данных: {row.revision_vector}"
+                        "🔎 Почему появилась рекомендация\n\n"
+                        f"{row.observation}"
+                        "\n\nУчтено показателей: "
+                        f"{refs}"
+                        ". Рекомендация основана на записанных данных бюджета; "
+                        "пропущенные траты могут повлиять на выводы."
                     )
                 )
             ]
-        return [Reply(text="Действие недоступно.")]
+        return [Reply(text="🔄 Действие недоступно.")]
 
     async with session_scope(
         settings, RuntimeRole.API, user_id=actor.user_id, workspace_id=workspace_id
@@ -397,17 +410,12 @@ async def recommendation_action(
 
     texts = {
         "chosen": (
-            "Намерение сохранено вместе с датой проверки. Лимит, журнал, подписка "
-            "и банковские операции при этом не изменены."
+            "✅ Отметил, что вы решили так сделать. Бот напомнит проверить результат. "
+            "Сами лимиты и записи не изменились."
         ),
-        "snoozed": "Предложение отложено и не вернётся до выбранной даты.",
-        "rejected": (
-            "Учту. Предупреждения о лимите по этой статье продолжают работать по своим настройкам."
-        ),
-        "done": (
-            "Отметка сохранена. Фактическая экономия не объявляется доказанной: "
-            "полнота учёта и разовые события учитываются при оценке."
-        ),
+        "snoozed": "⏰ Отложено — бот вернётся к этой идее позже.",
+        "rejected": ("👌 Учту. Предупреждения о лимите этой категории будут приходить как раньше."),
+        "done": ("✅ Отметка сохранена. Реальную экономию бот оценит по следующим тратам."),
     }
     return [Reply(text=texts[decision])]
 
@@ -429,8 +437,8 @@ async def weekly_review_view(
             text=review.render(),
             buttons=(
                 (
-                    Button("Итог периода", callback("menu", "summary")),
-                    Button("Отчёт", callback("menu", "analytics")),
+                    Button("📋 Итог периода", callback("menu", "summary")),
+                    Button("📊 Отчёт", callback("menu", "analytics")),
                 ),
                 (Button("← Меню", callback("menu", "main")),),
             ),
@@ -458,8 +466,8 @@ async def period_summary_view(
             text=summary.render(),
             buttons=(
                 (
-                    Button("План на следующий", callback("menu", "nextplan")),
-                    Button("Обзор недели", callback("menu", "review")),
+                    Button("📅 Следующий план", callback("menu", "nextplan")),
+                    Button("📊 Обзор недели", callback("menu", "review")),
                 ),
                 (Button("← Меню", callback("menu", "main")),),
             ),
@@ -468,7 +476,7 @@ async def period_summary_view(
 
 
 async def next_plan_view(
-    settings: Settings, *, actor: ActorContext, workspace: Workspace
+    settings: Settings, *, actor: ActorContext, workspace: Workspace, page: int = 0
 ) -> list[Reply]:
     """Проект плана следующего периода с основаниями строк (FR-61)."""
     from fintracker.application.analytics.reviews import build_next_period_draft
@@ -486,15 +494,110 @@ async def next_plan_view(
         draft = await build_next_period_draft(
             session, workspace=workspace, period_id=following.id, today=today
         )
+    pages = max(1, (len(draft.lines) + 7) // 8)
+    page = min(max(0, page), pages - 1)
+    navigation = []
+    if page:
+        navigation.append(Button("← Предыдущие категории", callback("nplan", str(page - 1))))
+    if page + 1 < pages:
+        navigation.append(Button("Следующие категории →", callback("nplan", str(page + 1))))
     return [
         Reply(
-            text=draft.render(workspace.currency),
-            buttons=(
+            text=draft.render(workspace.currency, page=page),
+            buttons=((tuple(navigation),) if navigation else ())
+            + (
                 (
-                    Button("Перенести остатки", callback("menu", "budget")),
-                    Button("Изменить лимиты", callback("menu", "categories")),
+                    Button("↪️ Перенести остатки", callback("roll", "show")),
+                    Button(
+                        "✏️ Изменить лимиты",
+                        callback("nlimit", "show", short(following.id), "0"),
+                    ),
                 ),
                 (Button("← Меню", callback("menu", "main")),),
             ),
         )
     ]
+
+
+_REMAINING_WORDS = ("осталось", "остаток", "осталась", "можно потратить", "сколько можно", "хватит")
+
+
+async def _direct_answer(
+    settings: Settings, *, actor: ActorContext, workspace: Workspace, question: str
+) -> list[Reply] | None:
+    """Прямой ответ по плану периода: остаток и траты категории (FR-58).
+
+    Числа берутся из статуса периода, а не из модели: «сколько осталось» —
+    остаток плана, «сколько на продукты» — факт и лимит этой категории.
+    """
+    from fintracker.application.catalog.categories import list_categories
+    from fintracker.application.catalog.keywords import suggest_category
+    from fintracker.application.catalog.normalize import normalize_name
+    from fintracker.application.conversation.views import plural
+
+    lowered = normalize_name(question)
+    asks_remaining = any(word in lowered for word in _REMAINING_WORDS)
+    workspace_id = actor.require_workspace()
+    async with session_scope(
+        settings, RuntimeRole.API, user_id=actor.user_id, workspace_id=workspace_id
+    ) as session:
+        categories = await list_categories(session, workspace_id=workspace_id)
+    category = None
+    for item in categories:
+        stem = normalize_name(item.name)[:5]
+        if len(stem) >= 3 and stem in lowered:
+            category = item
+            break
+    if category is None:
+        suggested = suggest_category(question, ((item.id, item.name) for item in categories))
+        category = next((item for item in categories if item.id == suggested), None)
+    if category is None and not asks_remaining:
+        return None
+    status = await current_status(settings, actor=actor, workspace=workspace)
+    currency = workspace.currency
+    period = format_range(status.start_date, status.end_inclusive)
+    days_left = max(
+        0, (status.end_inclusive - dt.datetime.now(ZoneInfo(workspace.timezone)).date()).days + 1
+    )
+    buttons = (
+        (
+            Button("📒 Бюджет", callback("menu", "budget")),
+            Button("🧾 История", callback("menu", "history")),
+        ),
+    )
+    if category is not None:
+        line = next((item for item in status.lines if item.category_id == category.id), None)
+        fact = line.fact_minor if line is not None else 0
+        lines = [f"🗂 {category.name} · {period}", "", f"Потрачено: {money(fact, currency)}"]
+        if line is not None and line.effective_limit_minor is not None:
+            left = line.effective_limit_minor - fact
+            lines.append(f"Лимит: {money(line.effective_limit_minor, currency)}")
+            lines.append(
+                f"Осталось: {money(left, currency)}"
+                if left >= 0
+                else f"⚠️ Сверх лимита: {money(-left, currency)}"
+            )
+        else:
+            lines.append("Лимит не задан.")
+        return [Reply(text="\n".join(lines), buttons=buttons)]
+    lines = [f"💰 Остаток · {period}", ""]
+    if status.total_limit_minor is None:
+        lines.append(f"Потрачено: {money(status.total_fact_minor, currency)}")
+        lines.append("План расходов не задан — остаток считать не от чего.")
+    else:
+        left = status.total_limit_minor - status.total_fact_minor
+        lines.append(
+            f"Осталось по плану: {money(left, currency)}"
+            if left >= 0
+            else f"⚠️ Сверх плана: {money(-left, currency)}"
+        )
+        lines.append(
+            f"Потрачено {money(status.total_fact_minor, currency)} из "
+            f"{money(status.total_limit_minor, currency)}"
+        )
+        if left > 0 and days_left:
+            lines.append(
+                f"До конца периода {days_left} {plural(days_left, 'день', 'дня', 'дней')} — "
+                f"примерно {money(left // days_left, currency)} в день."
+            )
+    return [Reply(text="\n".join(lines), buttons=buttons)]

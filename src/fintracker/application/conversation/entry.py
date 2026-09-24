@@ -78,10 +78,13 @@ class CandidateFields:
     parts: list[dict[str, Any]] = field(default_factory=list)
     ambiguities: list[dict[str, Any]] = field(default_factory=list)
     evidence: dict[str, str] = field(default_factory=dict)
+    # Only explicit UI actions populate this; AI evidence cannot authorize ledger links.
+    operation_details: dict[str, str] = field(default_factory=dict)
 
     def to_payload(self) -> dict[str, Any]:
         return {
             "parts": self.parts,
+            "operation_details": self.operation_details,
             "amount_minor": self.amount_minor,
             "currency": self.currency,
             "kind": self.kind,
@@ -123,6 +126,7 @@ class CandidateFields:
             quantity=payload.get("quantity"),
             parts=list(payload.get("parts") or []),
             evidence=dict(payload.get("evidence") or {}),
+            operation_details=dict(payload.get("operation_details") or {}),
         )
 
     @property
@@ -191,13 +195,13 @@ async def _match_category(
 
     categories = (
         await session.execute(
-            select(Category.id, Category.normalized_name).where(
+            select(Category.id, Category.normalized_name, Category.name).where(
                 Category.workspace_id == workspace_id, Category.archived_at.is_(None)
             )
         )
     ).all()
     best: tuple[uuid.UUID, int] | None = None
-    for category_id, name in categories:
+    for category_id, name, _display in categories:
         if not name:
             continue
         stem = name[:5] if len(name) > 5 else name
@@ -207,6 +211,12 @@ async def _match_category(
                 best = (category_id, score)
     if best is not None:
         return best[0], "name"
+    # Встроенный словарь: «такси» → «Транспорт», «кофе» → «Рестораны».
+    from fintracker.application.catalog.keywords import suggest_category
+
+    suggested = suggest_category(text, ((row[0], row[2]) for row in categories))
+    if suggested is not None:
+        return suggested, "keyword"
     return None, None
 
 
@@ -341,7 +351,7 @@ async def extract_from_text(
         return ExtractionResult(
             intent=Intent.RECORD_TRANSACTION,
             candidates=[fields],
-            question="Какая сумма у этой траты?",
+            question="✍️ Какая сумма у этой траты?\n\nОтправьте число, например 500.",
         )
 
     candidates: list[CandidateFields] = []
@@ -368,7 +378,9 @@ async def extract_from_text(
             else guess_transaction_kind(body),
             occurred_date=occurred,
             date_expression=parsed_date.expression if parsed_date else None,
-            description=_describe(segment, amount.raw),
+            description=_describe(
+                segment, amount.raw, parsed_date.expression if parsed_date is not None else None
+            ),
             quantity=amount.quantity,
             evidence={"amount": amount.raw, "segment": segment},
         )
@@ -388,7 +400,7 @@ async def extract_from_text(
         category_id, basis = await _match_category(
             session, workspace_id=workspace_id, text=segment or body, actor=actor
         )
-        fields.category_id = category_id
+        fields.category_id = category_id if fields.kind == "expense" else None
         if basis:
             fields.evidence["category_basis"] = basis
         spender, beneficiary, person_ambiguities = await _resolve_people(
@@ -428,8 +440,12 @@ async def extract_from_text(
     )
 
 
-def _describe(segment: str, amount_raw: str) -> str | None:
-    cleaned = segment.replace(amount_raw, " ").strip(" .,;-—")
+def _describe(segment: str, amount_raw: str, date_raw: str | None = None) -> str | None:
+    cleaned = segment.replace(amount_raw, " ")
+    if date_raw:
+        # «вчера такси 400» описывает такси, а не «вчера такси».
+        cleaned = re.sub(re.escape(date_raw), " ", cleaned, count=1, flags=re.IGNORECASE)
+    cleaned = cleaned.strip(" .,;-—")
     cleaned = re.sub(r"\s{2,}", " ", cleaned)
     return cleaned[:300] or None
 
@@ -442,18 +458,29 @@ def first_question(candidates: list[CandidateFields]) -> str | None:
                 case "amount" if ambiguity.get("reason") == "ambiguous":
                     options = ambiguity.get("options") or []
                     shown = " или ".join(str(option) for option in options)
-                    return f"Уточните сумму: {shown}?"
+                    return f"✍️ Уточните сумму\n\nВы имели в виду {shown}?"
                 case "amount":
-                    return "Какая сумма у этой траты?"
+                    return "✍️ Какая сумма у этой траты?\n\nОтправьте число, например 500."
                 case "date" if ambiguity.get("reason") == "future":
-                    return "Это будущая покупка или уже совершённая?"
+                    return (
+                        "📅 Дата ещё не наступила\n\nПокупка уже была или вы только её планируете?"
+                    )
+                case "occurred_date" if ambiguity.get("reason") == "future_plan":
+                    return (
+                        "📅 Это запланированная покупка?\n\nЕсли она уже была — запишу "
+                        "её сегодня. Если только планируете — ничего не запишу."
+                    )
                 case "spender_person_id":
                     return (
-                        f"Кто такой «{ambiguity.get('value')}»? Добавить его в справочник "
-                        "людей бюджета?"
+                        f"👤 Кто это — «{ambiguity.get('value')}»?\n\n"
+                        "Можно добавить человека в бюджет, чтобы видеть, кто совершил "
+                        "покупку, или записать трату без имени."
                     )
                 case "note":
-                    return "Комментарий относится ко всем тратам или к одной?"
+                    return (
+                        "💬 К чему относится комментарий?\n\nКо всем тратам в сообщении "
+                        "или его не нужно сохранять?"
+                    )
     return None
 
 
@@ -601,7 +628,7 @@ def build_spec(
 ) -> TransactionSpec:
     """Собрать проверяемую спецификацию операции из полей кандидата."""
     if fields.amount_minor is None or fields.occurred_date is None:
-        raise ValidationFailed("У кандидата нет суммы или даты")
+        raise ValidationFailed("не хватает суммы или даты")
     currency = fields.currency or workspace_currency
     amount = Money(fields.amount_minor, currency)
     kind = fields.kind
@@ -619,7 +646,7 @@ def build_spec(
                 AllocationSpec(
                     role=AllocationRole.INCOME,
                     amount=amount,
-                    category_id=fields.category_id,
+                    category_id=None,
                     beneficiary_id=fields.beneficiary_id,
                 ),
             ),
@@ -686,8 +713,7 @@ def build_spec(
     # Перевод, заём, возврат и смешанная оплата имеют собственные команды и
     # обязательные реквизиты: подтверждение не превращает их в расход (AUD-08).
     raise ValidationFailed(
-        f"Тип операции «{kind}» подтверждается отдельной командой: "
-        "уточните счета и стороны операции",
+        "такую операцию нужно оформить отдельно — укажите счета и участников",
         details={"kind": kind},
     )
 
@@ -743,27 +769,74 @@ async def post_draft(
 
     # Сначала проверяется весь пакет: отказ по второму кандидату не должен
     # оставлять проведённым первый (FR-11, G-01).
-    planned: list[tuple[Candidate, TransactionSpec]] = []
+    planned: list[tuple[Candidate, TransactionSpec | CandidateFields]] = []
     for candidate in candidates:
         if candidate.state in {"excluded", "cancelled"}:
             continue
         fields = CandidateFields.from_payload(dict(candidate.fields))
-        spec = build_spec(fields, timezone=timezone, workspace_currency=workspace_currency)
-        planned.append((candidate, spec))
+        if fields.kind in {"refund", "transfer"}:
+            if not fields.operation_details.get("details_confirmed"):
+                raise ValidationFailed("сначала выберите покупку или счета для этой операции")
+            planned.append((candidate, fields))
+        else:
+            spec = build_spec(fields, timezone=timezone, workspace_currency=workspace_currency)
+            planned.append((candidate, spec))
 
     posted: list[uuid.UUID] = []
     # Запись идёт во вложенной транзакции: сбой на любом кандидате отменяет
     # весь пакет, а не оставляет его наполовину проведённым.
     async with session.begin_nested():
-        for candidate, spec in planned:
-            result = await post_transaction(
-                session,
-                uow,
-                actor=actor,
-                spec=spec,
-                origin=origin,
-                source_candidate_id=candidate.id,
-            )
+        for candidate, planned_spec in planned:
+            if isinstance(planned_spec, CandidateFields):
+                from fintracker.application.ledger.operations import post_refund, post_transfer
+                from fintracker.db.models.ledger import Transaction
+
+                if planned_spec.amount_minor is None or planned_spec.occurred_date is None:
+                    raise ValidationFailed("Не хватает суммы или даты")
+                amount = Money(
+                    planned_spec.amount_minor, planned_spec.currency or workspace_currency
+                )
+                if planned_spec.kind == "refund":
+                    result = await post_refund(
+                        session,
+                        uow,
+                        actor=actor,
+                        source_transaction_id=uuid.UUID(
+                            planned_spec.operation_details["refund_source"]
+                        ),
+                        parts={uuid.UUID(planned_spec.operation_details["refund_line"]): amount},
+                        occurred_date=planned_spec.occurred_date,
+                        timezone=timezone,
+                        account_id=planned_spec.account_id,
+                        note=planned_spec.note,
+                        origin=origin,
+                    )
+                else:
+                    result = await post_transfer(
+                        session,
+                        uow,
+                        actor=actor,
+                        amount=amount,
+                        from_account_id=uuid.UUID(planned_spec.operation_details["from_account"]),
+                        to_account_id=uuid.UUID(planned_spec.operation_details["to_account"]),
+                        occurred_date=planned_spec.occurred_date,
+                        timezone=timezone,
+                        description=planned_spec.description,
+                        note=planned_spec.note,
+                        origin=origin,
+                    )
+                transaction = await session.get(Transaction, result.transaction_id)
+                assert transaction is not None
+                transaction.source_candidate_id = candidate.id
+            else:
+                result = await post_transaction(
+                    session,
+                    uow,
+                    actor=actor,
+                    spec=planned_spec,
+                    origin=origin,
+                    source_candidate_id=candidate.id,
+                )
             candidate.state = "posted"
             candidate.posted_transaction_id = result.transaction_id
             candidate.version += 1

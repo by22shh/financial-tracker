@@ -375,6 +375,20 @@ async def test_new_budget_has_default_weekly_analysis(owner_session) -> None:
     )
 
 
+async def test_first_period_does_not_request_nonexistent_closing_analysis(owner_session) -> None:
+    """Первый период не пытается анализировать день до начала бюджета."""
+    f = await build_fixture(owner_session, start=dt.date(2026, 9, 20))
+
+    due = await due_analyses(
+        owner_session,
+        workspace_id=f.workspace.id,
+        local_now=dt.datetime(2026, 9, 20, 20, 0, tzinfo=ZoneInfo(TZ)),
+    )
+
+    assert any(item.run_kind == "weekly_review" for item in due)
+    assert not any(item.run_kind == "period_closing" for item in due)
+
+
 # --- R-07 -------------------------------------------------------------------
 async def test_background_slow_ai_does_not_break_transaction(owner_session, test_settings) -> None:
     """R-07: медленный ответ модели не удерживает транзакцию фонового анализа."""

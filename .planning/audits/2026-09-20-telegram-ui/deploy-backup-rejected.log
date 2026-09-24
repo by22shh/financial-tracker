@@ -1,0 +1,26 @@
+ Container fintracker-worker-1  Stopping
+ Container fintracker-scheduler-1  Stopping
+ Container fintracker-polling-1  Stopping
+ Container fintracker-api-1  Stopping
+ Container fintracker-worker-1  Stopped
+ Container fintracker-api-1  Stopped
+ Container fintracker-scheduler-1  Stopped
+ Container fintracker-polling-1  Stopped
+tar: security-log: file changed as we read it
+
+ Container fintracker-postgres-1  Waiting
+ Container fintracker-postgres-1  Waiting
+ Container fintracker-postgres-1  Waiting
+ Container fintracker-postgres-1  Waiting
+ Container fintracker-postgres-1  Healthy
+ Container fintracker-api-1  Starting
+ Container fintracker-postgres-1  Healthy
+ Container fintracker-worker-1  Starting
+ Container fintracker-postgres-1  Healthy
+ Container fintracker-polling-1  Starting
+ Container fintracker-postgres-1  Healthy
+ Container fintracker-scheduler-1  Starting
+ Container fintracker-scheduler-1  Started
+ Container fintracker-worker-1  Started
+ Container fintracker-api-1  Started
+ Container fintracker-polling-1  Started

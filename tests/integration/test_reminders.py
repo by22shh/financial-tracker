@@ -138,10 +138,50 @@ async def test_reminder_text_marks_expectation_not_expense(
         recipient_user_id=fixture.user.id,
     )
     assert text is not None
-    assert "ожидаемый платёж, а не проведённый расход" in text
+    assert "ожидаемый платёж — в расходы он не включён" in text
     assert buttons is not None
     labels = [button["text"] for row in buttons for button in row]
-    assert labels == ["Оплачено", "Перенести", "Пропустить"]
+    assert labels == ["✅ Оплачено", "📅 Перенести", "Пропустить →"]
+    # «+» — ответ открывается новым сообщением, напоминание остаётся в чате.
+    assert [
+        button["callback_data"].removeprefix("+").split(":")[:2]
+        for row in buttons
+        for button in row
+    ] == [
+        ["pay", "done"],
+        ["pay", "move"],
+        ["pay", "skip"],
+    ]
+
+
+async def test_transaction_notification_names_operation_type(
+    owner_session: AsyncSession,
+) -> None:
+    """Тип операции понятен в уведомлении без цвета и открытия карточки."""
+    from fintracker.application.ledger.service import post_transaction
+    from tests.integration.test_money_scenarios import expense_spec, rub
+
+    fixture = await build_fixture(owner_session, telegram_user_id=5310)
+    posted = await post_transaction(
+        owner_session,
+        fixture.uow,
+        actor=fixture.actor,
+        spec=expense_spec(fixture, amount=rub(425), category="Продукты"),
+        origin="telegram_text",
+    )
+    text, buttons = await render_event(
+        owner_session,
+        workspace=fixture.workspace,
+        event_type="TransactionPosted",
+        payload={"transaction_id": str(posted.transaction_id)},
+        recipient_user_id=fixture.user.id,
+    )
+    assert text is not None
+    assert text.startswith("✅ Расход записан")
+    assert "425\xa0₽" in text
+    assert buttons is not None
+    assert buttons[0][0]["callback_data"].removeprefix("+").startswith("tx:open:")
+    assert len(buttons[0][0]["callback_data"].encode()) <= 64
 
 
 async def test_reminders_are_not_duplicated_within_a_day(

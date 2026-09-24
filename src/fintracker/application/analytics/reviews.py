@@ -1,7 +1,7 @@
 """Обзоры, ранний риск и объяснение изменений (FR-41, FR-42, FR-55, FR-56, FR-59).
 
 Числа считает сервис аналитики; AI лишь формулирует объяснение. Перенос
-лимита между статьями не называется экономией, а сокращение будущих трат
+лимита между категориями не называется экономией, а сокращение будущих трат
 сопровождается условиями расчёта.
 """
 
@@ -20,7 +20,7 @@ from fintracker.application.analytics.reports import (
     compare_periods,
     spending_report,
 )
-from fintracker.application.commitments.schedules import upcoming_payments
+from fintracker.application.commitments.schedules import materialize_occurrences, upcoming_payments
 from fintracker.application.planning.plan import LimitState, LineStatus, period_status
 from fintracker.core.money import Money
 from fintracker.db.models.access import Workspace
@@ -46,9 +46,9 @@ class RiskLine:
         if self.line.beneficiary_name:
             name = f"{name} · {self.line.beneficiary_name}"
         return (
-            f"{name}: прогноз {Money(self.forecast_minor, currency).format()} "
+            f"{name}: при нынешнем темпе выйдет {Money(self.forecast_minor, currency).format()} "
             f"при лимите {Money(self.line.effective_limit_minor or 0, currency).format()} — "
-            f"возможное превышение {Money(self.excess_minor, currency).format()}"
+            f"больше на {Money(self.excess_minor, currency).format()}"
         )
 
 
@@ -112,47 +112,46 @@ class WeeklyReview:
     suggested_action: str
 
     def render(self) -> str:
-        from fintracker.application.delivery.render import format_range
+        from fintracker.application.delivery.render import format_date, format_range
 
         lines = [
-            f"Обзор за {format_range(self.date_from, self.date_to_inclusive)}",
-            f"Учтённые расходы: {Money(self.spent_minor, self.currency).format()}",
+            f"📊 Обзор недели · {format_range(self.date_from, self.date_to_inclusive)}",
+            "",
+            f"Потрачено: {Money(self.spent_minor, self.currency).format()}",
         ]
-        change = Money(self.comparison.absolute_change_minor, self.currency).format()
+        delta = self.comparison.absolute_change_minor
+        signed = ("+" if delta > 0 else "") + Money(delta, self.currency).format()
         if self.comparison.percent_change is None:
-            lines.append(f"Изменение: {change} ({self.comparison.note})")
+            if self.comparison.previous_minor == 0 and self.spent_minor:
+                lines.append("Неделей раньше трат не было.")
+            else:
+                lines.append(f"По сравнению с прошлой неделей: {signed}")
         else:
-            lines.append(
-                f"Изменение: {change} "
-                f"({self.comparison.percent_change:+.1f}%, {self.comparison.note})"
-            )
+            percent = f"{self.comparison.percent_change:+.0f}%".replace(".", ",")
+            lines.append(f"По сравнению с прошлой неделей: {signed} ({percent})")
         if self.top_changes:
-            lines.append("Главные изменения:")
+            lines.append("\n📈 Что изменилось сильнее всего")
             lines.extend(f"• {item.describe(self.currency)}" for item in self.top_changes)
         if self.upcoming:
-            lines.append("Ближайшие платежи:")
+            lines.append("\n🗓 Ближайшие платежи")
             lines.extend(
-                f"• {name} — {due.isoformat()}, {Money(amount, self.currency).format()}"
+                f"• {name} — {format_date(due)}, {Money(amount, self.currency).format()}"
                 for name, due, amount in self.upcoming
             )
         if self.goals:
-            lines.append("Цели:")
+            lines.append("\n🎯 Цели")
             lines.extend(
-                f"• {name}: выделено {Money(allocated, self.currency).format()}"
+                f"• {name}: отложено {Money(allocated, self.currency).format()}"
                 + (f" из {Money(target, self.currency).format()}" if target else "")
                 for name, allocated, target in self.goals
             )
         if self.risky:
-            lines.append("Риск перерасхода:")
+            lines.append("\n⚠️ Может не хватить лимита")
             lines.extend(f"• {item.describe(self.currency)}" for item in self.risky[:2])
-        completeness = {
-            "incomplete": "не подтверждена",
-            "reconciled_source": "сверена по доступному источнику",
-            "confirmed_complete": "подтверждена участником",
-        }.get(self.completeness, self.completeness)
-        lines.append(f"Полнота учёта: {completeness}")
+        if self.completeness == "incomplete":
+            lines.append("\nℹ️ Полнота учёта: не подтверждена — часть трат может быть не внесена.")
         # Ровно одно предлагаемое действие (FR-55).
-        lines.append(f"Предлагаемое действие: {self.suggested_action}")
+        lines.append(f"\n💡 Что сделать\n{self.suggested_action}")
         return "\n".join(lines)
 
 
@@ -238,14 +237,23 @@ async def build_weekly_review(
             )
 
     if risky:
-        action = f"Проверьте лимит: {risky[0].line.category_name} — прогноз выше плана"
+        action = (
+            f"Присмотритесь к категории «{risky[0].line.category_name}»: при нынешнем темпе "
+            "лимита не хватит."
+        )
     elif payments:
         nearest = payments[0]
-        action = f"Запланируйте платёж «{nearest.schedule_name}» к {nearest.due_date.isoformat()}"
+        action = (
+            f"Приготовьте деньги на платёж «{nearest.schedule_name}» к "
+            f"{_human_date(nearest.due_date)}."
+        )
     elif completeness == "incomplete":
-        action = "Подтвердите полноту учёта за неделю или отметьте пропуски"
+        action = (
+            "Проверьте, все ли траты недели внесены, и отметьте учёт полным: "
+            "«Бюджет» → «Проверить учёт»."
+        )
     else:
-        action = "Проверьте план следующего периода"
+        action = "Загляните в план следующего периода."
 
     return WeeklyReview(
         date_from=date_from,
@@ -286,26 +294,29 @@ class ChangeContribution:
         return self.count_current is not None and self.count_previous is not None
 
     def describe(self, currency: str) -> str:
-        text = f"{self.label}: {Money(self.delta_minor, currency).format()}"
+        sign = "+" if self.delta_minor > 0 else ""
+        text = f"{self.label}: {sign}{Money(self.delta_minor, currency).format()}"
         if not self.count_available:
-            return f"{text} (история агрегирована: разбор только по сумме)"
+            return text
         assert self.count_current is not None and self.count_previous is not None
         count_delta = self.count_current - self.count_previous
         parts = [f"покупок {self.count_previous} → {self.count_current}"]
         if self.average_previous_minor is not None and self.average_current_minor is not None:
             parts.append(
-                "средняя "
+                "средний чек "
                 f"{Money(self.average_previous_minor, currency).format()} → "
                 f"{Money(self.average_current_minor, currency).format()}"
             )
-        driver = (
-            "вклад в основном от количества записей"
-            if abs(count_delta)
+        by_count = bool(
+            count_delta
             and self.average_previous_minor
             and abs(count_delta * self.average_previous_minor) >= abs(self.delta_minor) / 2
-            else "вклад в основном от суммы записей"
         )
-        return f"{text} ({'; '.join(parts)}; {driver})"
+        if by_count:
+            driver = "чаще покупали" if count_delta > 0 else "реже покупали"
+        else:
+            driver = "изменились суммы покупок"
+        return f"{text} ({', '.join(parts)} — {driver})"
 
 
 def explain_changes(
@@ -373,43 +384,56 @@ class PeriodSummary:
         from fintracker.application.delivery.render import format_range
 
         lines = [
-            f"Итог периода {format_range(self.date_from, self.date_to_inclusive)}",
+            f"📋 Итоги периода · {format_range(self.date_from, self.date_to_inclusive)}",
+            "",
             f"Доходы: {Money(self.income_minor, self.currency).format()}",
-            f"Потребительские расходы: {Money(self.consumption_minor, self.currency).format()}",
+            f"Расходы: {Money(self.consumption_minor, self.currency).format()}",
         ]
         if self.other_flows_minor:
             lines.append(
-                f"Прочие денежные движения: {Money(self.other_flows_minor, self.currency).format()}"
+                "Переводы, займы и другие движения: "
+                f"{Money(self.other_flows_minor, self.currency).format()}"
             )
         if self.goal_contributions_minor:
             lines.append(
-                f"Взносы на цели: {Money(self.goal_contributions_minor, self.currency).format()}"
-            )
-        if self.baseline_limit_minor is not None:
-            deviation = self.consumption_minor - self.baseline_limit_minor
-            lines.append(
-                f"Отклонение от исходного плана: {Money(deviation, self.currency).format()}"
+                f"Отложено на цели: {Money(self.goal_contributions_minor, self.currency).format()}"
             )
         if self.working_limit_minor is not None:
             deviation = self.consumption_minor - self.working_limit_minor
+            lines.append("")
             lines.append(
-                f"Отклонение от текущего плана: {Money(deviation, self.currency).format()}"
+                f"План расходов: {Money(self.working_limit_minor, self.currency).format()}"
             )
+            if (
+                self.baseline_limit_minor is not None
+                and self.baseline_limit_minor != self.working_limit_minor
+            ):
+                lines.append(
+                    "В начале периода план был: "
+                    f"{Money(self.baseline_limit_minor, self.currency).format()}"
+                )
+            if deviation > 0:
+                lines.append(f"⚠️ Сверх плана: {Money(deviation, self.currency).format()}")
+            else:
+                lines.append(
+                    f"✅ В рамках плана, запас: {Money(-deviation, self.currency).format()}"
+                )
         if self.unspent_limits_minor:
             # Формулировка «вы сэкономили» не применяется ко всем остаткам (FR-56).
             lines.append(
-                "Неиспользованные лимиты: "
+                "Не потрачено по лимитам категорий: "
                 f"{Money(self.unspent_limits_minor, self.currency).format()}"
             )
             if self.open_commitments_minor:
                 lines.append(
-                    "Часть из них требуется на неисполненные обязательства: "
+                    "Из них нужно на предстоящие платежи: "
                     f"{Money(self.open_commitments_minor, self.currency).format()}"
                 )
-            if self.completeness == "incomplete":
-                lines.append(
-                    "Полнота учёта не подтверждена: остаток не является доказанной экономией."
-                )
+        if self.completeness == "incomplete":
+            lines.append(
+                "\nℹ️ Полнота учёта не подтверждена: часть трат может быть не внесена, "
+                "поэтому остаток пока нельзя считать экономией."
+            )
         return "\n".join(lines)
 
 
@@ -544,24 +568,36 @@ class NextPeriodPlanDraft:
     fund_contributions_minor: int
     flexible_available_minor: int | None
     deficit_minor: int | None
+    # Остаток показывается, только если есть счета с полным отслеживанием:
+    # без них «0 ₽ на счетах» вводил бы в заблуждение.
+    has_tracked_accounts: bool = False
 
-    def render(self, currency: str) -> str:
-        from fintracker.application.delivery.render import format_range
+    def render(self, currency: str, *, page: int = 0, page_size: int = 8) -> str:
+        from fintracker.application.delivery.render import format_date, format_range
 
         lines = [
-            f"План на {format_range(self.date_from, self.date_to_inclusive)}",
-            f"Основание повторения: {self.repeat_basis}",
-            "Имеющийся остаток на счетах: "
-            f"{Money(self.available_balance_minor, currency).format()}",
+            f"📅 План на {format_range(self.date_from, self.date_to_inclusive)}",
+            "",
+            f"🔁 {self.repeat_basis}",
+            "",
         ]
         if self.expected_income_minor is None:
-            lines.append("Ожидаемый доход: основание не задано")
+            lines.append("Ожидаемый доход: не указан")
         else:
             lines.append(f"Ожидаемый доход: {Money(self.expected_income_minor, currency).format()}")
         for name, expected_date, amount in self.income_dates[:5]:
-            when = expected_date.isoformat() if expected_date else "дата не указана"
+            when = format_date(expected_date) if expected_date else "дата не указана"
             lines.append(f"  · {name} — {when}, {Money(amount, currency).format()}")
-        lines.append(f"Обязательные платежи: {Money(self.commitments_minor, currency).format()}")
+        if self.has_tracked_accounts:
+            lines.append(
+                f"На счетах сейчас: {Money(self.available_balance_minor, currency).format()}"
+            )
+        if self.commitments_minor:
+            lines.append(
+                "Платежи до конца периода: "
+                f"{Money(self.commitments_minor, currency).format()} "
+                "(с учётом неоплаченных прошлых)"
+            )
         if self.goal_contributions_minor:
             lines.append(
                 f"Взносы на цели: {Money(self.goal_contributions_minor, currency).format()}"
@@ -572,17 +608,26 @@ class NextPeriodPlanDraft:
             )
         if self.flexible_available_minor is not None:
             lines.append(
-                "Доступно на гибкие категории: "
+                "Остаётся на обычные траты: "
                 f"{Money(self.flexible_available_minor, currency).format()}"
             )
-        lines.append("Строки плана:")
-        for name, limit, basis in self.lines[:10]:
+        lines.append("\n🗂 Лимиты по категориям")
+        pages = max(1, (len(self.lines) + page_size - 1) // page_size)
+        page = min(max(0, page), pages - 1)
+        if pages > 1:
+            lines.append(f"Страница {page + 1} из {pages}")
+        for name, limit, basis in self.lines[page * page_size : (page + 1) * page_size]:
             limit_text = Money(limit, currency).format() if limit is not None else "лимит не задан"
-            lines.append(f"• {name}: {limit_text} ({basis})")
+            line = f"• {name}: {limit_text}"
+            # Одинаковая основа уже указана один раз над списком. Здесь
+            # показываются только настоящие исключения для отдельной категории.
+            if basis != self.repeat_basis:
+                line += f"\n  ↳ {basis}"
+            lines.append(line)
         if self.deficit_minor:
             lines.append(
-                f"Дефицит: {Money(self.deficit_minor, currency).format()} — "
-                "нужно подтвердить источник или уменьшить лимиты"
+                f"\n⚠️ Лимиты больше дохода на {Money(self.deficit_minor, currency).format()}\n"
+                "Уменьшите лимиты или решите, откуда возьмутся деньги."
             )
         return "\n".join(lines)
 
@@ -630,7 +675,7 @@ async def build_next_period_draft(
     rows: list[tuple[str, int | None, str]] = []
     protected_limit = 0
     flexible_limit = 0
-    repeat_basis = "план ещё не собран"
+    repeat_basis = "План ещё не собран"
     if version is not None:
         lines = (
             await session.execute(
@@ -648,15 +693,15 @@ async def build_next_period_draft(
             )
         ).all()
         repeat_basis = {
-            "template": "утверждённый шаблон повторяется без пересборки",
-            "wizard": "мастер настройки",
-            "manual": "перенос прошлого плана",
-            "proposal": "принятый проект",
-            "transition": "переходный интервал",
-            "rollover": "перенос остатков",
-        }.get(version.origin, version.origin)
+            "template": "Лимиты повторяются каждый период",
+            "wizard": "Лимиты заданы при создании бюджета",
+            "manual": "Лимиты перенесены из прошлого плана",
+            "proposal": "Принятый проект плана",
+            "transition": "План переходного периода",
+            "rollover": "С переносом остатков прошлого периода",
+        }.get(version.origin, "Лимиты из прошлого плана")
         if carried_over:
-            repeat_basis = f"повтор плана прошлого периода ({repeat_basis})"
+            repeat_basis = "Лимиты повторены из прошлого периода"
         for line, name in lines:
             rows.append((name, line.limit_minor, repeat_basis))
             if line.is_protected:
@@ -672,6 +717,18 @@ async def build_next_period_draft(
         )
     ).scalar_one_or_none()
     expected_income = income_plan.period_amount_minor if income_plan else None
+    if income_plan is None:
+        # Доход из мастера повторяется, как и лимиты: иначе следующий план
+        # показывал бы «доход не задан», хотя его указали при создании.
+        from fintracker.application.planning.rollover import active_template
+
+        template = await active_template(
+            session, workspace_id=workspace.id, on_date=period.start_date
+        )
+        rule = dict(template.income_rule) if template is not None else {}
+        if rule.get("precision"):
+            candidate = rule.get("period_minor") or rule.get("monthly_minor")
+            expected_income = int(candidate) if candidate else None
     income_dates: list[tuple[str, dt.date | None, int]] = []
     if income_plan is not None:
         sources = (
@@ -692,11 +749,18 @@ async def build_next_period_draft(
             (source.name, source.expected_date, source.amount_minor) for source in sources
         ]
 
+    # The reminder worker only builds a short horizon. A next-period preview
+    # must include the entire requested period even before that worker runs.
+    await materialize_occurrences(
+        session,
+        workspace_id=workspace.id,
+        until_date=period.end_exclusive - dt.timedelta(days=1),
+    )
     payments = await upcoming_payments(
         session,
         workspace_id=workspace.id,
         today=period.start_date,
-        horizon_days=(period.end_exclusive - period.start_date).days,
+        horizon_days=(period.end_exclusive - period.start_date).days - 1,
         currency=workspace.currency,
     )
     commitments = sum(item.remaining_minor for item in payments)
@@ -734,6 +798,13 @@ async def build_next_period_draft(
         )
     ).scalar_one()
     available_balance = int(balance or 0)
+    tracked_accounts = (
+        await session.execute(
+            select(func.count())
+            .select_from(Account)
+            .where(Account.workspace_id == workspace.id, Account.mode == "full_tracking")
+        )
+    ).scalar_one()
 
     deficit: int | None = None
     flexible_available: int | None = None
@@ -761,4 +832,11 @@ async def build_next_period_draft(
         fund_contributions_minor=fund_contributions,
         flexible_available_minor=flexible_available,
         deficit_minor=deficit,
+        has_tracked_accounts=bool(tracked_accounts),
     )
+
+
+def _human_date(value: dt.date) -> str:
+    from fintracker.application.delivery.render import format_date
+
+    return format_date(value)

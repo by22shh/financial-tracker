@@ -1,0 +1,62 @@
+{
+  "checked_at": "2026-09-20T13:17:22+00:00",
+  "host": "2.26.231.184",
+  "bot": "https://t.me/budzhet_ai_bot",
+  "image": "fintracker:ux-polish-20260920-r3",
+  "image_id": "sha256:78ff240e704c075a52810227c35b330d40cd8498e03955d4a554a3e88f2ab519",
+  "manifest_sha256": "e21477cd64bcc060091491be1025f78f523a4c9efdd1de31c6dcd25eaf4bed3f",
+  "source": "releases/ux-polish-20260920-r3",
+  "services": {
+    "api": "healthy",
+    "polling": "healthy",
+    "postgres": "healthy",
+    "scheduler": "healthy",
+    "worker": "healthy"
+  },
+  "readiness": {
+    "ready": true,
+    "database": true,
+    "schema_current": true,
+    "schema_revision": "0018_history_query",
+    "storage_writable": true,
+    "integrations": {
+      "ai": false,
+      "asr": false,
+      "telegram": true
+    },
+    "detail": null
+  },
+  "backup": "/opt/fintracker/backups/20260920T130858Z",
+  "package_files_verified": 160,
+  "package_mismatches": [],
+  "jobs_by_state": {
+    "queued": 12,
+    "succeeded": 1799
+  },
+  "tests": {
+    "full_suite": {
+      "passed": 680,
+      "skipped": 6,
+      "seconds": 251.38
+    },
+    "ruff": "passed",
+    "format": "passed",
+    "mypy_strict": "passed",
+    "shell_syntax": "passed"
+  },
+  "live_telegram": {
+    "start_and_active_budget": "passed",
+    "edit_message_navigation": "passed",
+    "typed_history_and_subject_buttons": "passed",
+    "category_filter_vocabulary": "passed",
+    "personal_settings_sections": "passed",
+    "stepwise_manual_entry_and_cancel": "passed",
+    "compact_next_plan": "passed",
+    "future_period_limit_binding": "passed",
+    "financial_mutation_created": false
+  },
+  "scheduler_after_fix": {
+    "isolated_tick": "passed",
+    "runtime_errors_after_deploy": 0
+  }
+}

@@ -51,19 +51,21 @@ class ReconciliationResult:
     def explanation(self, currency: str) -> str:
         """Пояснение с явной границей доказательности (FR-71, RV05)."""
         lines = [
-            f"Сверка счёта на {self.cutoff_date.isoformat()}",
+            f"🔎 Сверка счёта на {self.cutoff_date.isoformat()}",
+            "",
             f"Указанный остаток: {Money(self.observed_minor, currency).format()}",
             f"По известным движениям: {Money(self.computed_minor, currency).format()}",
         ]
         if self.matches:
             lines.append(
-                "Расхождения нет. Совпадение остатка не доказывает полноту расходов: "
+                "\n✅ Расхождения нет\n\nСовпадение остатка не доказывает полноту расходов: "
                 "пропущенные доход и расход одной суммы компенсируют друг друга."
             )
         else:
             lines.append(
-                f"Расхождение: {Money(self.difference_minor, currency).format()}. "
-                "До объяснения зависимые оценки помечены ограниченными."
+                f"\n⚠️ Расхождение: {Money(self.difference_minor, currency).format()}\n\n"
+                "Проверьте пропущенные и повторные записи. Пока причина не найдена, "
+                "оценки на основе этого остатка показаны с ограничениями."
             )
         return "\n".join(lines)
 

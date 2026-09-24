@@ -13,7 +13,7 @@ pytestmark = [pytest.mark.pg, requires_pg]
 
 
 async def test_personal_settings_open_and_toggle(bot: None, test_settings: Settings) -> None:
-    """CMD-26: раздел «Мои настройки» открывается и переключает семейство."""
+    """CMD-26: уведомление меняется только после явного выбора режима."""
     user = make_user(test_settings, 907001)
     await create_budget(user)
     await user.send("/settings")
@@ -21,14 +21,21 @@ async def test_personal_settings_open_and_toggle(bot: None, test_settings: Setti
 
     await user.press(user.button_data("Мои настройки"))
     text = user.text()
-    assert "Мои уведомления" in text
-    assert "Пороги лимитов: сразу" in text
-    assert "не меняет доставку другим участникам" in text
+    assert "🔔 Уведомления" in text
+    assert "✍️ Ввод операций" in text
+    assert user.has_button("Правила")
+    assert user.has_button("Аккаунт")
+    assert not user.has_button("Удалить аккаунт")
 
-    await user.press(user.button_data("Пороги лимитов"))
-    assert "Пороги лимитов: сводкой" in user.text()
-    await user.press(user.button_data("Пороги лимитов"))
-    assert "Пороги лимитов: выключено" in user.text()
+    await user.press(user.button_data("Уведомления"))
+    assert "Предупреждения о лимитах: сразу" in user.text()
+    await user.press(user.button_data("Предупреждения о лимитах"))
+    assert "Сейчас: сразу" in user.text()
+    assert user.has_button("✓ Сразу")
+
+    await user.press(user.button_data("Сводкой"))
+    assert "Сейчас: сводкой" in user.text()
+    assert user.has_button("✓ Сводкой")
 
 
 async def test_personal_settings_do_not_affect_other_member(
@@ -43,11 +50,14 @@ async def test_personal_settings_do_not_affect_other_member(
     await member.send(f"/join {code}")
 
     await admin.press("set:personal")
-    await admin.press(admin.button_data("Пороги лимитов"))
-    assert "Пороги лимитов: сводкой" in admin.text()
+    await admin.press(admin.button_data("Уведомления"))
+    await admin.press(admin.button_data("Предупреждения о лимитах"))
+    await admin.press(admin.button_data("Сводкой"))
+    assert "Сейчас: сводкой" in admin.text()
 
     await member.press("set:personal")
-    assert "Пороги лимитов: сразу" in member.text()
+    await member.press(member.button_data("Уведомления"))
+    assert "Предупреждения о лимитах: сразу" in member.text()
 
 
 async def test_input_preferences_toggle(bot: None, test_settings: Settings) -> None:
@@ -55,17 +65,26 @@ async def test_input_preferences_toggle(bot: None, test_settings: Settings) -> N
     user = make_user(test_settings, 907004)
     await create_budget(user)
     await user.press("set:personal")
-    assert "Автозапись уверенных разборов: выключена" in user.text()
+    await user.press(user.button_data("Ввод операций"))
+    assert "Автоматическое сохранение распознанных расходов: выключено" in user.text()
 
-    await user.press(user.button_data("Автозапись: включить"))
-    assert "Автозапись уверенных разборов: включена" in user.text()
+    await user.press(user.button_data("Автоматическое сохранение"))
+    assert user.has_button("✓ Выключить")
+    await user.press(user.button_data("Включить"))
+    assert "Сейчас: Включить" in user.text()
+    assert user.has_button("✓ Включить")
 
-    await user.press(user.button_data("Порог 3"))
-    threshold_line = next(
-        line for line in user.text().splitlines() if "Порог подтверждения" in line
-    )
-    assert "не задан" not in threshold_line
-    assert "3" in threshold_line
+    await user.press(user.button_data("Ввод операций"))
+    await user.press(user.button_data("Проверка крупных сумм"))
+    assert user.has_button("✓ Порог не задан")
+    await user.press(user.button_data("От 3"))
+    assert "Сейчас:" in user.text()
+    assert "3" in user.text()
+    assert user.has_button("✓ От 3")
+
+    await user.press(user.button_data("Порог не задан"))
+    assert "Сейчас: не задан" in user.text()
+    assert user.has_button("✓ Порог не задан")
 
 
 async def test_quiet_hours_preset(bot: None, test_settings: Settings) -> None:
@@ -73,15 +92,59 @@ async def test_quiet_hours_preset(bot: None, test_settings: Settings) -> None:
     user = make_user(test_settings, 907005)
     await create_budget(user)
     await user.press("set:personal")
-    await user.press(user.button_data("Тихие часы 23–8"))
-    assert "Тихие часы: 23:00–8:00" in user.text()
+    await user.press(user.button_data("Уведомления"))
+    await user.press(user.button_data("Тихие часы"))
+    assert user.has_button("✓ 22:00–09:00")
+    await user.press(user.button_data("23:00–08:00"))
+    assert "Сейчас: 23:00–08:00" in user.text()
+    assert user.has_button("✓ 23:00–08:00")
+
+    await user.press(user.button_data("Уведомления"))
+    await user.press(user.button_data("Часовой пояс"))
+    assert user.has_button("✓ Новосибирск")
+    await user.press(user.button_data("Москва"))
+    assert "Сейчас: Москва · UTC+3" in user.text()
+    assert user.has_button("✓ Москва")
+
+    await user.press(user.button_data("Уведомления"))
+    await user.press(user.button_data("Тихие часы"))
+    await user.press(user.button_data("22:00–09:00"))
+    await user.press(user.button_data("Уведомления"))
+    assert "Часовой пояс: Москва · UTC+3" in user.text()
+
+
+async def test_settings_choices_are_explicit_versioned_and_fit_telegram(
+    bot: None, test_settings: Settings
+) -> None:
+    """Старый выбор не перезаписывает новый, данные всех кнопок короче 64 байт."""
+    user = make_user(test_settings, 907011)
+    await create_budget(user)
+    await user.press("set:personal")
+    await user.press(user.button_data("Ввод операций"))
+    await user.press(user.button_data("Кого считать плательщиком"))
+    assert user.has_button("✓ Уточнять")
+    await user.press(user.button_data("Всегда я"))
+    assert "Сейчас: Всегда я" in user.text()
+    assert user.has_button("✓ Всегда я")
+
+    await user.press("set:notify")
+    await user.press(user.button_data("Обзоры и анализ"))
+    stale_off = user.button_data("Выключено")
+    await user.press(user.button_data("Сводкой"))
+    await user.press(stale_off)
+    assert "изменились в другой сессии" in user.text()
+
+    for reply in await user.press("set:personal"):
+        for row in reply.buttons:
+            for button in row:
+                assert len(button.data.encode()) <= 64
 
 
 async def test_category_correction_offers_rule(bot: None, test_settings: Settings) -> None:
     """FR-27, FR-24: перенос в другую статью и предложение запомнить правило."""
     user = make_user(test_settings, 907006)
     await create_budget(user)
-    await user.send("кофе 250")
+    await user.send("шоколадка 250")
     if user.has_button("Записать"):
         await user.press(user.button_data("Записать"))
     assert "250" in user.text()
@@ -89,20 +152,20 @@ async def test_category_correction_offers_rule(bot: None, test_settings: Setting
     await user.send("Перенеси в Рестораны")
     proposal = user.text()
     assert "Рестораны" in proposal
-    assert "Прошлые записи не переклассифицируются" in proposal
+    assert "Другие записи не изменятся" in proposal
 
     await user.press(user.button_data("Подтвердить"))
     applied = user.text()
     assert "Рестораны" in applied
-    assert "Всегда относить" in applied
+    assert "Запомнить" in applied
 
     await user.press(user.button_data("Всегда сюда"))
     assert "Запомнил" in user.text()
-    assert "только для новых записей" in user.text()
+    assert "для новых записей" in user.text()
 
     await user.press("set:rules")
     rules = user.text()
-    assert "Правила классификации" in rules
+    assert "Правила категорий" in rules
     assert "Рестораны" in rules
 
 
@@ -110,7 +173,7 @@ async def test_rule_can_be_removed(bot: None, test_settings: Settings) -> None:
     """CMD-27: правило можно убрать, после чего оно не применяется."""
     user = make_user(test_settings, 907007)
     await create_budget(user)
-    await user.send("кофе 250")
+    await user.send("шоколадка 250")
     if user.has_button("Записать"):
         await user.press(user.button_data("Записать"))
     await user.send("Перенеси в Рестораны")
@@ -120,7 +183,7 @@ async def test_rule_can_be_removed(bot: None, test_settings: Settings) -> None:
     await user.press("set:rules")
     assert user.has_button("Убрать")
     await user.press(user.button_data("Убрать"))
-    assert "Правил пока нет" in user.text()
+    assert "Пока нет правил" in user.text()
 
 
 async def test_account_deletion_blocked_for_admin(bot: None, test_settings: Settings) -> None:
@@ -128,7 +191,9 @@ async def test_account_deletion_blocked_for_admin(bot: None, test_settings: Sett
     user = make_user(test_settings, 907008)
     await create_budget(user, name="Единственный бюджет")
     await user.press("set:personal")
-    await user.press(user.button_data("Удалить аккаунт"))
+    assert not user.has_button("Удалить")
+    await user.press(user.button_data("Аккаунт"))
+    await user.press(user.button_data("Перейти к удалению"))
     text = user.text()
     assert "Единственный бюджет" in text
     assert "передайте администрирование" in text
@@ -148,7 +213,8 @@ async def test_account_deletion_for_plain_member(bot: None, test_settings: Setti
         await member.press(member.button_data("Записать"))
 
     await member.press("set:personal")
-    await member.press(member.button_data("Удалить аккаунт"))
+    await member.press(member.button_data("Аккаунт"))
+    await member.press(member.button_data("Перейти к удалению"))
     assert member.has_button("Подтвердить удаление")
     await member.press(member.button_data("Подтвердить удаление"))
     assert "Аккаунт удалён" in member.text()

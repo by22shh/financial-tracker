@@ -44,17 +44,27 @@ class ThresholdOutcome:
         limit = Money(self.limit_minor, self.currency).format()
         if self.threshold_type == "overspent":
             over = Money(self.fact_minor - self.limit_minor, self.currency).format()
-            body = f"Перерасход {over}: потрачено {fact} при плане {limit}"
+            body = (
+                f"⚠️ Перерасход {over}\n\nПотрачено: {fact}\nЛимит: {limit}\n\n"
+                "Проверьте последние записи. Если траты верны, отложите необязательные "
+                "покупки в этой категории или пересмотрите план."
+            )
         elif self.threshold_type == "exhausted_100":
             # При точном равенстве слово «перерасход» не используется (A57).
-            body = f"Лимит исчерпан: потрачено {fact} из {limit}"
+            body = (
+                f"🟠 Лимит исчерпан\n\nПотрачено: {fact}\nЛимит: {limit}\n\n"
+                "На этот период запланированная сумма использована полностью. "
+                "Перед следующей покупкой проверьте бюджет."
+            )
         else:
             percent = 90 if self.threshold_type == "approach_90" else 80
             remaining = Money(self.limit_minor - self.fact_minor, self.currency).format()
             body = (
-                f"Достигнуто {percent}% лимита: потрачено {fact} из {limit}, осталось {remaining}"
+                f"🟡 Достигнуто {percent}% лимита\n\n"
+                f"Потрачено: {fact}\nЛимит: {limit}\nОсталось: {remaining}\n\n"
+                "Стоит оставить запас на оставшиеся дни периода."
             )
-        return f"{workspace_name}\n{self.line_name}\n{body}"
+        return f"📒 {workspace_name}\nКатегория: {self.line_name}\n\n{body}"
 
 
 def _reached_threshold(line: LineStatus) -> str | None:
@@ -170,3 +180,23 @@ async def evaluate_thresholds(
             update(ThresholdEvent).where(ThresholdEvent.id == inserted).values(event_id=event.id)
         )
     return outcomes
+
+
+async def refresh_thresholds(
+    session: AsyncSession, uow: UnitOfWork, *, workspace: Workspace
+) -> list[ThresholdOutcome]:
+    """Пересчитать пороги текущего периода после любой записи или правки.
+
+    Предупреждения о лимите не зависят от способа ввода: ручная форма,
+    исправление суммы или категории и оплата платежа уведомляют так же, как
+    подтверждённый черновик (FR-52).
+    """
+    from zoneinfo import ZoneInfo
+
+    from fintracker.application.planning.periods import period_for_date
+
+    today = dt.datetime.now(ZoneInfo(workspace.timezone)).date()
+    period = await period_for_date(session, workspace_id=workspace.id, day=today)
+    return await evaluate_thresholds(
+        session, uow, workspace=workspace, period_id=period.id, today=today
+    )

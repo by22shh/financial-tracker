@@ -1,0 +1,62 @@
+{
+  "checked_at": "2026-09-20T04:06:34.947095+00:00",
+  "host": "2.26.231.184",
+  "bot": "https://t.me/budzhet_ai_bot",
+  "image": "fintracker:copy-20260920",
+  "image_id": "sha256:0833c3176185a411c07a6bab77951e9ca10323bcd3738001d346ef0aaa64c6f2",
+  "manifest_sha256": "fbd93ff25bc7674d39ffebfaec066ef2ccb0f6c6027d0335cbac620958c4b7dd",
+  "backup": "/opt/fintracker/backups/20260920T040358Z",
+  "services": [
+    {
+      "Service": "api",
+      "State": "running",
+      "Health": "healthy",
+      "Image": "fintracker:copy-20260920"
+    },
+    {
+      "Service": "polling",
+      "State": "running",
+      "Health": "healthy",
+      "Image": "fintracker:copy-20260920"
+    },
+    {
+      "Service": "postgres",
+      "State": "running",
+      "Health": "healthy",
+      "Image": "postgres:17-alpine@sha256:f02121de6f74d30d8a94cd1d9584125e2178d7e6c377d8130112d4e52d867995"
+    },
+    {
+      "Service": "scheduler",
+      "State": "running",
+      "Health": "healthy",
+      "Image": "fintracker:copy-20260920"
+    },
+    {
+      "Service": "worker",
+      "State": "running",
+      "Health": "healthy",
+      "Image": "fintracker:copy-20260920"
+    }
+  ],
+  "readiness": {
+    "ready": true,
+    "database": true,
+    "schema_current": true,
+    "schema_revision": "0018_history_query",
+    "storage_writable": true,
+    "integrations": {
+      "ai": false,
+      "asr": false,
+      "telegram": true
+    },
+    "detail": null
+  },
+  "package_files_verified": 156,
+  "command_menu_verified": 14,
+  "tests": {
+    "passed": 604,
+    "skipped": 6,
+    "skip_reason": "performance opt-in"
+  },
+  "real_user_conversation_tested": false
+}

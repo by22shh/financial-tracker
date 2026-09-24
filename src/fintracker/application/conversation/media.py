@@ -71,7 +71,9 @@ async def handle_media(
         if message.attachments[0].size_bytes and (
             message.attachments[0].size_bytes > limits.max_attachment_bytes
         ):
-            return [Reply(text="Файл больше допустимого размера. Разделите таблицу на части.")]
+            return [
+                Reply(text=("ℹ️ Файл больше допустимого размера.\n\nРазделите таблицу на части."))
+            ]
         return await io_flow.handle_table_document(
             settings, actor=actor, workspace=workspace, message=message
         )
@@ -82,16 +84,30 @@ async def handle_media(
             return [
                 Reply(
                     text=(
-                        "Файл больше допустимых 15 MB. Пришлите изображение меньшего "
-                        "размера или введите сумму текстом."
+                        "ℹ️ Файл больше допустимых 15 MB.\n\nПришлите изображение "
+                        "меньшего размера или введите сумму текстом."
                     )
                 )
             ]
         if attachment.width and attachment.height:
             if attachment.width * attachment.height > limits.max_image_pixels:
-                return [Reply(text="Изображение слишком большое для безопасной обработки.")]
+                return [
+                    Reply(
+                        text=(
+                            "📎 Изображение слишком большое\n\nУменьшите разрешение и "
+                            "отправьте снова."
+                        )
+                    )
+                ]
             if max(attachment.width, attachment.height) > limits.max_image_side:
-                return [Reply(text="Слишком большая сторона изображения.")]
+                return [
+                    Reply(
+                        text=(
+                            "📎 Изображение слишком вытянутое\n\nРазделите его на несколько "
+                            "снимков чека."
+                        )
+                    )
+                ]
         if (
             attachment.mime_type
             and attachment.kind == "document"
@@ -100,8 +116,10 @@ async def handle_media(
             return [
                 Reply(
                     text=(
-                        f"Формат {attachment.mime_type} пока не поддерживается. "
-                        "Поддерживаются JPEG, PNG и WebP. Исходное сообщение сохранено."
+                        "📎 Формат "
+                        f"{attachment.mime_type}"
+                        " пока не поддерживается.\n\nПришлите чек в формате JPEG, PNG "
+                        "или WebP — либо запишите сумму через /add."
                     )
                 )
             ]
@@ -115,8 +133,10 @@ async def handle_media(
             return [
                 Reply(
                     text=(
-                        f"Запись длиннее {minutes} минут не обрабатывается. "
-                        "Запишите короче или введите сумму текстом."
+                        "⚠️ Запись длиннее "
+                        f"{minutes}"
+                        " минут не обрабатывается.\n\nЗапишите короче или введите сумму "
+                        "текстом."
                     )
                 )
             ]
@@ -133,24 +153,23 @@ async def handle_media(
         return [
             Reply(
                 text=(
-                    "Распознавание речи пока не подключено: не выбрана модель "
-                    "транскрипции.\nГолос сохранён — введите сумму текстом или "
-                    "используйте /add."
+                    "🎙 Голосовое сообщение получено\n\nРаспознавание речи пока не "
+                    "подключено. Чтобы записать трату, отправьте сумму текстом или "
+                    "откройте /add."
                 ),
-                buttons=((Button("Ручной ввод", callback("menu", "add")),),),
+                buttons=((Button("✍️ Ручной ввод", callback("menu", "add")),),),
             )
         ]
 
     if not settings.ai.enabled:
-        kind_label = "Фото чека" if message.kind is MessageKind.PHOTO else "Файл"
         return [
             Reply(
                 text=(
-                    f"{kind_label} сохранён как черновик: разбор изображений требует "
-                    "подключённого ключа AI.\nВведите сумму текстом или через /add — "
-                    "учёт продолжает работать."
+                    "🧾 Распознавание чеков пока недоступно\n\n"
+                    "Чтобы записать расход сейчас, отправьте сумму текстом "
+                    "или откройте /add."
                 ),
-                buttons=((Button("Ручной ввод", callback("menu", "add")),),),
+                buttons=((Button("✍️ Ручной ввод", callback("menu", "add")),),),
             )
         ]
 

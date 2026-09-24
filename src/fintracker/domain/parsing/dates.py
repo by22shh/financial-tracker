@@ -78,12 +78,18 @@ class ParsedDate:
 
 
 def resolve_date_expression(
-    text: str, *, reference: dt.date, ignore_raw: tuple[str, ...] = ()
+    text: str,
+    *,
+    reference: dt.date,
+    ignore_raw: tuple[str, ...] = (),
+    prefer_future: bool = False,
 ) -> ParsedDate | None:
     """Разрешить дату относительно даты исходного события.
 
     ``ignore_raw`` содержит фрагменты, уже распознанные как суммы: «3.5» в
     «кофе 3.5 USD» является ценой, а не третьим мая (AI-05).
+    Для планового платежа ``prefer_future`` выбирает ближайшую дату не раньше
+    reference, если год не указан. Явный год и относительные даты не меняются.
     """
     lowered = text.lower()
     skipped = tuple(item.strip().lower() for item in ignore_raw if item.strip())
@@ -103,10 +109,18 @@ def resolve_date_expression(
         day = int(named.group("day"))
         month = MONTHS[named.group("month").lower()]
         year = int(named.group("year")) if named.group("year") else reference.year
-        candidate = _safe_date(year, month, day)
+        candidate = (
+            _next_date(reference, month, day)
+            if prefer_future and named.group("year") is None
+            else _safe_date(year, month, day)
+        )
         if candidate is None:
             return None
-        if named.group("year") is None and candidate > reference + dt.timedelta(days=1):
+        if (
+            not prefer_future
+            and named.group("year") is None
+            and candidate > reference + dt.timedelta(days=1)
+        ):
             # Без года ближайшая прошедшая дата вероятнее будущей.
             candidate = _safe_date(year - 1, month, day) or candidate
         return ParsedDate(
@@ -131,10 +145,14 @@ def resolve_date_expression(
                 year += 2000
         else:
             year = reference.year
-        candidate = _safe_date(year, month, day)
+        candidate = (
+            _next_date(reference, month, day)
+            if prefer_future and raw_year is None
+            else _safe_date(year, month, day)
+        )
         if candidate is None:
             return None
-        if raw_year is None and candidate > reference + dt.timedelta(days=1):
+        if not prefer_future and raw_year is None and candidate > reference + dt.timedelta(days=1):
             candidate = _safe_date(year - 1, month, day) or candidate
         return ParsedDate(
             value=candidate, expression=numeric.group(), is_future=candidate > reference
@@ -155,3 +173,12 @@ def _safe_date(year: int, month: int, day: int) -> dt.date | None:
         return dt.date(year, month, day)
     except ValueError:
         return None
+
+
+def _next_date(reference: dt.date, month: int, day: int) -> dt.date | None:
+    # Eight years cover the leap-year gap across a non-leap century.
+    for year in range(reference.year, min(reference.year + 9, 10000)):
+        candidate = _safe_date(year, month, day)
+        if candidate is not None and candidate >= reference:
+            return candidate
+    return None
