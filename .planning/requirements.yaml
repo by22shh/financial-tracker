@@ -364,7 +364,7 @@
   status: verified
   implementation:
   verification:
-    - tests/acceptance/test_voice_and_receipts.py::test_a31_photo_without_ai_key_keeps_draft
+    - tests/acceptance/test_voice_and_receipts.py::test_a31_photo_without_ai_key_offers_manual_entry
   evidence:
     - .planning/evidence/latest.json
 
@@ -3087,7 +3087,7 @@
   implementation:
     - src/fintracker/application/intelligence/prompts.py
   verification:
-    - tests/acceptance/test_voice_and_receipts.py::test_a31_photo_without_ai_key_keeps_draft
+    - tests/acceptance/test_voice_and_receipts.py::test_a31_photo_without_ai_key_offers_manual_entry
     - tests/integration/test_ai_contract.py::test_ai09_instruction_in_data_is_not_executed
     - tests/integration/test_collaboration_scenarios.py::test_a198_instruction_in_note_stays_data
     - tests/integration/test_receipts_and_voice.py::test_a32_instruction_inside_receipt_is_data
@@ -4343,7 +4343,7 @@
     - src/fintracker/application/conversation/media.py
     - src/fintracker/application/intelligence/media_pipeline.py
   verification:
-    - tests/acceptance/test_voice_and_receipts.py::test_a31_photo_without_ai_key_keeps_draft
+    - tests/acceptance/test_voice_and_receipts.py::test_a31_photo_without_ai_key_offers_manual_entry
   evidence:
     - .planning/evidence/latest.json
 
