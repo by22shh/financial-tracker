@@ -91,7 +91,7 @@ async def consume(bot: Bot, store: Store, service: SheetBot) -> None:
             chat_id = chat_id_for(update)
             if reply and chat_id:
                 store.save(event["id"], "reply", reply.model_dump())
-                await bot.send_message(chat_id, reply.text)
+                await bot.send_message(chat_id, reply.text, parse_mode=reply.parse_mode)
             store.finish(event["id"])
             delay = 2
         except TelegramForbiddenError:

@@ -105,7 +105,7 @@ async def test_start_explains_automatic_destination(setup):
     reply = await dispatch(setup, update(text="/start"))
     assert "последний лист" in reply.text
     assert "/sheets" not in reply.text
-    assert reply.model_dump().keys() == {"text"}
+    assert reply.model_dump().keys() == {"text", "parse_mode"}
     assert "бюджет" not in reply.text.lower()
 
 
@@ -164,7 +164,8 @@ async def test_real_telegram_updates_survive_inbox_and_receive_replies(setup):
     assert "последний лист" in sent[0][1]
     assert "последний лист" in sent[1][1]
     assert all("reply_markup" not in kwargs for _, _, kwargs in sent)
-    assert all(reply.startswith("Записано") for _, reply, _ in sent[2:])
+    assert all(kwargs["parse_mode"] == "HTML" for _, _, kwargs in sent)
+    assert all("✅ <b>Записано</b>" in reply for _, reply, _ in sent[2:])
     assert bridge.write.await_count == 2
     assert asr.calls == 1
     assert store.next_event() is None
@@ -186,7 +187,7 @@ async def test_old_buttons_and_sheets_command_cannot_choose_a_destination(setup)
             },
         )
         assert "последний лист" in reply.text
-        assert reply.model_dump().keys() == {"text"}
+        assert reply.model_dump().keys() == {"text", "parse_mode"}
     reply = await dispatch(setup, update(3, "/sheets"))
     assert "последний лист" in reply.text
     bridge.catalog.assert_not_awaited()
@@ -226,11 +227,35 @@ async def test_expense_is_written_without_confirmation(setup):
     _service, _store, bridge, ai, _ = setup
     reply = await dispatch(setup, update())
     assert "Записано" in reply.text
-    assert "1 250,50 RUB" in reply.text
+    assert "1 250,50 ₽" in reply.text
     bridge.write.assert_awaited_once()
     assert bridge.write.call_args.kwargs["key"] == "telegram:123:100:1"
     assert bridge.write.call_args.kwargs["catalog"].id == 10
     assert len(ai.calls) == 1
+
+
+async def test_formatted_responses_escape_external_text_and_survive_retry(setup, catalog):
+    service, store, _, ai, _ = setup
+    catalog.title = "Мой <лист> & отчёт"
+    catalog.categories[0].label = "Кофе <бар> & чай"
+    item = update()
+    reply = await dispatch(setup, item)
+    assert reply.parse_mode == "HTML"
+    assert "&lt;лист&gt; &amp; отчёт" in reply.text
+    assert "&lt;бар&gt; &amp; чай" in reply.text
+    assert await service.handle(item) == reply
+
+    ai.responses = [json.dumps({"expenses": [], "clarification": "Сколько за <кофе> & чай?"})]
+    reply = await dispatch(setup, update(2))
+    assert "&lt;кофе&gt; &amp; чай?" in reply.text
+    assert reply.parse_mode == "HTML"
+
+    # Cached messages from the previous version must not be interpreted as HTML.
+    store.enqueue(update(3))
+    store.save(3, "reply", {"text": "Старый <неформатированный> ответ"})
+    old_reply = await service.handle(update(3))
+    assert old_reply.parse_mode is None
+    assert old_reply.text == "Старый <неформатированный> ответ"
 
 
 async def test_retry_after_ambiguous_timeout_uses_identical_prepared_write(setup):

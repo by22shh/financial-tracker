@@ -1,4 +1,5 @@
 from datetime import date
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -35,3 +36,5 @@ class Extraction(BaseModel):
 
 class Reply(BaseModel):
     text: str
+    # Old cached responses remain plain text after an upgrade.
+    parse_mode: Literal["HTML"] | None = None
