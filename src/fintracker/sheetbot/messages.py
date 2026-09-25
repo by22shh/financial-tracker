@@ -103,7 +103,7 @@ def summary_message(data: dict[str, Any], currency: str, *, entire_period: bool)
     end = date.fromisoformat(data["to"]).strftime("%d.%m.%Y")
     lines = [
         f"📊 <b>{heading}</b>",
-        f"{start} — {end}" if entire_period else start,
+        f"📅 {start} — {end}" if entire_period else f"📅 {start}",
         f"Всего: <b>{escape(money(data['total_minor'], currency))}</b>",
     ]
     for row in rows[:15]:
