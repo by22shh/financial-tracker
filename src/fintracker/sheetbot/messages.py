@@ -4,7 +4,7 @@ from datetime import date
 from html import escape
 from typing import Any
 
-from fintracker.sheetbot.models import Catalog, Expense, Reply, ReportScope
+from fintracker.sheetbot.models import Catalog, CategoryStatus, Expense, Reply, ReportScope
 
 WELCOME = (
     "👋 <b>Привет! Я помогу записывать расходы.</b>\n\n"
@@ -58,20 +58,40 @@ def clarification(question: str) -> Reply:
     )
 
 
-def receipt(catalog: Catalog, expenses: list[Expense], currency: str) -> Reply:
+def receipt(
+    catalog: Catalog,
+    expenses: list[Expense],
+    currency: str,
+    category_status: list[CategoryStatus] | None = None,
+) -> Reply:
     labels = {item.id: item.label for item in catalog.categories}
-    symbol = {"RUB": "₽", "USD": "$", "EUR": "€"}.get(currency, currency)
+    statuses = {item.id: item for item in category_status or []}
     blocks = ["✅ <b>Записано</b>"]
     for expense in expenses:
-        amount = f"{expense.amount_minor // 100:,}".replace(",", " ")
-        if expense.amount_minor % 100:
-            amount += f",{expense.amount_minor % 100:02d}"
         label = labels[expense.category_id]
         if len(label) > 65:
             label = label[:64] + "…"
-        blocks.append(
-            f"<b>{amount} {escape(symbol[:12])}</b>\n{escape(label)}\n{expense.date:%d.%m.%Y}"
-        )
+        lines = [
+            f"💸 <b>{escape(money(expense.amount_minor, currency))}</b>",
+            f"📂 {escape(label)}",
+            f"📅 {expense.date:%d.%m.%Y}",
+        ]
+        status = statuses.get(expense.category_id)
+        if status:
+            lines.append(
+                f"📊 Потрачено по категории: {escape(money(status.spent_minor, currency))}"
+            )
+            lines.append(
+                "🎯 План: "
+                + (
+                    escape(money(status.plan_minor, currency))
+                    if status.plan_minor is not None
+                    else "не указан"
+                )
+            )
+        else:
+            lines.append("📊 Итог и план временно недоступны")
+        blocks.append("\n".join(lines))
     blocks.append(f"📊 Лист «{escape(catalog.title[:100])}»")
     return formatted("\n\n".join(blocks))
 

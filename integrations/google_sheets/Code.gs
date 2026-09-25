@@ -40,6 +40,7 @@ function doPost(e) {
       else if (input.action === 'write') result = write_(book, sheet, input);
       else if (input.action === 'amend') result = amend_(book, sheet, input);
       else if (input.action === 'summary') result = summary_(book, sheet, input);
+      else if (input.action === 'category_status') result = categoryStatus_(book, sheet, input);
       else if (input.action === 'period') result = period_(book, sheet, input);
       else if (input.action === 'create_period') result = createPeriod_(book, sheet, input);
       else fail_('Неизвестное действие.');
@@ -319,6 +320,32 @@ function summary_(book, sheet, input) {
   if (!Number.isSafeInteger(total)) fail_('Слишком большая сумма для сводки.');
   return {title: catalog.title, from: dates[0], to: dates[dates.length - 1],
     categories: rows, total_minor: total};
+}
+
+function categoryStatus_(book, sheet, input) {
+  const catalog = catalog_(book, sheet);
+  if (catalog.revision !== input.revision) fail_('Структура листа изменилась.');
+  if (!Array.isArray(input.category_ids) || !input.category_ids.length ||
+      input.category_ids.length > 20 || input.category_ids.some(id => !catalog.rows[id])) {
+    fail_('Категория отсутствует на листе.');
+  }
+  // This action runs after the atomic write, in a new Apps Script execution.
+  // F is the sheet's calculated period spend; G is its manually maintained plan.
+  const values = sheet.getRange(14, 6, sheet.getLastRow() - 13, 2).getValues();
+  function minor(value, empty) {
+    if (value === '' && empty) return null;
+    if (value === '') return 0;
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+      fail_('В расходах или плане категории обнаружена ошибка.');
+    }
+    const result = Math.round(value * 100);
+    if (!Number.isSafeInteger(result)) fail_('Слишком большая сумма категории.');
+    return result;
+  }
+  return {categories: [...new Set(input.category_ids)].map(id => {
+    const [spent, plan] = values[catalog.rows[id] - 14];
+    return {id: id, spent_minor: minor(spent, false), plan_minor: minor(plan, true)};
+  })};
 }
 
 function addDays_(iso, count) {

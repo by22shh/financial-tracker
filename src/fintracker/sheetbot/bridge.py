@@ -5,7 +5,7 @@ from typing import Any
 import httpx
 
 from fintracker.sheetbot.config import SheetsSettings
-from fintracker.sheetbot.models import Catalog, Expense, Sheet
+from fintracker.sheetbot.models import Catalog, CategoryStatus, Expense, Sheet
 
 
 class BridgeError(Exception):
@@ -71,6 +71,14 @@ class SheetsBridge:
 
     async def summary(self, **payload: Any) -> dict[str, Any]:
         return await self.call("summary", **payload)
+
+    async def category_status(
+        self, *, sheet_id: int, revision: str, category_ids: list[str]
+    ) -> list[CategoryStatus]:
+        body = await self.call(
+            "category_status", sheet_id=sheet_id, revision=revision, category_ids=category_ids
+        )
+        return [CategoryStatus.model_validate(item) for item in body["categories"]]
 
     async def period(self, **payload: Any) -> dict[str, Any]:
         return await self.call("period", **payload)

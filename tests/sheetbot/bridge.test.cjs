@@ -16,6 +16,9 @@ function harness({start = '2026-08-10', header, rows, cells = {}} = {}) {
     getRange(row, col, height, width) {
       if (row === 13) return {getValues: () => [days]};
       if (row === 14 && col === 2) return {getValues: () => categories};
+      if (row === 14 && col === 6 && width === 2) return {getValues: () =>
+        Array.from({length: categories.length}, (_, i) => [6, 7].map(c =>
+          (table.get((14+i) + ':' + c) || {value: ''}).value))};
       if (col === 9 && width === 31) return {getValues: () => [Array.from({length: 31}, (_, i) => (table.get(row + ':' + (9+i)) || {value: ''}).value)]};
       const key = row + ':' + col;
       const item = table.get(key) || {value: ''};
@@ -112,6 +115,24 @@ test('empty and numeric cells add exact decimal amount; unrelated cells unchange
   assert.equal(h.state.table.get('15:9').value, 77);
   assert.equal(h.state.receipts.length, 1);
   assert.equal(h.state.batches[0].requests.length, 2);
+});
+
+test('category status reads the sheet period spend and plan, including manual amounts', () => {
+  const h = harness({cells: {
+    '14:6': {value: 35250.5}, '14:7': {value: 60000},
+    '15:6': {value: 0}, '15:7': {value: ''}
+  }});
+  const ids = h.catalog.categories.map(c => c.id);
+  const status = h.context.categoryStatus_(h.book, h.sheet, {
+    revision: h.catalog.revision, category_ids: ids
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(status.categories)), [
+    {id: ids[0], spent_minor: 3525050, plan_minor: 6000000},
+    {id: ids[1], spent_minor: 0, plan_minor: null}
+  ]);
+  assert.throws(() => h.context.categoryStatus_(h.book, h.sheet, {
+    revision: 'changed', category_ids: ids
+  }), /Структура/);
 });
 
 test('existing formulas are preserved as part of the new expression', () => {

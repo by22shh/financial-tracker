@@ -1,6 +1,7 @@
 """Text or voice expenses go directly to the last visible worksheet."""
 
 import json
+from contextlib import suppress
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -25,7 +26,7 @@ from fintracker.sheetbot.messages import (
     voice_preview,
     with_buttons,
 )
-from fintracker.sheetbot.models import Catalog, Expense, Reply, ReportRequest
+from fintracker.sheetbot.models import Catalog, CategoryStatus, Expense, Reply, ReportRequest
 from fintracker.sheetbot.store import Store
 
 
@@ -326,7 +327,10 @@ class SheetBot:
         if not expenses:
             return notice("↩️ Расход отменён", "Сумма убрана из таблицы.")
         reply = receipt(
-            Catalog.model_validate(record["catalog"]), expenses, self.settings.sheets.currency
+            Catalog.model_validate(record["catalog"]),
+            expenses,
+            self.settings.sheets.currency,
+            [CategoryStatus.model_validate(item) for item in record.get("category_status", [])],
         )
         if edited:
             reply.text = reply.text.replace("✅ <b>Записано</b>", "✅ <b>Исправлено</b>", 1)
@@ -515,8 +519,19 @@ class SheetBot:
                     )
                 else:
                     await self.bridge.write(key=prepared["key"], catalog=catalog, expenses=expenses)
+                category_status: list[CategoryStatus] = []
+                if expenses:
+                    # Supplementary totals must not turn a committed expense
+                    # into a misleading "not saved" reply.
+                    with suppress(BridgeError):
+                        category_status = await self.bridge.category_status(
+                            sheet_id=catalog.id,
+                            revision=catalog.revision,
+                            category_ids=list(dict.fromkeys(e.category_id for e in expenses)),
+                        )
                 record_id = prepared.get("record_id", event_id)
                 record = {k: prepared[k] for k in ("key", "catalog", "expenses")}
+                record["category_status"] = [item.model_dump() for item in category_status]
                 record["version"] = prepared.get("version", 0) + (action == "amend")
                 record["voice"] = prepared.get("voice")
                 self.store.save_record(record_id, user_id, record, prepared.get("timestamp", 0))

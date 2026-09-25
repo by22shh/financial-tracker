@@ -9,6 +9,12 @@ class Category(BaseModel):
     label: str
 
 
+class CategoryStatus(BaseModel):
+    id: str
+    spent_minor: int = Field(strict=True)
+    plan_minor: int | None = Field(default=None, strict=True)
+
+
 class Sheet(BaseModel):
     id: int
     title: str

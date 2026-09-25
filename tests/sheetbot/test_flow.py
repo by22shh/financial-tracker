@@ -18,7 +18,7 @@ from fintracker.sheetbot.bridge import BridgeError, SheetsBridge
 from fintracker.sheetbot.config import BotSettings, SheetsSettings
 from fintracker.sheetbot.extraction import extract
 from fintracker.sheetbot.menu import CANCEL, HELP, NEW_PERIOD, PERIOD, ROWS, TODAY, WEEK
-from fintracker.sheetbot.models import Catalog, Category, ReportRequest, Sheet
+from fintracker.sheetbot.models import Catalog, Category, CategoryStatus, ReportRequest, Sheet
 from fintracker.sheetbot.runtime import consume, receive
 from fintracker.sheetbot.service import SheetBot
 from fintracker.sheetbot.store import Store
@@ -84,6 +84,9 @@ def setup(tmp_path, catalog):
     bridge.latest_catalog.side_effect = latest
     bridge.catalog.return_value = catalog
     bridge.write.return_value = {"count": 1}
+    bridge.category_status.return_value = [
+        CategoryStatus(id="food", spent_minor=3525050, plan_minor=6000000)
+    ]
     ai = ScriptedAIProvider(responses=[result()])
     asr = ScriptedAsrProvider(transcripts=["продукты 1250,50"])
     bot = SimpleNamespace(
@@ -235,10 +238,27 @@ async def test_expense_is_written_without_confirmation(setup):
     reply = await dispatch(setup, update())
     assert "Записано" in reply.text
     assert "1 250,50 ₽" in reply.text
+    assert "Продукты / Супермаркеты" in reply.text
+    assert "Потрачено по категории: 35 250,50 ₽" in reply.text
+    assert "План: 60 000 ₽" in reply.text
+    bridge.category_status.assert_awaited_once_with(
+        sheet_id=10, revision="rev1", category_ids=["food"]
+    )
     bridge.write.assert_awaited_once()
     assert bridge.write.call_args.kwargs["key"] == "telegram:123:100:1"
     assert bridge.write.call_args.kwargs["catalog"].id == 10
     assert len(ai.calls) == 1
+
+
+async def test_saved_expense_is_confirmed_when_category_totals_are_unavailable(setup):
+    _, store, bridge, _, _ = setup
+    bridge.category_status.side_effect = BridgeError("Таблица временно недоступна", retryable=True)
+    reply = await dispatch(setup, update())
+    assert "Записано" in reply.text
+    assert "Продукты / Супермаркеты" in reply.text
+    assert "временно недоступны" in reply.text
+    assert store.record(1, 100)["expenses"][0]["amount_minor"] == 125050
+    bridge.write.assert_awaited_once()
 
 
 async def test_formatted_responses_escape_external_text_and_survive_retry(setup, catalog):
