@@ -839,6 +839,14 @@ async def test_menu_help_cancel_and_period_do_not_become_expenses(setup):
     bridge.write.assert_not_awaited()
 
 
+async def test_menu_can_be_opened_without_a_slash_command(setup):
+    _, _, bridge, ai, _ = setup
+    reply = await dispatch(setup, update(text="Меню"))
+    assert "Главное меню" in reply.text
+    assert not ai.calls
+    bridge.latest_catalog.assert_not_awaited()
+
+
 async def test_week_contains_last_seven_dates_and_excludes_future(setup, catalog):
     _, _, bridge, ai, _ = setup
     catalog.dates = [date(2026, 9, 10) + timedelta(days=i) for i in range(30)]

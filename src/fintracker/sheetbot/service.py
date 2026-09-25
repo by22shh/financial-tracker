@@ -81,6 +81,12 @@ class SheetBot:
             return await self.callback(event_id, user_id, query)
         text = (message.get("text") or "").strip()
         command = ACTIONS.get(text, "")
+        if text.casefold() == "меню":
+            return notice(
+                "🧾 Главное меню",
+                "Выберите сводку на кнопках внизу. Чтобы записать расход, "
+                "просто отправьте текст или голосовое.",
+            )
         if not command and text.startswith("/"):
             command = text.split()[0].split("@")[0]
         user = self.store.user(user_id)
