@@ -1,5 +1,6 @@
 """Telegram copy and HTML formatting. External text is always escaped."""
 
+from datetime import date
 from html import escape
 from typing import Any
 
@@ -95,11 +96,14 @@ def money(minor: int, currency: str) -> str:
     return value + " " + {"RUB": "₽", "USD": "$", "EUR": "€"}.get(currency, currency[:12])
 
 
-def summary_message(data: dict[str, Any], currency: str) -> Reply:
+def summary_message(data: dict[str, Any], currency: str, *, entire_period: bool) -> Reply:
     rows = sorted(data["categories"], key=lambda row: row["amount_minor"], reverse=True)
+    heading = "Расходы за весь период" if entire_period else "Расходы за день"
+    start = date.fromisoformat(data["from"]).strftime("%d.%m.%Y")
+    end = date.fromisoformat(data["to"]).strftime("%d.%m.%Y")
     lines = [
-        "📊 <b>Ваши расходы</b>",
-        f"{escape(data['from'])} — {escape(data['to'])}",
+        f"📊 <b>{heading}</b>",
+        f"{start} — {end}" if entire_period else start,
         f"Всего: <b>{escape(money(data['total_minor'], currency))}</b>",
     ]
     for row in rows[:15]:

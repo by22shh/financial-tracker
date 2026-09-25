@@ -269,7 +269,9 @@ class SheetBot:
             dates=[d.isoformat() for d in dates],
             category_ids=request.category_ids,
         )
-        return summary_message(data, self.settings.sheets.currency)
+        return summary_message(
+            data, self.settings.sheets.currency, entire_period=request.scope == "period"
+        )
 
     async def offer_period(
         self, event_id: int, user_id: int, catalog: Catalog, reference: date
