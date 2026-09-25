@@ -32,7 +32,8 @@ fi
 docker build --label "org.opencontainers.image.revision=$release_sha" \
   -t "$FINTRACKER_SHEETS_IMAGE" "$release"
 # Does not receive updates, register commands or write expenses.
-"${new_compose[@]}" run --rm -T --no-deps bot check
+# Do not let Compose consume the remaining SSH heredoc as container input.
+"${new_compose[@]}" run --rm -T --no-deps bot check </dev/null
 "${new_compose[@]}" run --rm -T --no-deps --entrypoint python bot - <<'PY'
 import asyncio
 from aiogram import Bot
