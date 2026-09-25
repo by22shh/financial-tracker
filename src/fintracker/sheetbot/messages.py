@@ -127,16 +127,19 @@ def summary_message(data: dict[str, Any], currency: str, *, scope: ReportScope) 
     }[scope]
     start = date.fromisoformat(data["from"]).strftime("%d.%m.%Y")
     end = date.fromisoformat(data["to"]).strftime("%d.%m.%Y")
-    lines = [
-        f"📊 <b>{heading}</b>",
-        f"📅 {start} — {end}" if scope in {"week", "period"} else f"📅 {start}",
-        f"Всего: <b>{escape(money(data['total_minor'], currency))}</b>",
+    period = f"📅 {start} — {end}" if scope in {"week", "period"} else f"📅 {start}"
+    blocks = [
+        f"📊 <b>{heading}</b>\n{period}",
+        f"💸 <b>Всего: {escape(money(data['total_minor'], currency))}</b>",
     ]
+    categories = []
     for row in rows[:15]:
-        lines.append(
-            f"• {escape(row['label'][:80])}: {escape(money(row['amount_minor'], currency))}"
+        categories.append(
+            f"▫️ {escape(row['label'][:80])} — <b>{escape(money(row['amount_minor'], currency))}</b>"
         )
     if len(rows) > 15:
         rest = sum(row["amount_minor"] for row in rows[15:])
-        lines.append(f"• Остальные категории: {escape(money(rest, currency))}")
-    return formatted("\n\n".join(lines))
+        categories.append(f"▫️ Остальные категории — <b>{escape(money(rest, currency))}</b>")
+    if categories:
+        blocks.append("📂 <b>По категориям</b>\n" + "\n".join(categories))
+    return formatted("\n\n".join(blocks))
