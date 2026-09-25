@@ -134,12 +134,16 @@ def summary_message(data: dict[str, Any], currency: str, *, scope: ReportScope) 
     ]
     categories = []
     for row in rows[:15]:
-        categories.append(
-            f"▫️ {escape(row['label'][:80])} — <b>{escape(money(row['amount_minor'], currency))}</b>"
-        )
+        label = row["label"][:80]
+        parent, separator, child = label.partition(" / ")
+        amount = f"<b>{escape(money(row['amount_minor'], currency))}</b>"
+        if separator and child:
+            categories.append(f"<b>{escape(parent)}</b>\n└ {escape(child)} — {amount}")
+        else:
+            categories.append(f"<b>{escape(label)}</b> — {amount}")
     if len(rows) > 15:
         rest = sum(row["amount_minor"] for row in rows[15:])
-        categories.append(f"▫️ Остальные категории — <b>{escape(money(rest, currency))}</b>")
+        categories.append(f"<b>Остальные категории</b> — <b>{escape(money(rest, currency))}</b>")
     if categories:
-        blocks.append("📂 <b>По категориям</b>\n" + "\n".join(categories))
+        blocks.append("📂 <b>По категориям</b>\n" + "\n\n".join(categories))
     return formatted("\n\n".join(blocks))
