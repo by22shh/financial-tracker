@@ -1,46 +1,19 @@
-"""Отдельный адаптер транскрипции аудио (ADR-17, OPEN-02 / BL-02).
-
-Luna принимает текст и изображения, но не аудио напрямую. Конкретная ASR
-модель остаётся отдельным решением; здесь зафиксирован контракт, ограничения
-и раздельные метрики, чтобы качество и ошибки ASR оценивались отдельно от
-извлечения и категоризации.
-"""
+"""Транскрипция голосовых сообщений через OpenAI."""
 
 from __future__ import annotations
 
-import datetime as dt
 from dataclasses import dataclass, field
-from decimal import Decimal
 from typing import Protocol
 
 import httpx
 
 from fintracker.config import ASRSettings
 from fintracker.core.errors import ProviderUnavailable, ValidationFailed
-from fintracker.core.logging import get_logger
-
-logger = get_logger("asr")
-
-
-@dataclass(frozen=True, slots=True)
-class TranscriptSegment:
-    start_seconds: float
-    end_seconds: float
-    text: str
 
 
 @dataclass(frozen=True, slots=True)
 class TranscriptResult:
     text: str
-    language: str | None
-    duration_seconds: float
-    segments: tuple[TranscriptSegment, ...]
-    provider: str
-    model: str
-    cost: Decimal
-    cost_currency: str
-    duration_ms: int
-    # Отсутствие речи — отдельное состояние, а не нулевой расход (FR-13).
     speech_detected: bool = True
 
 
@@ -51,11 +24,11 @@ class AsrProvider(Protocol):
 
 
 class OpenAIAsrProvider:
-    """Транскрипция через OpenAI. Модель задаётся конфигурацией (BL-02)."""
+    """Транскрипция через OpenAI. Модель задаётся конфигурацией."""
 
     def __init__(self, settings: ASRSettings) -> None:
         if not settings.model:
-            raise ProviderUnavailable("Модель ASR не выбрана (BL-02)")
+            raise ProviderUnavailable("Модель ASR не выбрана")
         self._settings = settings
 
     async def transcribe(
@@ -65,7 +38,6 @@ class OpenAIAsrProvider:
             raise ValidationFailed(
                 f"Запись длиннее {self._settings.max_audio_seconds} секунд не обрабатывается"
             )
-        started = dt.datetime.now(dt.UTC)
         files = {"file": ("audio.ogg", audio, mime_type)}
         data = {
             "model": self._settings.model,
@@ -93,27 +65,7 @@ class OpenAIAsrProvider:
 
         body = response.json()
         text = str(body.get("text") or "").strip()
-        segments = tuple(
-            TranscriptSegment(
-                start_seconds=float(item.get("start", 0.0)),
-                end_seconds=float(item.get("end", 0.0)),
-                text=str(item.get("text", "")).strip(),
-            )
-            for item in body.get("segments", []) or []
-        )
-        minutes = Decimal(str(duration_seconds)) / Decimal(60)
-        return TranscriptResult(
-            text=text,
-            language=body.get("language"),
-            duration_seconds=duration_seconds,
-            segments=segments,
-            provider="openai",
-            model=self._settings.model,
-            cost=(minutes * self._settings.price_per_minute).quantize(Decimal("0.00000001")),
-            cost_currency="USD",
-            duration_ms=int((dt.datetime.now(dt.UTC) - started).total_seconds() * 1000),
-            speech_detected=bool(text),
-        )
+        return TranscriptResult(text=text, speech_detected=bool(text))
 
 
 @dataclass
@@ -132,35 +84,14 @@ class ScriptedAsrProvider:
         if self.fail_with is not None:
             raise self.fail_with
         text = self.transcripts.pop(0) if self.transcripts else ""
-        return TranscriptResult(
-            text=text,
-            language=language,
-            duration_seconds=duration_seconds,
-            segments=(),
-            provider="stub",
-            model="stub",
-            cost=Decimal("0"),
-            cost_currency="USD",
-            duration_ms=1,
-            speech_detected=bool(text) and self.speech_detected,
-        )
-
-
-_OVERRIDE: AsrProvider | None = None
-
-
-def set_asr_override(provider: AsrProvider | None) -> None:
-    global _OVERRIDE
-    _OVERRIDE = provider
+        return TranscriptResult(text=text, speech_detected=bool(text) and self.speech_detected)
 
 
 def build_asr(settings: ASRSettings) -> AsrProvider:
-    if _OVERRIDE is not None:
-        return _OVERRIDE
     if settings.provider == "openai":
         return OpenAIAsrProvider(settings)
     if settings.provider == "stub":
         return ScriptedAsrProvider()
     raise ProviderUnavailable(
-        "Модель транскрипции не выбрана: задайте FINTRACKER_ASR__PROVIDER и модель (BL-02)"
+        "Модель транскрипции не выбрана: задайте FINTRACKER_ASR__PROVIDER и модель"
     )

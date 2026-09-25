@@ -1,8 +1,8 @@
-.git
-.env
-.venv
-.research-private
-.planning
-var
-tests
-__pycache__
+**
+!Dockerfile
+!pyproject.toml
+!uv.lock
+!README.md
+!src/
+!src/**
+src/**/__pycache__/

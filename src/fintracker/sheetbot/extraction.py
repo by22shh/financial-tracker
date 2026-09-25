@@ -56,7 +56,6 @@ async def extract(
             }
         ],
         response_model=Extraction,
-        prompt_version="sheet-expense-v1",
         schema_name="sheet_expense_v1",
     )
     parsed = Extraction.model_validate(result.parsed.model_dump())

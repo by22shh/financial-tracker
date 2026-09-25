@@ -6,7 +6,7 @@ from pydantic import BaseModel
 
 
 def _strictify(node: Any) -> Any:
-    """Привести схему к контракту Structured Outputs (G-25).
+    """Привести схему к контракту Structured Outputs.
 
     Контракт провайдера требует, чтобы **все** properties объекта входили в
     ``required``, а необязательность выражалась допустимым ``null``. Pydantic

@@ -13,7 +13,3 @@ htmlcov/
 dist/
 build/
 *.egg-info/
-.planning/evidence/**/*.raw
-
-# Артефакты проверок: журнал доступа из сценариев готовности
-tests/**/security-log-*/
