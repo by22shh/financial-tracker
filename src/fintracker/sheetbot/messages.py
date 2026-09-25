@@ -109,7 +109,4 @@ def summary_message(data: dict[str, Any], currency: str) -> Reply:
     if len(rows) > 15:
         rest = sum(row["amount_minor"] for row in rows[15:])
         lines.append(f"• Остальные категории: {escape(money(rest, currency))}")
-    if not rows:
-        lines.append("За этот промежуток расходов пока нет.")
-    lines.append(f"📋 Лист «{escape(data['title'][:100])}» · с учётом ручных записей")
     return formatted("\n\n".join(lines))
