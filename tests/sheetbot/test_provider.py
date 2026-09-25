@@ -49,7 +49,11 @@ async def test_provider_returns_validated_expense_and_repairs_invalid_json(
         response_model=Extraction,
         schema_name="sheet_expense_v1",
     )
-    assert result.parsed.model_dump(mode="json") == {"expenses": [expense], "clarification": None}
+    assert result.parsed.model_dump(mode="json") == {
+        "expenses": [expense],
+        "clarification": None,
+        "report": None,
+    }
     assert len(requests) == (2 if invalid_first else 1)
     assert requests[0]["model"] == "gpt-5.6-luna"
     assert requests[0]["reasoning"] == {"effort": "medium"}

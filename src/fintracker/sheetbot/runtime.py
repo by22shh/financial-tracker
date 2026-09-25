@@ -7,7 +7,7 @@ import logging
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramForbiddenError
-from aiogram.types import BotCommand
+from aiogram.types import BotCommand, InlineKeyboardButton, InlineKeyboardMarkup
 
 from fintracker.infra.ai.openai_client import build_provider
 from fintracker.infra.asr.provider import build_asr
@@ -18,7 +18,10 @@ from fintracker.sheetbot.store import Store
 
 COMMANDS = (
     ("start", "Записать расход"),
-    ("cancel", "Отменить уточнение"),
+    ("today", "Расходы за сегодня"),
+    ("summary", "Сводка текущего периода"),
+    ("period", "Создать следующий период"),
+    ("cancel", "Отменить текущий ввод"),
     ("help", "Как записать расход"),
 )
 logger = logging.getLogger(__name__)
@@ -91,7 +94,22 @@ async def consume(bot: Bot, store: Store, service: SheetBot) -> None:
             chat_id = chat_id_for(update)
             if reply and chat_id:
                 store.save(event["id"], "reply", reply.model_dump())
-                await bot.send_message(chat_id, reply.text, parse_mode=reply.parse_mode)
+                markup = (
+                    InlineKeyboardMarkup(
+                        inline_keyboard=[
+                            [InlineKeyboardButton(text=b.text, callback_data=b.data) for b in row]
+                            for row in reply.buttons
+                        ]
+                    )
+                    if reply.buttons
+                    else None
+                )
+                await bot.send_message(
+                    chat_id,
+                    reply.text,
+                    parse_mode=reply.parse_mode,
+                    reply_markup=markup,
+                )
             store.finish(event["id"])
             delay = 2
         except TelegramForbiddenError:

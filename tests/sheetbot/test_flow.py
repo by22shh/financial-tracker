@@ -105,7 +105,7 @@ async def test_start_explains_automatic_destination(setup):
     reply = await dispatch(setup, update(text="/start"))
     assert "последний лист" in reply.text
     assert "/sheets" not in reply.text
-    assert reply.model_dump().keys() == {"text", "parse_mode"}
+    assert reply.model_dump().keys() == {"text", "parse_mode", "buttons"}
     assert "бюджет" not in reply.text.lower()
 
 
@@ -136,7 +136,7 @@ async def test_real_telegram_updates_survive_inbox_and_receive_replies(setup):
         "file_size": 4,
     }
     updates = [Update.model_validate(item) for item in [start, selection, text, voice]]
-    ai.responses = [result(), result()]
+    ai.responses = [result(), result(amount=30000)]
     bot = service.bot
     bot.get_updates = AsyncMock(side_effect=[updates, asyncio.CancelledError()])
     bot.answer_callback_query = AsyncMock()
@@ -163,7 +163,8 @@ async def test_real_telegram_updates_survive_inbox_and_receive_replies(setup):
     assert all(chat_id == 100 for chat_id, _, _ in sent)
     assert "последний лист" in sent[0][1]
     assert "последний лист" in sent[1][1]
-    assert all("reply_markup" not in kwargs for _, _, kwargs in sent)
+    assert all(kwargs["reply_markup"] is None for _, _, kwargs in sent[:2])
+    assert all(kwargs["reply_markup"] is not None for _, _, kwargs in sent[2:])
     assert all(kwargs["parse_mode"] == "HTML" for _, _, kwargs in sent)
     assert all("✅ <b>Записано</b>" in reply for _, reply, _ in sent[2:])
     assert bridge.write.await_count == 2
@@ -187,7 +188,7 @@ async def test_old_buttons_and_sheets_command_cannot_choose_a_destination(setup)
             },
         )
         assert "последний лист" in reply.text
-        assert reply.model_dump().keys() == {"text", "parse_mode"}
+        assert reply.model_dump().keys() == {"text", "parse_mode", "buttons"}
     reply = await dispatch(setup, update(3, "/sheets"))
     assert "последний лист" in reply.text
     bridge.catalog.assert_not_awaited()
@@ -354,7 +355,7 @@ async def test_invalid_category_and_out_of_period_never_write(setup):
 async def test_changed_layout_is_rejected_without_success(setup):
     _, _store, bridge, _, _ = setup
     bridge.write.side_effect = BridgeError("Структура листа изменилась")
-    assert "Не записано" in (await dispatch(setup, update())).text
+    assert "не сохранены" in (await dispatch(setup, update())).text
 
 
 async def test_multiple_expenses_single_atomic_request(setup):
@@ -516,3 +517,261 @@ async def test_bridge_uses_secret_and_propagates_permanent_error(monkeypatch):
     with pytest.raises(BridgeError) as error:
         await bridge.catalog(10)
     assert not error.value.retryable
+
+
+def callback(number, data, user=100):
+    return {
+        "update_id": number,
+        "callback_query": {
+            "from": {"id": user},
+            "data": data,
+            "message": {"chat": {"id": user, "type": "private"}},
+        },
+    }
+
+
+async def test_duplicate_confirmation_is_durable_and_writes_only_once(setup):
+    service, store, bridge, ai, _ = setup
+    ai.responses = [result(), result()]
+    await dispatch(setup, update())
+    reply = await dispatch(setup, update(2))
+    assert "Похожая трата" in reply.text
+    assert bridge.write.await_count == 1
+    assert store.prompt(2, 100)["kind"] == "duplicate"
+    bridge.write.side_effect = [BridgeError("timeout", retryable=True), {}]
+    item = callback(3, "confirm:2")
+    with pytest.raises(BridgeError):
+        await dispatch(setup, item)
+    reply = await service.handle(item)
+    assert "Записано" in reply.text
+    assert bridge.write.call_args_list[-1] == bridge.write.call_args_list[-2]
+    reply = await dispatch(setup, callback(4, "confirm:2"))
+    assert "не актуальна" in reply.text
+    assert bridge.write.await_count == 3  # original, ambiguous attempt, exact retry
+    assert len(ai.calls) == 2
+
+
+async def test_duplicate_is_not_offered_after_five_minutes_or_for_other_user(setup):
+    _, _, bridge, ai, _ = setup
+    ai.responses = [result(), result(), result()]
+    await dispatch(setup, update())
+    item = update(2)
+    item["message"]["date"] += 301
+    await dispatch(setup, item)
+    await dispatch(setup, update(3, user=200))
+    assert bridge.write.await_count == 3
+
+
+async def test_undo_rejects_foreign_stale_and_repeated_buttons(setup):
+    _, store, bridge, ai, _ = setup
+    await dispatch(setup, update())
+    reply = await dispatch(setup, callback(2, "undo:1:0", user=200))
+    assert "не актуальна" in reply.text
+    bridge.amend.assert_not_awaited()
+    reply = await dispatch(setup, callback(3, "undo:1:0"))
+    assert "Расход отменён" in reply.text
+    assert bridge.amend.call_args.kwargs["expenses"] == []
+    assert store.record(1, 100)["version"] == 1
+    await dispatch(setup, callback(4, "undo:1:0"))
+    bridge.amend.assert_awaited_once()
+    ai.responses = [result()]
+    assert "Записано" in (await dispatch(setup, update(5))).text  # cancelled isn't a duplicate
+
+
+async def test_edit_amount_category_and_date_then_learn_only_for_owner(setup, catalog):
+    _, store, bridge, ai, _ = setup
+    catalog.categories.append(Category(id="cafe", label="Кафе"))
+    ai.responses = [result(), result(amount=35000, category="cafe", when="2026-09-24"), result()]
+    await dispatch(setup, update())
+    reply = await dispatch(setup, callback(2, "edit:1:0"))
+    assert "Что исправить" in reply.text
+    reply = await dispatch(setup, update(3, "Это кафе, 350 рублей, вчера"))
+    assert "Исправлено" in reply.text
+    changed = bridge.amend.call_args.kwargs["expenses"][0]
+    assert changed["amount_minor"] == 35000
+    assert changed["category_id"] == "cafe"
+    assert changed["date"] == "2026-09-24"
+    assert store.record(1, 100)["version"] == 1
+    assert store.preferences(100) == [{"description": "продукты", "category_id": "cafe"}]
+    assert store.preferences(200) == []
+    await dispatch(setup, update(4))
+    context = json.loads(ai.calls[-1]["input"][0]["content"][0]["text"])
+    assert context["preferences"][0]["category_id"] == "cafe"
+
+
+async def test_edit_failed_or_ambiguous_write_does_not_learn_early(setup, catalog):
+    service, store, bridge, ai, _ = setup
+    catalog.categories.append(Category(id="cafe", label="Кафе"))
+    ai.responses = [result(), result(category="cafe")]
+    await dispatch(setup, update())
+    await dispatch(setup, callback(2, "edit:1:0"))
+    bridge.amend.side_effect = [BridgeError("timeout", retryable=True), {}]
+    item = update(3, "Кафе")
+    with pytest.raises(BridgeError):
+        await dispatch(setup, item)
+    assert store.preferences(100) == []
+    await service.handle(item)
+    assert len(store.preferences(100)) == 1
+    assert bridge.amend.call_args_list[0] == bridge.amend.call_args_list[1]
+    assert len(ai.calls) == 2
+
+
+async def test_batch_undo_removes_only_selected_expense(setup):
+    _, store, bridge, ai, _ = setup
+    batch = json.loads(result())
+    batch["expenses"].append({**batch["expenses"][0], "amount_minor": 12300})
+    ai.responses = [json.dumps(batch)]
+    await dispatch(setup, update())
+    reply = await dispatch(setup, callback(2, "undo:1:0"))
+    assert len(reply.buttons) == 2
+    bridge.amend.assert_not_awaited()
+    await dispatch(setup, callback(3, "undo:1:0:1"))
+    assert len(store.record(1, 100)["expenses"]) == 1
+    assert bridge.amend.call_args.kwargs["expenses"][0]["amount_minor"] == 125050
+
+
+async def test_cancel_edit_preserves_written_expense(setup):
+    _, store, bridge, _, _ = setup
+    await dispatch(setup, update())
+    await dispatch(setup, callback(2, "edit:1:0"))
+    await dispatch(setup, update(3, "/cancel"))
+    assert store.user(100)["pending"] is None
+    assert store.record(1, 100)["version"] == 0
+    bridge.amend.assert_not_awaited()
+
+
+async def test_voice_preview_escapes_recognized_text(setup):
+    _, _, _, _, asr = setup
+    asr.transcripts = ["кофе <бар> & чай 250"]
+    item = update()
+    item["message"].pop("text")
+    item["message"]["voice"] = {"file_id": "voice", "duration": 4}
+    reply = await dispatch(setup, item)
+    assert "Я услышал" in reply.text
+    assert "&lt;бар&gt; &amp;" in reply.text
+
+
+async def test_reports_use_sheet_values_not_ai_arithmetic_and_do_not_write(setup):
+    _, _, bridge, ai, _ = setup
+    bridge.summary.return_value = {
+        "title": "10.09 - 09.10",
+        "from": "2026-09-25",
+        "to": "2026-09-25",
+        "total_minor": 35200,
+        "categories": [{"label": "Продукты <&>", "amount_minor": 35200}],
+    }
+    ai.responses = [
+        json.dumps(
+            {
+                "expenses": [],
+                "clarification": None,
+                "report": {"scope": "today", "category_ids": ["food"]},
+            }
+        )
+    ]
+    reply = await dispatch(setup, update(text="Сколько потратил на продукты сегодня?"))
+    assert "352 ₽" in reply.text
+    assert "&lt;&amp;&gt;" in reply.text
+    assert bridge.summary.call_args.kwargs["dates"] == ["2026-09-25"]
+    assert bridge.summary.call_args.kwargs["category_ids"] == ["food"]
+    await dispatch(setup, update(2, "/summary"))
+    assert len(bridge.summary.call_args.kwargs["dates"]) == 2
+    assert len(ai.calls) == 1
+    bridge.write.assert_not_awaited()
+
+
+async def test_period_offer_requires_button_and_survives_retry(setup, catalog):
+    service, store, bridge, _ai, _ = setup
+    catalog.dates = [date(2026, 8, 10), date(2026, 9, 9)]
+    bridge.period.return_value = {
+        "start": "2026-09-10",
+        "end": "2026-10-09",
+        "title": "10.09 - 09.10",
+    }
+    reply = await dispatch(setup, update())
+    assert "Начался новый период" in reply.text
+    bridge.create_period.assert_not_awaited()
+    bridge.write.assert_not_awaited()
+    bridge.create_period.side_effect = [
+        BridgeError("timeout", retryable=True),
+        {"title": "10.09 - 09.10"},
+    ]
+    item = callback(2, "confirm:1")
+    with pytest.raises(BridgeError):
+        await dispatch(setup, item)
+    reply = await service.handle(item)
+    assert "Новый период готов" in reply.text
+    assert "Пришлите расход ещё раз" in reply.text
+    assert bridge.create_period.call_args_list[0] == bridge.create_period.call_args_list[1]
+    await dispatch(setup, callback(3, "confirm:1"))
+    assert bridge.create_period.await_count == 2
+    assert store.user(100)["pending"] is None
+
+
+async def test_period_command_does_not_call_ai_and_reports_outside_period_do_not_fake_zero(setup):
+    _, _, bridge, ai, _ = setup
+    reply = await dispatch(setup, update(text="/period"))
+    assert "ещё идёт" in reply.text
+    item = update(2, "/today")
+    item["message"]["date"] += 86400
+    reply = await dispatch(setup, item)
+    assert "вне текущего периода" in reply.text
+    bridge.summary.assert_not_awaited()
+    assert not ai.calls
+
+
+async def test_old_sheet_buttons_and_cancelled_duplicate_cannot_write(setup, catalog):
+    _, store, bridge, ai, _ = setup
+    ai.responses = [result(), result()]
+    await dispatch(setup, update())
+    await dispatch(setup, update(2))
+    await dispatch(setup, callback(3, "dismiss:2"))
+    await dispatch(setup, callback(4, "confirm:2"))
+    assert bridge.write.await_count == 1
+    bridge.catalog.return_value = catalog.model_copy(update={"id": 30})
+    reply = await dispatch(setup, callback(5, "undo:1:0"))
+    assert "Лист изменился" in reply.text
+    assert store.record(1, 100)["version"] == 0
+    bridge.amend.assert_not_awaited()
+
+
+async def test_sqlite_restart_preserves_buttons_duplicate_prompt_and_preferences(setup):
+    service, store, _, ai, _ = setup
+    ai.responses = [result(), result()]
+    reply = await dispatch(setup, update())
+    await dispatch(setup, update(2))
+    store.learn(100, "Кофе", "food")
+    reopened = Store(service.settings.sheets.state_path)
+    try:
+        assert reopened.record(1, 100)["key"] == "telegram:123:100:1"
+        assert reopened.prompt(2, 100)["kind"] == "duplicate"
+        assert reopened.preferences(100)[0]["description"] == "кофе"
+        assert reopened.field(1, "reply")["buttons"][0][0]["data"] == reply.buttons[0][0].data
+        store.finish(1)
+        assert reopened.record(1, 100) is not None
+    finally:
+        reopened.db.close()
+
+
+async def test_voice_edit_and_ambiguous_correction_keep_single_expense_context(setup):
+    _, store, bridge, ai, asr = setup
+    ai.responses = [
+        result(),
+        json.dumps({"expenses": [], "clarification": "Какую сумму?"}),
+        result(amount=35000),
+    ]
+    await dispatch(setup, update())
+    await dispatch(setup, callback(2, "edit:1:0"))
+    await dispatch(setup, update(3, "Исправь сумму"))
+    asr.transcripts = ["350 рублей"]
+    voice = update(4)
+    voice["message"].pop("text")
+    voice["message"]["voice"] = {"file_id": "voice", "duration": 4}
+    reply = await dispatch(setup, voice)
+    assert "Исправлено" in reply.text and "Я услышал" in reply.text
+    assert len(bridge.amend.call_args.kwargs["expenses"]) == 1
+    context = json.loads(ai.calls[-1]["input"][0]["content"][0]["text"])
+    assert context["editing"] is True
+    assert "Исправь сумму" in context["text"]
+    assert "350 рублей" in context["text"]
+    assert store.user(100)["pending"] is None

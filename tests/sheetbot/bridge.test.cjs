@@ -13,15 +13,17 @@ function harness({start = '2026-08-10', header, rows, cells = {}} = {}) {
   const sheet = {
     getSheetId: () => 10, getName: () => '10.08 - 09.09', isSheetHidden: () => false,
     getLastRow: () => 13 + categories.length,
-    getRange(row, col) {
+    getRange(row, col, height, width) {
       if (row === 13) return {getValues: () => [days]};
       if (row === 14 && col === 2) return {getValues: () => categories};
+      if (col === 9 && width === 31) return {getValues: () => [Array.from({length: 31}, (_, i) => (table.get(row + ':' + (9+i)) || {value: ''}).value)]};
       const key = row + ':' + col;
       const item = table.get(key) || {value: ''};
       return {getFormula: () => item.formula || '', getValue: () => item.value};
     }
   };
   const journal = {
+    getParent: () => book,
     getSheetId: () => 99,
     getRange(row) {
       if (row === 'A:A') return {createTextFinder: key => ({matchEntireCell() {return this;},
@@ -40,7 +42,10 @@ function harness({start = '2026-08-10', header, rows, cells = {}} = {}) {
         assert.equal(charset, 'UTF-8');
         return Array.from(crypto.createHash('sha256').update(text, 'utf8').digest());
       }},
-    Sheets: {Spreadsheets: {batchUpdate(body, id) {
+    Sheets: {Spreadsheets: {Values: {get(id, range) {
+      const row = Number(range.match(/!B(\d+):C/)[1]);
+      return {values: [[receipts[row-2][1], receipts[row-2][2]]]};
+    }}, batchUpdate(body, id) {
       assert.equal(id, 'book');
       if (state.fail) throw new Error('timeout');
       state.batches.push(body);
@@ -48,7 +53,10 @@ function harness({start = '2026-08-10', header, rows, cells = {}} = {}) {
       for (const request of body.requests) {
         if (request.appendCells) {
           receipts.push(request.appendCells.rows[0].values.map(v => v.userEnteredValue.stringValue));
-        } else {
+        } else if (request.updateCells && request.updateCells.range.sheetId === 99) {
+          const r = request.updateCells;
+          receipts[r.range.startRowIndex - 1][2] = r.rows[0].values[0].userEnteredValue.stringValue;
+        } else if (request.updateCells && request.updateCells.range.sheetId === 10) {
           const r = request.updateCells;
           const key = (r.range.startRowIndex + 1) + ':' + (r.range.startColumnIndex + 1);
           const value = r.rows[0].values[0].userEnteredValue;
@@ -186,4 +194,137 @@ test('committed retry returns its receipt even after a new period appears', () =
   const retry = h.context.write_(h.book, h.sheet, h.input());
   assert.equal(first.recorded_at, retry.recorded_at);
   assert.equal(h.state.batches.length, 1);
+});
+
+function amendment(h, expenses = [], version = 0, key = 'telegram:123:100:op:2') {
+  return {key, target_key: h.input().key, sheet_id: 10, revision: h.catalog.revision, version, expenses};
+}
+
+test('undo subtracts only this expense, preserves other purchases and is idempotent', () => {
+  const h = harness({cells: {'14:9': {value: 100}}});
+  h.context.write_(h.book, h.sheet, h.input());
+  const body = amendment(h);
+  h.context.amend_(h.book, h.sheet, body);
+  assert.equal(h.state.table.get('14:9').value, 100);
+  assert.equal(JSON.parse(h.state.receipts[0][2]).version, 1);
+  h.context.amend_(h.book, h.sheet, body);
+  assert.equal(h.state.batches.length, 2);
+  assert.equal(h.state.table.get('14:9').value, 100);
+});
+
+test('edit moves amount to new category and date atomically', () => {
+  const h = harness({cells: {'14:9': {value: 10}, '15:10': {value: 50}}});
+  h.context.write_(h.book, h.sheet, h.input());
+  const expense = {...h.input().expenses[0], category_id: h.catalog.categories[1].id,
+    date: h.catalog.dates[1], amount_minor: 35000};
+  const body = amendment(h, [expense]);
+  h.context.amend_(h.book, h.sheet, body);
+  assert.equal(h.state.table.get('14:9').value, 10);
+  assert.equal(h.state.table.get('15:10').value, 400);
+  assert.equal(h.state.batches[1].requests.length, 4); // two cells, record revision, operation receipt
+  assert.equal(JSON.parse(h.state.receipts[0][2]).expenses[0].category_id, expense.category_id);
+  h.context.amend_(h.book, h.sheet, amendment(h, [], 1, 'telegram:123:100:op:3'));
+  assert.equal(h.state.table.get('15:10').value, 50);
+});
+
+test('stale version, foreign owner, old structure and removed manual amounts block amendments', () => {
+  for (const mutate of [b => b.version=4, b => b.key='telegram:123:200:op:2',
+      b => b.revision='old', (b,h) => h.state.table.set('14:9', {value: 1})]) {
+    const h = harness();
+    h.context.write_(h.book, h.sheet, h.input());
+    const body = amendment(h); mutate(body, h);
+    assert.throws(() => h.context.amend_(h.book, h.sheet, body));
+    assert.equal(h.state.batches.length, 1);
+    assert.equal(JSON.parse(h.state.receipts[0][2]).version, 0);
+  }
+});
+
+test('failed amendment keeps original journal and cells; exact retry succeeds once', () => {
+  const h = harness(); h.context.write_(h.book, h.sheet, h.input());
+  h.state.fail = true;
+  assert.throws(() => h.context.amend_(h.book, h.sheet, amendment(h)));
+  assert.equal(h.state.table.get('14:9').value, 250.5);
+  assert.equal(JSON.parse(h.state.receipts[0][2]).version, 0);
+  h.state.fail = false;
+  h.context.amend_(h.book, h.sheet, amendment(h));
+  h.context.amend_(h.book, h.sheet, amendment(h));
+  assert.equal(h.state.table.get('14:9').value, 0);
+  assert.equal(h.state.batches.length, 2);
+});
+
+test('undo retains existing formula and applies a signed delta', () => {
+  const h = harness({cells: {'14:9': {value: 500, formula: '=500'}}});
+  h.context.write_(h.book, h.sheet, h.input());
+  h.state.table.get('14:9').value = 750.5; // Sheets evaluates the formula
+  h.context.amend_(h.book, h.sheet, amendment(h));
+  assert.match(h.state.table.get('14:9').formula, /\+\(-25050\/100\)$/);
+  assert.match(h.state.table.get('14:9').formula, /500/);
+});
+
+test('summary reads manual values and evaluated formulas exactly once per date and category', () => {
+  const h = harness({cells: {'14:9': {value: 100.25}, '14:10': {value: 50},
+    '15:9': {value: 200, formula: '=100+100'}}});
+  const body = {revision: h.catalog.revision, dates: [h.catalog.dates[0], h.catalog.dates[0]], category_ids: []};
+  const all = h.context.summary_(h.book, h.sheet, body);
+  assert.equal(all.total_minor, 30025);
+  const food = h.context.summary_(h.book, h.sheet, {...body, category_ids: [h.catalog.categories[0].id]});
+  assert.equal(food.total_minor, 10025);
+  assert.equal(h.state.batches.length, 0);
+  assert.throws(() => h.context.summary_(h.book, h.sheet, {...body, dates: ['2025-01-01']}));
+  assert.throws(() => h.context.summary_(h.book, h.sheet, {...body, category_ids: ['invented']}));
+});
+
+test('summary refuses spreadsheet errors instead of displaying misleading totals', () => {
+  const h = harness({cells: {'14:9': {value: '#REF!'}}});
+  assert.throws(() => h.context.summary_(h.book, h.sheet, {revision: h.catalog.revision,
+    dates: [h.catalog.dates[0]], category_ids: []}), /ошибка/);
+});
+
+test('new period follows monthly boundary including February, year rollover and gaps', () => {
+  for (const [start, reference, expectedStart, expectedEnd] of [
+    ['2026-08-10','2026-09-25','2026-09-10','2026-10-09'],
+    ['2026-12-10','2027-01-25','2027-01-10','2027-02-09'],
+    ['2028-01-10','2028-02-29','2028-02-10','2028-03-09'],
+    ['2026-08-10','2027-04-15','2027-04-10','2027-05-09']]) {
+    const h = harness({start});
+    const plan = h.context.period_(h.book, h.sheet, {reference_date: reference});
+    assert.equal(plan.start, expectedStart); assert.equal(plan.end, expectedEnd);
+    assert.equal(h.state.batches.length, 0);
+  }
+  const h = harness();
+  assert.throws(() => h.context.period_(h.book, h.sheet, {reference_date: '2026-08-25'}), /не завершён/);
+});
+
+test('create period clones and clears only new expense cells in same batch as receipt', () => {
+  const h = harness();
+  const plan = h.context.period_(h.book, h.sheet, {reference_date: '2026-09-25'});
+  const body = {key: 'telegram:123:100:op:88', sheet_id: 10, revision: h.catalog.revision,
+    reference_date: '2026-09-25', start: plan.start, end: plan.end};
+  const created = h.context.createPeriod_(h.book, h.sheet, body);
+  const requests = h.state.batches[0].requests;
+  assert.equal(requests[0].duplicateSheet.newSheetName, '10.09 - 09.10');
+  assert.notEqual(created.sheet_id, 10);
+  assert(requests.filter(r => r.repeatCell).every(r => r.repeatCell.range.sheetId === created.sheet_id));
+  assert.equal(requests.filter(r => r.repeatCell).length, 2);
+  const header = requests.find(r => r.updateCells?.range.startRowIndex === 12).updateCells.rows[0].values;
+  assert.equal(header.length, 31);
+  assert.equal(header[0].userEnteredValue.numberValue, 10);
+  assert.equal(header[29].userEnteredValue.numberValue, 9);
+  assert.equal(header[30].userEnteredValue, undefined);
+  const retry = h.context.createPeriod_(h.book, h.sheet, body);
+  assert.equal(retry.sheet_id, created.sheet_id);
+  assert.equal(h.state.batches.length, 1);
+});
+
+test('changed template or failed batch does not create a partial period', () => {
+  const h = harness();
+  const plan = h.context.period_(h.book, h.sheet, {reference_date: '2026-09-25'});
+  const body = {key:'telegram:123:100:op:88', sheet_id:10, revision:'changed',
+    reference_date:'2026-09-25', start:plan.start, end:plan.end};
+  assert.throws(() => h.context.createPeriod_(h.book, h.sheet, body), /изменился/);
+  body.revision = h.catalog.revision;
+  h.state.fail = true;
+  assert.throws(() => h.context.createPeriod_(h.book, h.sheet, body));
+  assert.equal(h.state.receipts.length, 0);
+  assert.equal(h.state.batches.length, 0);
 });

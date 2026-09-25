@@ -65,3 +65,15 @@ class SheetsBridge:
             revision=catalog.revision,
             expenses=[item.model_dump(mode="json") for item in expenses],
         )
+
+    async def amend(self, **payload: Any) -> dict[str, Any]:
+        return await self.call("amend", **payload)
+
+    async def summary(self, **payload: Any) -> dict[str, Any]:
+        return await self.call("summary", **payload)
+
+    async def period(self, **payload: Any) -> dict[str, Any]:
+        return await self.call("period", **payload)
+
+    async def create_period(self, **payload: Any) -> dict[str, Any]:
+        return await self.call("create_period", **payload)

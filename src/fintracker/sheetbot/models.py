@@ -28,13 +28,26 @@ class Expense(BaseModel):
     description: str = Field(min_length=1, max_length=300)
 
 
+class ReportRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    scope: Literal["today", "yesterday", "period"]
+    category_ids: list[str] = Field(default_factory=list, max_length=100)
+
+
 class Extraction(BaseModel):
     model_config = ConfigDict(extra="forbid")
     expenses: list[Expense] = Field(max_length=20)
     clarification: str | None
+    report: ReportRequest | None = None
+
+
+class Button(BaseModel):
+    text: str
+    data: str = Field(max_length=64)
 
 
 class Reply(BaseModel):
     text: str
+    buttons: list[list[Button]] = Field(default_factory=list)
     # Old cached responses remain plain text after an upgrade.
     parse_mode: Literal["HTML"] | None = None

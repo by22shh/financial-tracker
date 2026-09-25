@@ -20,6 +20,18 @@ class Store:
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY, pending TEXT
             );
+            CREATE TABLE IF NOT EXISTS records (
+                id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL, data TEXT NOT NULL,
+                recorded_at INTEGER NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS prompts (
+                id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL, kind TEXT NOT NULL,
+                data TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1
+            );
+            CREATE TABLE IF NOT EXISTS preferences (
+                user_id INTEGER NOT NULL, description TEXT NOT NULL, category_id TEXT NOT NULL,
+                PRIMARY KEY(user_id, description)
+            );
             CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
         """)
 
@@ -78,3 +90,61 @@ class Store:
                 "DO UPDATE SET pending=excluded.pending",
                 (user_id, text),
             )
+
+    def record(self, record_id: int, user_id: int) -> dict[str, Any] | None:
+        row = self.db.execute(
+            "SELECT data FROM records WHERE id=? AND user_id=?", (record_id, user_id)
+        ).fetchone()
+        return json.loads(row[0]) if row else None
+
+    def save_record(
+        self, record_id: int, user_id: int, data: dict[str, Any], timestamp: int
+    ) -> None:
+        with self.db:
+            self.db.execute(
+                "INSERT INTO records VALUES (?,?,?,?) ON CONFLICT(id) "
+                "DO UPDATE SET data=excluded.data",
+                (record_id, user_id, json.dumps(data, ensure_ascii=False), timestamp),
+            )
+
+    def recent(self, user_id: int, timestamp: int) -> list[dict[str, Any]]:
+        rows = self.db.execute(
+            "SELECT data FROM records WHERE user_id=? AND recorded_at>=? "
+            "AND recorded_at<=? ORDER BY id DESC LIMIT 30",
+            (user_id, timestamp - 300, timestamp),
+        ).fetchall()
+        return [json.loads(row[0]) for row in rows]
+
+    def prompt(self, prompt_id: int, user_id: int) -> dict[str, Any] | None:
+        row = self.db.execute(
+            "SELECT kind,data FROM prompts WHERE id=? AND user_id=? AND active=1",
+            (prompt_id, user_id),
+        ).fetchone()
+        return {"kind": row[0], "data": json.loads(row[1])} if row else None
+
+    def save_prompt(self, prompt_id: int, user_id: int, kind: str, data: dict[str, Any]) -> None:
+        with self.db:
+            self.db.execute(
+                "INSERT OR IGNORE INTO prompts VALUES (?,?,?,?,1)",
+                (prompt_id, user_id, kind, json.dumps(data, ensure_ascii=False)),
+            )
+
+    def close_prompt(self, prompt_id: int) -> None:
+        with self.db:
+            self.db.execute("UPDATE prompts SET active=0 WHERE id=?", (prompt_id,))
+
+    def learn(self, user_id: int, description: str, category_id: str) -> None:
+        with self.db:
+            self.db.execute(
+                "INSERT INTO preferences VALUES (?,?,?) ON CONFLICT(user_id,description) "
+                "DO UPDATE SET category_id=excluded.category_id",
+                (user_id, description.casefold().strip()[:300], category_id),
+            )
+
+    def preferences(self, user_id: int) -> list[dict[str, str]]:
+        rows = self.db.execute(
+            "SELECT description,category_id FROM preferences WHERE user_id=? "
+            "ORDER BY rowid DESC LIMIT 100",
+            (user_id,),
+        ).fetchall()
+        return [dict(row) for row in rows]
