@@ -1,0 +1,18 @@
+{
+  "release_commit": "aae265f5c038a818e541a40b0ca50160d7d13935",
+  "server": "2.26.231.184",
+  "image": "fintracker:sheets-aae265f5c038a818e541a40b0ca50160d7d13935",
+  "stage": "built_waiting_for_google_setup",
+  "cutover_completed": false,
+  "legacy_services_running": true,
+  "checks": {
+    "python_tests_passed": 23,
+    "apps_script_tests_passed": 11,
+    "github_actions": "success",
+    "ai_model_access": true,
+    "asr_model_access": true,
+    "live_ai_synthetic_extraction": true,
+    "google_bridge_ready": false,
+    "live_sheet_write_verified": false
+  }
+}
