@@ -16,7 +16,7 @@ bash deploy/release.sh YOUR_SSH_ALIAS
 ```
 
 The script uploads exactly `HEAD`, builds an image tagged with its commit, checks the
-sheet connection, category/date catalogs and Telegram authentication, then stops the legacy api/worker/scheduler/
+last worksheet connection and its category/date catalog and Telegram authentication, then stops the legacy api/worker/scheduler/
 polling processes and starts the new bot. If validation fails, no processes are switched.
 If startup fails after switching, the script attempts to restore the previous processes.
 A webhook must be disabled before using polling; the script refuses to remove one silently.

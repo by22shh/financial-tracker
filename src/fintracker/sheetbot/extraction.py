@@ -1,4 +1,4 @@
-"""Classify against the selected sheet, never against an invented catalog."""
+"""Classify against the latest worksheet, never against an invented catalog."""
 
 import json
 from datetime import date
@@ -76,8 +76,9 @@ async def extract(
             return Extraction(
                 expenses=[],
                 clarification=(
-                    f"На листе «{catalog.title}» нет даты {expense.date:%d.%m.%Y}. "
-                    "Уточните дату или выберите другой лист через /sheets."
+                    f"На последнем листе «{catalog.title}» нет даты {expense.date:%d.%m.%Y}. "
+                    "Записываю только в последний лист. Уточните дату текущего периода "
+                    "или добавьте в таблицу новый лист с актуальными датами."
                 ),
             )
     return parsed

@@ -1,4 +1,4 @@
-"""The complete user flow: select sheet → say expense → automatic write."""
+"""Text or voice expenses go directly to the last visible worksheet."""
 
 import json
 from datetime import UTC, date, datetime
@@ -18,8 +18,9 @@ from fintracker.sheetbot.store import Store
 
 HELP = (
     "Отправьте расход текстом или голосом: «продукты 1250», «вчера доставка 890».\n"
-    "Я выберу категорию на вашем листе и прибавлю сумму к нужному дню.\n\n"
-    "/sheets — выбрать лист\n/cancel — отменить уточнение\n/help — помощь"
+    "Я определю категорию и запишу сумму в последний лист таблицы.\n"
+    "Когда появится новый лист, следующие расходы пойдут в него автоматически.\n\n"
+    "/cancel — отменить уточнение\n/help — помощь"
 )
 
 
@@ -35,15 +36,6 @@ class SheetBot:
     ) -> None:
         self.settings, self.store, self.bridge = settings, store, bridge
         self.provider, self.asr, self.bot = provider, asr, bot
-
-    async def choose_sheet(self) -> Reply:
-        sheets = await self.bridge.sheets()
-        if not sheets:
-            return Reply(text="В таблице нет доступных листов расходов. Проверьте её структуру.")
-        return Reply(
-            text="Выберите лист для записи расходов:",
-            buttons=[[{"text": s.title[:64], "callback_data": f"sheet:{s.id}"}] for s in sheets],
-        )
 
     async def handle(self, update: dict[str, Any]) -> Reply | None:
         query = update.get("callback_query")
@@ -75,31 +67,17 @@ class SheetBot:
         self, event_id: int, user_id: int, query: dict[str, Any] | None, message: dict[str, Any]
     ) -> Reply:
         if query:
-            data = query.get("data", "")
-            if data.startswith("sheet:") and data[6:].isdigit():
-                sheet_id = int(data[6:])
-                sheets = await self.bridge.sheets()
-                selected = next((s for s in sheets if s.id == sheet_id), None)
-                if selected is None:
-                    return await self.choose_sheet()
-                await self.bridge.catalog(sheet_id)
-                self.store.select(user_id, sheet_id)
-                return Reply(text=f"Лист: {selected.title}\n\n{HELP}")
-            return await self.choose_sheet()
+            return Reply(text=HELP)
         text = (message.get("text") or "").strip()
         command = text.split()[0].split("@")[0] if text.startswith("/") else ""
         user = self.store.user(user_id)
-        if command in {"/start", "/sheets"}:
-            return await self.choose_sheet()
-        if command == "/help":
+        if command in {"/start", "/help", "/sheets"}:
             return Reply(text=HELP)
         if command == "/cancel":
             self.store.pending(user_id, None)
             return Reply(text="Уточнение отменено. Отправьте следующий расход.")
         if command:
             return Reply(text=HELP)
-        if user["sheet_id"] is None:
-            return await self.choose_sheet()
         voice = message.get("voice")
         if voice:
             if voice.get("duration", 0) > self.settings.asr.max_audio_seconds:
@@ -133,7 +111,7 @@ class SheetBot:
             return Reply(
                 text="Сообщение слишком длинное. Разделите расходы на несколько сообщений."
             )
-        catalog = await self.bridge.catalog(user["sheet_id"])
+        catalog = await self.bridge.latest_catalog()
         # Relative dates are anchored to the Telegram message, not retry time.
         reference = (
             datetime.fromtimestamp(message["date"], UTC)
@@ -141,6 +119,12 @@ class SheetBot:
             .date()
         )
         pending = json.loads(user["pending"]) if user["pending"] else None
+        if pending and pending.get("sheet_id") != catalog.id:
+            self.store.pending(user_id, None)
+            return Reply(
+                text=f"Теперь расходы идут в «{catalog.title}». "
+                "Пришлите расход целиком — прежнее уточнение отменено."
+            )
         previous = pending["text"] if pending else None
         if pending:
             reference = date.fromisoformat(pending["reference_date"])
@@ -158,7 +142,11 @@ class SheetBot:
             self.store.pending(
                 user_id,
                 json.dumps(
-                    {"text": combined[-8000:], "reference_date": reference.isoformat()},
+                    {
+                        "text": combined[-8000:],
+                        "reference_date": reference.isoformat(),
+                        "sheet_id": catalog.id,
+                    },
                     ensure_ascii=False,
                 ),
             )

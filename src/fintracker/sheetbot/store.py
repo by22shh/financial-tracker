@@ -18,7 +18,7 @@ class Store:
                 prepared TEXT, reply TEXT, done INTEGER NOT NULL DEFAULT 0
             );
             CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY, sheet_id INTEGER, pending TEXT
+                id INTEGER PRIMARY KEY, pending TEXT
             );
             CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
         """)
@@ -67,17 +67,14 @@ class Store:
             )
 
     def user(self, user_id: int) -> dict[str, Any]:
-        row = self.db.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
-        return dict(row) if row else {"id": user_id, "sheet_id": None, "pending": None}
-
-    def select(self, user_id: int, sheet_id: int) -> None:
-        with self.db:
-            self.db.execute(
-                "INSERT INTO users(id,sheet_id) VALUES (?,?) ON CONFLICT(id) "
-                "DO UPDATE SET sheet_id=excluded.sheet_id,pending=NULL",
-                (user_id, sheet_id),
-            )
+        # Old databases may still have sheet_id; it no longer controls the destination.
+        row = self.db.execute("SELECT id,pending FROM users WHERE id=?", (user_id,)).fetchone()
+        return dict(row) if row else {"id": user_id, "pending": None}
 
     def pending(self, user_id: int, text: str | None) -> None:
         with self.db:
-            self.db.execute("UPDATE users SET pending=? WHERE id=?", (text, user_id))
+            self.db.execute(
+                "INSERT INTO users(id,pending) VALUES (?,?) ON CONFLICT(id) "
+                "DO UPDATE SET pending=excluded.pending",
+                (user_id, text),
+            )

@@ -50,6 +50,13 @@ class SheetsBridge:
     async def catalog(self, sheet_id: int) -> Catalog:
         return Catalog.model_validate(await self.call("catalog", sheet_id=sheet_id))
 
+    async def latest_catalog(self) -> Catalog:
+        # Apps Script returns visible worksheets in tab order, not by ID or title.
+        sheets = await self.sheets()
+        if not sheets:
+            raise BridgeError("В таблице нет доступных листов расходов.")
+        return await self.catalog(sheets[-1].id)
+
     async def write(self, *, key: str, catalog: Catalog, expenses: list[Expense]) -> dict[str, Any]:
         return await self.call(
             "write",

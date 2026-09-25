@@ -29,7 +29,7 @@ function harness({start = '2026-08-10', header, rows, cells = {}} = {}) {
       return {getValues: () => [[receipts[row-2][1], receipts[row-2][2]]]};
     }
   };
-  const book = {getId: () => 'book', getSheetByName: () => journal,
+  const book = {getId: () => 'book', getSheetByName: () => journal, getSheets: () => [sheet],
     getSpreadsheetTimeZone: () => 'Asia/Novosibirsk'};
   const state = {batches: [], fail: false, table, receipts};
   const context = vm.createContext({
@@ -161,5 +161,29 @@ test('failed atomic batch has no receipt; retry applies once', () => {
   h.state.fail = false;
   h.context.write_(h.book, h.sheet, h.input());
   h.context.write_(h.book, h.sheet, h.input());
+  assert.equal(h.state.batches.length, 1);
+});
+
+
+test('new last sheet prevents a fresh write to a previous period', () => {
+  const h = harness();
+  h.book.getSheets = () => [h.sheet, {getSheetId: () => 20, getName: () => 'New', isSheetHidden: () => false}];
+  assert.throws(() => h.context.write_(h.book, h.sheet, h.input()), /Последний лист изменился/);
+  assert.equal(h.state.batches.length, 0);
+});
+
+test('hidden service sheets do not change the expense destination', () => {
+  const h = harness();
+  h.book.getSheets = () => [h.sheet, {isSheetHidden: () => true}];
+  h.context.write_(h.book, h.sheet, h.input());
+  assert.equal(h.state.batches.length, 1);
+});
+
+test('committed retry returns its receipt even after a new period appears', () => {
+  const h = harness();
+  const first = h.context.write_(h.book, h.sheet, h.input());
+  h.book.getSheets = () => [h.sheet, {getSheetId: () => 20, getName: () => 'New', isSheetHidden: () => false}];
+  const retry = h.context.write_(h.book, h.sheet, h.input());
+  assert.equal(first.recorded_at, retry.recorded_at);
   assert.equal(h.state.batches.length, 1);
 });

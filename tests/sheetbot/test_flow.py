@@ -72,7 +72,15 @@ def setup(tmp_path, catalog):
     )
     store = Store(settings.sheets.state_path)
     bridge = AsyncMock(spec=SheetsBridge)
-    bridge.sheets.return_value = [Sheet(id=10, title=catalog.title), Sheet(id=20, title="Другой")]
+    bridge.sheets.return_value = [
+        Sheet(id=20, title="Предыдущий"),
+        Sheet(id=10, title=catalog.title),
+    ]
+
+    async def latest():
+        return await SheetsBridge.latest_catalog(bridge)
+
+    bridge.latest_catalog.side_effect = latest
     bridge.catalog.return_value = catalog
     bridge.write.return_value = {"count": 1}
     ai = ScriptedAIProvider(responses=[result()])
@@ -93,9 +101,11 @@ async def dispatch(setup, item):
     return await service.handle(item)
 
 
-async def test_start_only_offers_worksheets(setup):
+async def test_start_explains_automatic_destination(setup):
     reply = await dispatch(setup, update(text="/start"))
-    assert [row[0]["callback_data"] for row in reply.buttons] == ["sheet:10", "sheet:20"]
+    assert "последний лист" in reply.text
+    assert "/sheets" not in reply.text
+    assert reply.model_dump().keys() == {"text"}
     assert "бюджет" not in reply.text.lower()
 
 
@@ -151,8 +161,9 @@ async def test_real_telegram_updates_survive_inbox_and_receive_replies(setup):
             await worker
 
     assert all(chat_id == 100 for chat_id, _, _ in sent)
-    assert sent[0][2]["reply_markup"].inline_keyboard[0][0].callback_data == "sheet:10"
-    assert sent[1][1].startswith("Лист:")
+    assert "последний лист" in sent[0][1]
+    assert "последний лист" in sent[1][1]
+    assert all("reply_markup" not in kwargs for _, _, kwargs in sent)
     assert all(reply.startswith("Записано") for _, reply, _ in sent[2:])
     assert bridge.write.await_count == 2
     assert asr.calls == 1
@@ -160,32 +171,59 @@ async def test_real_telegram_updates_survive_inbox_and_receive_replies(setup):
     bot.answer_callback_query.assert_awaited_once_with("selection")
 
 
-async def test_select_is_persistent_per_user_and_old_buttons_are_gone(setup):
-    service, store, _bridge, *_ = setup
-    item = {
-        "update_id": 1,
-        "callback_query": {
-            "from": {"id": 100},
-            "data": "sheet:10",
-            "message": {"chat": {"id": 100, "type": "private"}},
-        },
-    }
-    reply = await dispatch(setup, item)
-    assert "Лист:" in reply.text
-    assert store.user(100)["sheet_id"] == 10
-    assert store.user(200)["sheet_id"] is None
-    second = Store(service.settings.sheets.state_path)
-    assert second.user(100)["sheet_id"] == 10
-    second.db.close()
-    item["update_id"] = 2
-    item["callback_query"]["data"] = "budget:create"
-    reply = await dispatch(setup, item)
-    assert reply.buttons[0][0]["callback_data"] == "sheet:10"
+async def test_old_buttons_and_sheets_command_cannot_choose_a_destination(setup):
+    _, _, bridge, _, _ = setup
+    for index, data in enumerate(["sheet:20", "budget:create"], 1):
+        reply = await dispatch(
+            setup,
+            {
+                "update_id": index,
+                "callback_query": {
+                    "from": {"id": 100},
+                    "data": data,
+                    "message": {"chat": {"id": 100, "type": "private"}},
+                },
+            },
+        )
+        assert "последний лист" in reply.text
+        assert reply.model_dump().keys() == {"text"}
+    reply = await dispatch(setup, update(3, "/sheets"))
+    assert "последний лист" in reply.text
+    bridge.catalog.assert_not_awaited()
+    bridge.write.assert_not_awaited()
+
+
+async def test_saved_legacy_selection_is_ignored(setup):
+    _, store, bridge, _, _ = setup
+    store.db.execute("ALTER TABLE users ADD COLUMN sheet_id INTEGER")
+    store.db.execute("INSERT INTO users(id,sheet_id) VALUES (100,20)")
+    store.db.commit()
+    await dispatch(setup, update())
+    assert bridge.write.call_args.kwargs["catalog"].id == 10
+
+
+async def test_new_last_sheet_is_used_for_next_expense(setup, catalog):
+    _, _, bridge, ai, _ = setup
+    ai.responses = [result(), result()]
+    await dispatch(setup, update())
+    bridge.sheets.return_value.append(Sheet(id=5, title="Новый период"))
+    bridge.catalog.return_value = catalog.model_copy(update={"id": 5, "title": "Новый период"})
+    await dispatch(setup, update(2))
+    assert [call.kwargs["catalog"].id for call in bridge.write.call_args_list] == [10, 5]
+    assert [call.args[0] for call in bridge.catalog.call_args_list] == [10, 5]
+
+
+async def test_missing_last_sheet_never_writes(setup):
+    _, _, bridge, ai, _ = setup
+    bridge.sheets.return_value = []
+    reply = await dispatch(setup, update())
+    assert "нет доступных" in reply.text
+    assert not ai.calls
+    bridge.write.assert_not_awaited()
 
 
 async def test_expense_is_written_without_confirmation(setup):
-    _service, store, bridge, ai, _ = setup
-    store.select(100, 10)
+    _service, _store, bridge, ai, _ = setup
     reply = await dispatch(setup, update())
     assert "Записано" in reply.text
     assert "1 250,50 RUB" in reply.text
@@ -196,14 +234,13 @@ async def test_expense_is_written_without_confirmation(setup):
 
 
 async def test_retry_after_ambiguous_timeout_uses_identical_prepared_write(setup):
-    service, store, bridge, ai, _ = setup
-    store.select(100, 10)
+    service, _store, bridge, ai, _ = setup
     bridge.write.side_effect = [BridgeError("timeout", retryable=True), {"count": 1}]
     item = update()
     with pytest.raises(BridgeError):
         await dispatch(setup, item)
-    # Even an external sheet switch cannot redirect an in-flight expense.
-    store.select(100, 20)
+    # A newly added sheet cannot redirect a possibly committed expense on retry.
+    bridge.sheets.return_value.append(Sheet(id=30, title="Новый период"))
     reply = await service.handle(item)
     assert "Записано" in reply.text
     assert len(ai.calls) == 1
@@ -213,8 +250,7 @@ async def test_retry_after_ambiguous_timeout_uses_identical_prepared_write(setup
 
 
 async def test_voice_takes_same_path(setup):
-    _, store, bridge, _, asr = setup
-    store.select(100, 10)
+    _, _store, bridge, _, asr = setup
     item = update(text="")
     item["message"]["voice"] = {"file_id": "f", "duration": 4, "file_size": 4}
     reply = await dispatch(setup, item)
@@ -224,8 +260,7 @@ async def test_voice_takes_same_path(setup):
 
 
 async def test_long_or_silent_voice_never_writes(setup):
-    _, store, bridge, _, asr = setup
-    store.select(100, 10)
+    _, _store, bridge, _, asr = setup
     item = update(text="")
     item["message"]["voice"] = {"file_id": "f", "duration": 999}
     assert "секунд" in (await dispatch(setup, item)).text
@@ -239,7 +274,6 @@ async def test_long_or_silent_voice_never_writes(setup):
 
 async def test_clarification_keeps_original_expense(setup):
     _, store, bridge, ai, _ = setup
-    store.select(100, 10)
     ai.responses = [json.dumps({"expenses": [], "clarification": "Сколько потратили?"}), result()]
     reply = await dispatch(setup, update(text="купил продукты"))
     assert "Сколько" in reply.text
@@ -251,15 +285,24 @@ async def test_clarification_keeps_original_expense(setup):
     bridge.write.assert_awaited_once()
 
 
-async def test_cancel_and_sheet_switch_clear_pending(setup):
+async def test_cancel_clears_pending_for_user_without_selection(setup):
     _, store, _, _, _ = setup
-    store.select(100, 10)
     store.pending(100, "старый расход")
     await dispatch(setup, update(text="/cancel"))
     assert store.user(100)["pending"] is None
-    store.pending(100, "старый расход")
-    store.select(100, 20)
+
+
+async def test_new_period_does_not_inherit_old_clarification(setup, catalog):
+    _, store, bridge, ai, _ = setup
+    ai.responses = [json.dumps({"expenses": [], "clarification": "Сколько?"})]
+    await dispatch(setup, update(text="купил продукты"))
+    bridge.sheets.return_value.append(Sheet(id=30, title="Новый период"))
+    bridge.catalog.return_value = catalog.model_copy(update={"id": 30, "title": "Новый период"})
+    reply = await dispatch(setup, update(2, "500"))
+    assert "Пришлите расход целиком" in reply.text
     assert store.user(100)["pending"] is None
+    assert len(ai.calls) == 1
+    bridge.write.assert_not_awaited()
 
 
 async def test_permissions_group_messages_and_edits(setup):
@@ -276,8 +319,7 @@ async def test_permissions_group_messages_and_edits(setup):
 
 
 async def test_invalid_category_and_out_of_period_never_write(setup):
-    _, store, bridge, ai, _ = setup
-    store.select(100, 10)
+    _, _store, bridge, ai, _ = setup
     ai.responses = [result(category="invented"), result(when="2026-08-20")]
     assert "Не записано" in (await dispatch(setup, update())).text
     assert "нет даты" in (await dispatch(setup, update(2))).text
@@ -285,15 +327,13 @@ async def test_invalid_category_and_out_of_period_never_write(setup):
 
 
 async def test_changed_layout_is_rejected_without_success(setup):
-    _, store, bridge, _, _ = setup
-    store.select(100, 10)
+    _, _store, bridge, _, _ = setup
     bridge.write.side_effect = BridgeError("Структура листа изменилась")
     assert "Не записано" in (await dispatch(setup, update())).text
 
 
 async def test_multiple_expenses_single_atomic_request(setup):
-    _, store, bridge, ai, _ = setup
-    store.select(100, 10)
+    _, _store, bridge, ai, _ = setup
     body = json.loads(result())
     body["expenses"].append({**body["expenses"][0], "amount_minor": 20000})
     ai.responses = [json.dumps(body)]
@@ -379,8 +419,7 @@ async def test_asr_json_format_for_transcribe_model(monkeypatch):
 
 
 async def test_relative_date_uses_original_message_across_midnight(setup):
-    _, store, _, ai, _ = setup
-    store.select(100, 10)
+    _, _store, _, ai, _ = setup
     ai.responses = [json.dumps({"expenses": [], "clarification": "Сколько?"}), result()]
     first = update(text="вчера продукты")
     await dispatch(setup, first)

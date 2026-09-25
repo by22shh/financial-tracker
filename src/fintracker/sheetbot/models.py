@@ -35,4 +35,3 @@ class Extraction(BaseModel):
 
 class Reply(BaseModel):
     text: str
-    buttons: list[list[dict[str, str]]] = Field(default_factory=list)

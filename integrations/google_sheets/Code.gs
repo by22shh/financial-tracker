@@ -34,7 +34,7 @@ function doPost(e) {
     } else {
       const sheet = book.getSheets().find(s => s.getSheetId() === input.sheet_id);
       if (!sheet || sheet.isSheetHidden() || sheet.getName() === JOURNAL) {
-        fail_('Лист недоступен. Выберите другой через /sheets.');
+        fail_('Лист недоступен. Проверьте последний лист таблицы и повторите расход.');
       }
       if (input.action === 'catalog') result = publicCatalog_(catalog_(book, sheet));
       else if (input.action === 'write') result = write_(book, sheet, input);
@@ -160,9 +160,13 @@ function write_(book, sheet, input) {
     if (row[0] !== fingerprint) fail_('Это сообщение уже записано. Повтор с другой суммой отклонён.');
     return JSON.parse(row[1]);
   }
+  const latest = book.getSheets().filter(s => !s.isSheetHidden() && s.getName() !== JOURNAL).pop();
+  if (!latest || latest.getSheetId() !== sheet.getSheetId()) {
+    fail_('Последний лист изменился. Повторите расход — он попадёт в новый лист.');
+  }
   const catalog = catalog_(book, sheet);
   if (catalog.revision !== input.revision) {
-    fail_('Структура листа изменилась. Выберите лист заново и повторите расход.');
+    fail_('Структура листа изменилась. Повторите расход.');
   }
   const totals = {};
   input.expenses.forEach(expense => {

@@ -15,14 +15,11 @@ async def check(settings: BotSettings) -> int:
         print("Не настроено: " + ", ".join(missing))
         return 1
     bridge = SheetsBridge(settings.sheets)
-    sheets = await bridge.sheets()
-    if not sheets:
-        print("В таблице нет доступных листов.")
-        return 1
-    for sheet in sheets:
-        catalog = await bridge.catalog(sheet.id)
-        print(f"Лист {sheet.title}: {len(catalog.categories)} категорий, {len(catalog.dates)} дней")
-    print(f"Связь с таблицей работает. Доступных листов: {len(sheets)}")
+    catalog = await bridge.latest_catalog()
+    print(
+        f"Последний лист {catalog.title}: "
+        f"{len(catalog.categories)} категорий, {len(catalog.dates)} дней"
+    )
     return 0
 
 
