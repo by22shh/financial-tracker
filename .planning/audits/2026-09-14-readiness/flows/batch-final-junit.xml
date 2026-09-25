@@ -1,8 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="1" time="2.001" timestamp="2026-09-14T02:07:14.433751+07:00" hostname="Bayramov-N-mb"><testcase classname=".planning.audits.2026-09-14-readiness.flows.test_flow_readiness" name="test_confirm_incomplete_batch_never_partially_posts" time="1.931"><failure message="AssertionError: ('У кандидата нет суммы или даты&#10;  Запись не проведена, черновик сохранён.', [UUID('18241d22-0c6f-4e63-acd6-ab52ffa019b4')], ['needs_clarification', 'posted'])&#10;assert [UUID('18241d...b52ffa019b4')] == []&#10;  &#10;  Left contains one more item: UUID('18241d22-0c6f-4e63-acd6-ab52ffa019b4')&#10;  Use -v to get more diff">.planning/audits/2026-09-14-readiness/flows/test_flow_readiness.py:299: in test_confirm_incomplete_batch_never_partially_posts
-    assert transactions == [], (user.text(), transactions, states)
-E   AssertionError: ('У кандидата нет суммы или даты
-E     Запись не проведена, черновик сохранён.', [UUID('18241d22-0c6f-4e63-acd6-ab52ffa019b4')], ['needs_clarification', 'posted'])
-E   assert [UUID('18241d...b52ffa019b4')] == []
-E     
-E     Left contains one more item: UUID('18241d22-0c6f-4e63-acd6-ab52ffa019b4')
-E     Use -v to get more diff</failure></testcase></testsuite></testsuites>

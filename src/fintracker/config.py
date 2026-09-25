@@ -1,61 +1,18 @@
-"""Конфигурация приложения без секретов в коде (ADR-13, OPS-03).
-
-Значения читаются из переменных окружения с префиксом ``FINTRACKER_``.
-Профиль AI фиксирован ADR-17 и валидируется: скрытая подмена модели,
-effort, провайдера или тарифного режима невозможна.
-"""
+"""Shared Telegram and AI provider settings."""
 
 from __future__ import annotations
 
 from decimal import Decimal
-from enum import StrEnum
-from functools import lru_cache
-from pathlib import Path
-from typing import Annotated, Literal
+from typing import Literal
 
-from pydantic import Field, SecretStr, field_validator, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import SecretStr, field_validator, model_validator
+from pydantic_settings import BaseSettings
 
-# --- Зафиксированный профиль AI приложения (ADR-17) -------------------------
 AI_PROFILE_VERSION = "ai-profile-1"
 REQUIRED_AI_MODEL = "gpt-5.6-luna"
 REQUIRED_AI_EFFORT = "medium"
 REQUIRED_AI_SERVICE_TIER = "default"
 REQUIRED_AI_BASE_URL = "https://api.openai.com/v1"
-
-
-class Environment(StrEnum):
-    DEV = "dev"
-    TEST = "test"
-    PROD = "prod"
-
-
-class DatabaseSettings(BaseSettings):
-    """DSN раздельных ролей: владелец схемы отделён от runtime ролей (SEC-02)."""
-
-    owner_dsn: str = "postgresql+psycopg://fintracker_owner:devpassword@localhost:55432/fintracker"
-    api_dsn: str = "postgresql+psycopg://fintracker_api:devpassword@localhost:55432/fintracker"
-    worker_dsn: str = (
-        "postgresql+psycopg://fintracker_worker:devpassword@localhost:55432/fintracker"
-    )
-    api_pool_size: int = 5
-    api_max_overflow: int = 2
-    worker_pool_size: int = 5
-    worker_max_overflow: int = 2
-    scheduler_pool_size: int = 2
-    scheduler_max_overflow: int = 0
-    echo_sql: bool = False
-
-    @property
-    def total_runtime_connections(self) -> int:
-        return (
-            self.api_pool_size
-            + self.api_max_overflow
-            + self.worker_pool_size
-            + self.worker_max_overflow
-            + self.scheduler_pool_size
-            + self.scheduler_max_overflow
-        )
 
 
 class TelegramSettings(BaseSettings):
@@ -79,11 +36,6 @@ class TelegramSettings(BaseSettings):
     def allowlist_ids(self) -> frozenset[int]:
         raw = self.creation_allowlist.replace(";", ",").split(",")
         return frozenset(int(item) for item in (part.strip() for part in raw) if item.isdigit())
-
-    def may_create_workspace(self, telegram_user_id: int) -> bool:
-        if self.creation_mode == "open":
-            return True
-        return telegram_user_id in self.allowlist_ids
 
 
 class AISettings(BaseSettings):
@@ -179,111 +131,6 @@ class ASRSettings(BaseSettings):
         return self.provider != "none"
 
 
-class StorageSettings(BaseSettings):
-    backend: Literal["filesystem", "s3"] = "filesystem"
-    root: Path = Path("./var/objects")
-    s3_endpoint: str = ""
-    s3_bucket: str = "fintracker"
-    s3_access_key: SecretStr = SecretStr("")
-    s3_secret_key: SecretStr = SecretStr("")
-
-
-class SecurityLogSettings(BaseSettings):
-    """Независимый журнал изменений доступа (ADR-14, SEC-10)."""
-
-    backend: Literal["filesystem", "s3"] = "filesystem"
-    root: Path = Path("./var/security-log")
-    s3_endpoint: str = ""
-    s3_bucket: str = "fintracker-security-log"
-    s3_access_key: SecretStr = SecretStr("")
-    s3_secret_key: SecretStr = SecretStr("")
-
-
-class SecretsSettings(BaseSettings):
-    invite_hmac_key: SecretStr = SecretStr("change-me-invite-key")
-    invite_hmac_key_version: int = 1
-    cursor_hmac_key: SecretStr = SecretStr("change-me-cursor-key")
-
-
-class LimitsSettings(BaseSettings):
-    lock_timeout_ms: int = 2000
-    statement_timeout_ms: int = 5000
-    report_statement_timeout_ms: int = 10000
-    batch_statement_timeout_ms: int = 60000
-    idle_in_transaction_timeout_ms: int = 10000
-    max_attachment_bytes: int = 15 * 1024 * 1024
-    max_image_pixels: int = 40_000_000
-    max_image_side: int = 16_384
-    max_album_files: int = 10
-    max_album_bytes: int = 60 * 1024 * 1024
-    max_import_rows: int = 5000
-    max_merge_transactions: int = 5000
-    max_note_chars: int = 2000
-    draft_ttl_days: int = 7
-    invite_default_ttl_days: int = 7
-    invite_default_max_uses: int = 10
-    invite_attempts_per_window: int = 5
-    invite_attempt_window_minutes: int = 15
-    proactive_messages_per_day: int = 2
-    quiet_hours_start: int = 22
-    quiet_hours_end: int = 9
-    job_lease_seconds: int = 120
-    job_lease_renew_seconds: int = 30
-    job_max_attempts: int = 6
-    interactive_parse_deadline_minutes: int = 10
-    delivery_max_age_hours: int = 24
-
-
 class ObservabilitySettings(BaseSettings):
     log_level: str = "INFO"
     log_format: Literal["json", "console"] = "json"
-
-
-class Settings(BaseSettings):
-    model_config = SettingsConfigDict(
-        env_prefix="FINTRACKER_",
-        env_nested_delimiter="__",
-        env_file=".env",
-        env_file_encoding="utf-8",
-        extra="ignore",
-    )
-
-    env: Environment = Environment.DEV
-    app_name: str = "fintracker"
-    db: Annotated[DatabaseSettings, Field(default_factory=DatabaseSettings)]
-    telegram: Annotated[TelegramSettings, Field(default_factory=TelegramSettings)]
-    ai: Annotated[AISettings, Field(default_factory=AISettings)]
-    asr: Annotated[ASRSettings, Field(default_factory=ASRSettings)]
-    storage: Annotated[StorageSettings, Field(default_factory=StorageSettings)]
-    security_log: Annotated[SecurityLogSettings, Field(default_factory=SecurityLogSettings)]
-    secrets: Annotated[SecretsSettings, Field(default_factory=SecretsSettings)]
-    limits: Annotated[LimitsSettings, Field(default_factory=LimitsSettings)]
-    observability: Annotated[ObservabilitySettings, Field(default_factory=ObservabilitySettings)]
-
-    @model_validator(mode="after")
-    def _check_production(self) -> Settings:
-        if self.env is Environment.PROD:
-            weak = {"change-me-invite-key", "change-me-cursor-key", ""}
-            if self.secrets.invite_hmac_key.get_secret_value() in weak:
-                raise ValueError("В prod нужен настоящий INVITE_HMAC_KEY")
-            if self.secrets.cursor_hmac_key.get_secret_value() in weak:
-                raise ValueError("В prod нужен настоящий CURSOR_HMAC_KEY")
-            if not self.telegram.configured:
-                raise ValueError("В prod нужен TELEGRAM_BOT_TOKEN")
-            if not self.telegram.webhook_secret.get_secret_value():
-                raise ValueError("В prod нужен секрет webhook, отдельный от токена бота")
-        # ADR-12: суммарный бюджет runtime соединений не более 30.
-        if self.db.total_runtime_connections > 30:
-            raise ValueError(
-                f"Суммарный предел runtime соединений {self.db.total_runtime_connections} > 30"
-            )
-        return self
-
-
-@lru_cache(maxsize=1)
-def get_settings() -> Settings:
-    return Settings()
-
-
-def reset_settings_cache() -> None:
-    get_settings.cache_clear()

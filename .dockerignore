@@ -1,0 +1,8 @@
+.git
+.env
+.venv
+.research-private
+.planning
+var
+tests
+__pycache__

@@ -1,0 +1,23 @@
+name: fintracker-sheets
+services:
+  bot:
+    image: ${FINTRACKER_SHEETS_IMAGE:?Set the release image}
+    command: [poll]
+    init: true
+    restart: unless-stopped
+    env_file: /opt/fintracker/env/sheets.env
+    environment:
+      FINTRACKER_SHEETS__STATE_PATH: /var/lib/fintracker/sheetbot.sqlite3
+    volumes:
+      - sheetstate:/var/lib/fintracker
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    mem_limit: 384m
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+volumes:
+  sheetstate:

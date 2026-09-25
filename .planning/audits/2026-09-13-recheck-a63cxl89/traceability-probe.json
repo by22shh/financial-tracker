@@ -1,6 +1,0 @@
-{
-  "scope": "A01 verification points to nonexistent test node and nonexistent evidence",
-  "exit_code": 0,
-  "stdout": "Прослеживаемость в порядке. Требований: 500. Статусы: {'verified': 483, 'planned': 8, 'blocked': 7, 'implemented': 2}",
-  "restored": true
-}

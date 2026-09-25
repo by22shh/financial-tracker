@@ -70,7 +70,7 @@ class OpenAIAsrProvider:
         data = {
             "model": self._settings.model,
             "language": language,
-            "response_format": "verbose_json",
+            "response_format": "verbose_json" if self._settings.model == "whisper-1" else "json",
         }
         headers = {"Authorization": f"Bearer {self._settings.api_key.get_secret_value()}"}
         try:

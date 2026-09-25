@@ -1,8 +1,0 @@
-{
-  "image": "sha256:1da2b1e48efc60668e4ff384ff42372e3da4d5ac84fe46326d40a30057cd6483 2026-09-13T17:15:19.650371844Z",
-  "image_exit": 0,
-  "embedded_schema": "0010_input",
-  "schema_exit": 0,
-  "source_schema": "0011_reply",
-  "note": "Read-only inspection of user-provided local image; image not rebuilt, no external network."
-}
