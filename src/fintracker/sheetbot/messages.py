@@ -39,6 +39,37 @@ HELP = (
     "«Отменить ввод» — выйти из уточнения или исправления."
 )
 
+GROUP_EMOJIS = {
+    "AI + окружение для работы": "🤖",
+    "DDX Зал Абонемент Тренер": "🏋️",
+    "Врачи": "🩺",
+    "Вредные привычки": "🚬",
+    "Дом": "🏡",
+    "Досуг": "🎟️",
+    "Другое": "📎",
+    "Квартира": "🏠",
+    "Квартира Ставрополь": "🏘️",
+    "Косметика": "💄",
+    "Лекарства": "💊",
+    "Машина": "🚗",
+    "Накопления": "💰",
+    "Ниджат DDX Зал Абонемент": "🏋️",
+    "Одежда": "👕",
+    "Подарки": "🎁",
+    "Подписки": "🔁",
+    "Продукты питания": "🛒",
+    "Рестораны": "🍽️",
+    "Родители": "👪",
+    "Связь (телефон, интернет)": "📱",
+    "Софа DDX Зал Абонемент": "🏋️",
+    "Софа Epoque Пилатес Абонемент": "🧘",
+    "Софа Репетитор Турецкий": "📖",
+    "Спортивное питание": "🥤",
+    "Транспорт": "🚕",
+    "Уход за собой": "🧴",
+    "Шанелька": "🐾",
+}
+
 
 def formatted(text: str) -> Reply:
     """Use only for trusted HTML assembled in this module."""
@@ -118,7 +149,11 @@ def money(minor: int, currency: str) -> str:
 
 
 def summary_message(data: dict[str, Any], currency: str, *, scope: ReportScope) -> Reply:
-    rows = sorted(data["categories"], key=lambda row: row["amount_minor"], reverse=True)
+    groups: dict[str, list[tuple[str | None, int]]] = {}
+    for row in data["categories"]:
+        parent, separator, child = row["label"].partition(" / ")
+        groups.setdefault(parent, []).append((child if separator else None, row["amount_minor"]))
+    ranked = sorted(groups.items(), key=lambda group: -sum(amount for _, amount in group[1]))
     heading = {
         "today": "Расходы за день",
         "yesterday": "Расходы за день",
@@ -133,17 +168,29 @@ def summary_message(data: dict[str, Any], currency: str, *, scope: ReportScope) 
         f"💸 <b>Всего: {escape(money(data['total_minor'], currency))}</b>",
     ]
     categories = []
-    for row in rows[:15]:
-        label = row["label"][:80]
-        parent, separator, child = label.partition(" / ")
-        amount = f"<b>{escape(money(row['amount_minor'], currency))}</b>"
-        if separator and child:
-            categories.append(f"<b>{escape(parent)}</b>\n└ {escape(child)} — {amount}")
-        else:
-            categories.append(f"<b>{escape(label)}</b> — {amount}")
-    if len(rows) > 15:
-        rest = sum(row["amount_minor"] for row in rows[15:])
-        categories.append(f"<b>Остальные категории</b> — <b>{escape(money(rest, currency))}</b>")
+    for parent, entries in ranked[:15]:
+        entries.sort(key=lambda entry: -entry[1])
+        group_total = sum(amount for _, amount in entries)
+        heading = f"{GROUP_EMOJIS.get(parent, '📁')} <b>{escape(parent[:80])}</b>"
+        if len(entries) == 1 and entries[0][0] is None:
+            categories.append(f"{heading} — <b>{escape(money(group_total, currency))}</b>")
+            continue
+        if len(entries) > 1:
+            heading += f" · <b>{escape(money(group_total, currency))}</b>"
+        children = []
+        for index, (child, amount) in enumerate(entries[:4]):
+            branch = "└" if index == len(entries) - 1 else "├"
+            name = child or "Без подкатегории"
+            children.append(
+                f"{branch} {escape(name[:80])} — <b>{escape(money(amount, currency))}</b>"
+            )
+        if len(entries) > 4:
+            rest = sum(amount for _, amount in entries[4:])
+            children.append(f"└ Остальные подкатегории — <b>{escape(money(rest, currency))}</b>")
+        categories.append(heading + "\n" + "\n".join(children))
+    if len(ranked) > 15:
+        rest = sum(amount for _, entries in ranked[15:] for _, amount in entries)
+        categories.append(f"📁 <b>Остальные категории</b> — <b>{escape(money(rest, currency))}</b>")
     if categories:
         blocks.append("📂 <b>По категориям</b>\n" + "\n\n".join(categories))
     return formatted("\n\n".join(blocks))

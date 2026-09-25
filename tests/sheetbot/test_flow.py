@@ -18,6 +18,7 @@ from fintracker.sheetbot.bridge import BridgeError, SheetsBridge
 from fintracker.sheetbot.config import BotSettings, SheetsSettings
 from fintracker.sheetbot.extraction import extract
 from fintracker.sheetbot.menu import CANCEL, HELP, NEW_PERIOD, PERIOD, ROWS, TODAY, WEEK
+from fintracker.sheetbot.messages import summary_message
 from fintracker.sheetbot.models import Catalog, Category, CategoryStatus, ReportRequest, Sheet
 from fintracker.sheetbot.runtime import consume, receive
 from fintracker.sheetbot.service import SheetBot
@@ -707,6 +708,28 @@ async def test_reports_use_sheet_values_not_ai_arithmetic_and_do_not_write(setup
     assert len(bridge.summary.call_args.kwargs["dates"]) == 2
     assert len(ai.calls) == 1
     bridge.write.assert_not_awaited()
+
+
+def test_summary_groups_subcategories_without_repeating_the_parent():
+    reply = summary_message(
+        {
+            "from": "2026-09-25",
+            "to": "2026-09-25",
+            "total_minor": 37100,
+            "categories": [
+                {"label": "Продукты питания / Супермаркеты", "amount_minor": 20000},
+                {"label": "Дом", "amount_minor": 3100},
+                {"label": "Продукты питания / Доставка", "amount_minor": 14000},
+            ],
+        },
+        "RUB",
+        scope="today",
+    )
+    assert reply.text.count("Продукты питания") == 1
+    assert "🛒 <b>Продукты питания</b> · <b>340 ₽</b>" in reply.text
+    assert "├ Супермаркеты — <b>200 ₽</b>" in reply.text
+    assert "└ Доставка — <b>140 ₽</b>" in reply.text
+    assert "\n\n🏡 <b>Дом</b> — <b>31 ₽</b>" in reply.text
 
 
 async def test_period_offer_requires_button_and_survives_retry(setup, catalog):
