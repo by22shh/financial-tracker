@@ -35,7 +35,11 @@ function harness({start = '2026-08-10', header, rows, cells = {}} = {}) {
   const context = vm.createContext({
     console, Date,
     PropertiesService: {getScriptProperties: () => ({getProperty: name => name === 'SHEET_START_DATES' ? JSON.stringify({'10': start}) : null})},
-    Utilities: {DigestAlgorithm: {SHA_256: 'sha256'}, computeDigest: (_, text) => Array.from(crypto.createHash('sha256').update(text).digest())},
+    Utilities: {DigestAlgorithm: {SHA_256: 'sha256'}, Charset: {UTF_8: 'UTF-8'},
+      computeDigest: (_, text, charset) => {
+        assert.equal(charset, 'UTF-8');
+        return Array.from(crypto.createHash('sha256').update(text, 'utf8').digest());
+      }},
     Sheets: {Spreadsheets: {batchUpdate(body, id) {
       assert.equal(id, 'book');
       if (state.fail) throw new Error('timeout');
@@ -77,6 +81,14 @@ test('month/year rollover and impossible days are handled', () => {
   const september = harness({start: '2026-09-10'});
   assert(!september.catalog.dates.includes('2026-09-31'));
   assert(september.catalog.dates.includes('2026-10-01'));
+});
+
+test('equal-length Cyrillic category names have distinct UTF-8 identifiers', () => {
+  const h = harness({rows: [[1,'Родители','','Пенсия'], ['','','','Другое'], ['Итого','','','']]});
+  assert.notEqual(h.catalog.categories[0].id, h.catalog.categories[1].id);
+  for (const category of h.catalog.categories) {
+    assert.equal(category.id, crypto.createHash('sha256').update(category.label, 'utf8').digest('hex').slice(0, 24));
+  }
 });
 
 test('duplicate category labels, invalid headers and missing totals fail closed', () => {

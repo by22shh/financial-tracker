@@ -50,7 +50,7 @@ function doPost(e) {
 }
 
 function hash_(text) {
-  return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, text)
+  return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, text, Utilities.Charset.UTF_8)
     .map(b => ('0' + ((b + 256) % 256).toString(16)).slice(-2)).join('');
 }
 

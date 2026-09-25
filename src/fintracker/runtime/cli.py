@@ -14,7 +14,14 @@ async def check(settings: BotSettings) -> int:
     if missing:
         print("Не настроено: " + ", ".join(missing))
         return 1
-    sheets = await SheetsBridge(settings.sheets).sheets()
+    bridge = SheetsBridge(settings.sheets)
+    sheets = await bridge.sheets()
+    if not sheets:
+        print("В таблице нет доступных листов.")
+        return 1
+    for sheet in sheets:
+        catalog = await bridge.catalog(sheet.id)
+        print(f"Лист {sheet.title}: {len(catalog.categories)} категорий, {len(catalog.dates)} дней")
     print(f"Связь с таблицей работает. Доступных листов: {len(sheets)}")
     return 0
 

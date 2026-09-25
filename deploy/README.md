@@ -16,7 +16,7 @@ bash deploy/release.sh YOUR_SSH_ALIAS
 ```
 
 The script uploads exactly `HEAD`, builds an image tagged with its commit, checks the
-sheet connection and Telegram authentication, then stops the legacy api/worker/scheduler/
+sheet connection, category/date catalogs and Telegram authentication, then stops the legacy api/worker/scheduler/
 polling processes and starts the new bot. If validation fails, no processes are switched.
 If startup fails after switching, the script attempts to restore the previous processes.
 A webhook must be disabled before using polling; the script refuses to remove one silently.
@@ -35,3 +35,8 @@ docker compose --env-file image.env -f compose.sheets.yml logs --tail=30 bot
 
 Readiness checks do not validate AI quality or perform a financial write. Test the full
 text/voice flow on a dedicated worksheet before recording real expenses.
+
+For an Apps Script write smoke test, add `integrations/google_sheets/Verify.gs` to the
+project and run `verifyDeployment` in the editor. It creates a temporary worksheet,
+checks decimal addition, preservation of formulas and duplicate delivery, then removes
+its worksheet and receipt. It never writes to existing expense worksheets.
