@@ -74,7 +74,6 @@ def receipt(
         lines = [
             f"💸 <b>{escape(money(expense.amount_minor, currency))}</b>",
             f"📂 {escape(label)}",
-            f"📅 {expense.date:%d.%m.%Y}",
         ]
         status = statuses.get(expense.category_id)
         if status:
@@ -91,8 +90,8 @@ def receipt(
             )
         else:
             lines.append("📊 Итог и план временно недоступны")
+        lines.append(f"📅 {expense.date:%d.%m.%Y}")
         blocks.append("\n".join(lines))
-    blocks.append(f"📊 Лист «{escape(catalog.title[:100])}»")
     return formatted("\n\n".join(blocks))
 
 

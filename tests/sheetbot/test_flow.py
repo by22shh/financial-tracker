@@ -268,8 +268,9 @@ async def test_formatted_responses_escape_external_text_and_survive_retry(setup,
     item = update()
     reply = await dispatch(setup, item)
     assert reply.parse_mode == "HTML"
-    assert "&lt;лист&gt; &amp; отчёт" in reply.text
+    assert "&lt;лист&gt; &amp; отчёт" not in reply.text
     assert "&lt;бар&gt; &amp; чай" in reply.text
+    assert reply.text.endswith("📅 25.09.2026")
     assert await service.handle(item) == reply
 
     ai.responses = [json.dumps({"expenses": [], "clarification": "Сколько за <кофе> & чай?"})]
