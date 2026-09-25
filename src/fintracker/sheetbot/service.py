@@ -214,6 +214,7 @@ class SheetBot:
         if any(
             self.signature(old) == signature for old in self.store.recent(user_id, message["date"])
         ):
+            self.store.pending(user_id, None)
             self.store.save_prompt(event_id, user_id, "duplicate", prepared)
             return voice_preview(
                 with_buttons(

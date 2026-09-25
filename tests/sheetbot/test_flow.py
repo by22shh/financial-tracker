@@ -775,3 +775,15 @@ async def test_voice_edit_and_ambiguous_correction_keep_single_expense_context(s
     assert "Исправь сумму" in context["text"]
     assert "350 рублей" in context["text"]
     assert store.user(100)["pending"] is None
+
+
+async def test_duplicate_offer_finishes_previous_clarification(setup):
+    _, store, bridge, ai, _ = setup
+    ai.responses = [result(), json.dumps({"expenses": [], "clarification": "Сумма?"}), result()]
+    await dispatch(setup, update())
+    await dispatch(setup, update(2, "Продукты"))
+    assert store.user(100)["pending"] is not None
+    reply = await dispatch(setup, update(3, "1250,50"))
+    assert "Похожая трата" in reply.text
+    assert store.user(100)["pending"] is None
+    bridge.write.assert_awaited_once()
