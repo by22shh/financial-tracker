@@ -1,3 +1,5 @@
+import asyncio
+import contextlib
 import io
 import json
 from datetime import date
@@ -5,6 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from aiogram.types import Update
 from pydantic import SecretStr
 
 from fintracker.config import ASRSettings, TelegramSettings
@@ -15,6 +18,7 @@ from fintracker.sheetbot.bridge import BridgeError, SheetsBridge
 from fintracker.sheetbot.config import BotSettings, SheetsSettings
 from fintracker.sheetbot.extraction import extract
 from fintracker.sheetbot.models import Catalog, Category, Sheet
+from fintracker.sheetbot.runtime import consume, receive
 from fintracker.sheetbot.service import SheetBot
 from fintracker.sheetbot.store import Store
 
@@ -93,6 +97,67 @@ async def test_start_only_offers_worksheets(setup):
     reply = await dispatch(setup, update(text="/start"))
     assert [row[0]["callback_data"] for row in reply.buttons] == ["sheet:10", "sheet:20"]
     assert "бюджет" not in reply.text.lower()
+
+
+async def test_real_telegram_updates_survive_inbox_and_receive_replies(setup):
+    service, store, bridge, ai, asr = setup
+    sender = {"id": 100, "is_bot": False, "first_name": "Test"}
+    start = update(text="/start")
+    start["message"]["from"] = sender
+    selection = {
+        "update_id": 2,
+        "callback_query": {
+            "id": "selection",
+            "from": sender,
+            "chat_instance": "test",
+            "data": "sheet:10",
+            "message": start["message"],
+        },
+    }
+    text = update(number=3)
+    text["message"]["from"] = sender
+    voice = update(number=4)
+    voice["message"]["from"] = sender
+    del voice["message"]["text"]
+    voice["message"]["voice"] = {
+        "file_id": "voice",
+        "file_unique_id": "unique",
+        "duration": 4,
+        "file_size": 4,
+    }
+    updates = [Update.model_validate(item) for item in [start, selection, text, voice]]
+    ai.responses = [result(), result()]
+    bot = service.bot
+    bot.get_updates = AsyncMock(side_effect=[updates, asyncio.CancelledError()])
+    bot.answer_callback_query = AsyncMock()
+    with pytest.raises(asyncio.CancelledError):
+        await receive(bot, store)
+
+    sent = []
+    complete = asyncio.Event()
+
+    async def send(chat_id, reply, **kwargs):
+        sent.append((chat_id, reply, kwargs))
+        if len(sent) == 4:
+            complete.set()
+
+    bot.send_message = AsyncMock(side_effect=send)
+    worker = asyncio.create_task(consume(bot, store, service))
+    try:
+        await asyncio.wait_for(complete.wait(), timeout=2)
+    finally:
+        worker.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await worker
+
+    assert all(chat_id == 100 for chat_id, _, _ in sent)
+    assert sent[0][2]["reply_markup"].inline_keyboard[0][0].callback_data == "sheet:10"
+    assert sent[1][1].startswith("Лист:")
+    assert all(reply.startswith("Записано") for _, reply, _ in sent[2:])
+    assert bridge.write.await_count == 2
+    assert asr.calls == 1
+    assert store.next_event() is None
+    bot.answer_callback_query.assert_awaited_once_with("selection")
 
 
 async def test_select_is_persistent_per_user_and_old_buttons_are_gone(setup):

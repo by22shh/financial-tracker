@@ -69,7 +69,8 @@ async def receive(bot: Bot, store: Store) -> None:
                 offset=store.offset(), timeout=25, allowed_updates=["message", "callback_query"]
             )
             for update in updates:
-                store.enqueue(update.model_dump(mode="json", exclude_none=True))
+                # Handlers read Telegram wire names ("from"), not aiogram's "from_user".
+                store.enqueue(update.model_dump(mode="json", exclude_none=True, by_alias=True))
                 if update.callback_query:
                     with contextlib.suppress(Exception):
                         await bot.answer_callback_query(update.callback_query.id)
