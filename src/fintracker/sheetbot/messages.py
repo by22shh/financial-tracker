@@ -4,7 +4,7 @@ from datetime import date
 from html import escape
 from typing import Any
 
-from fintracker.sheetbot.models import Catalog, Expense, Reply
+from fintracker.sheetbot.models import Catalog, Expense, Reply, ReportScope
 
 WELCOME = (
     "👋 <b>Привет! Я помогу записывать расходы.</b>\n\n"
@@ -16,7 +16,8 @@ WELCOME = (
     "📊 <b>Всё — в последний лист</b>\n"
     "Выбирать ничего не нужно. Когда появится новая вкладка, "
     "следующие расходы пойдут в неё.\n\n"
-    "<b>Начнём?</b> Пришлите первую трату."
+    "<b>Начнём?</b> Пришлите первую трату.\n\n"
+    "👇 Сводки и помощь — на кнопках под полем сообщения."
 )
 
 HELP = (
@@ -31,11 +32,11 @@ HELP = (
     "✏️ Под квитанцией можно изменить или отменить отдельную трату.\n"
     "Исправленные категории запоминаю для следующих покупок.\n\n"
     "📊 Спросите: «Сколько потратил сегодня?» или «Расходы на продукты за период».\n\n"
-    "/today — расходы за сегодня\n"
-    "/summary — сводка периода\n"
-    "/period — новый период по шаблону\n"
-    "/cancel — отменить текущий ввод\n"
-    "/help — открыть подсказку"
+    "👇 <b>Меню под полем сообщения</b>\n"
+    "«Сегодня», «За неделю», «За весь период» — сводки расходов.\n"
+    "Неделя — последние 7 дней, включая сегодня, в пределах рабочего листа.\n"
+    "«Новый период» — создать следующий лист по шаблону.\n"
+    "«Отменить ввод» — выйти из уточнения или исправления."
 )
 
 
@@ -53,7 +54,7 @@ def clarification(question: str) -> Reply:
         "💬 <b>Нужно уточнение</b>\n\n"
         f"{escape(question[:1800])}\n\n"
         "Ответьте следующим сообщением.\n"
-        "/cancel — отменить этот расход"
+        "Чтобы выйти без записи, нажмите «✖️ Отменить ввод» в меню."
     )
 
 
@@ -96,14 +97,19 @@ def money(minor: int, currency: str) -> str:
     return value + " " + {"RUB": "₽", "USD": "$", "EUR": "€"}.get(currency, currency[:12])
 
 
-def summary_message(data: dict[str, Any], currency: str, *, entire_period: bool) -> Reply:
+def summary_message(data: dict[str, Any], currency: str, *, scope: ReportScope) -> Reply:
     rows = sorted(data["categories"], key=lambda row: row["amount_minor"], reverse=True)
-    heading = "Расходы за весь период" if entire_period else "Расходы за день"
+    heading = {
+        "today": "Расходы за день",
+        "yesterday": "Расходы за день",
+        "week": "Расходы за неделю",
+        "period": "Расходы за весь период",
+    }[scope]
     start = date.fromisoformat(data["from"]).strftime("%d.%m.%Y")
     end = date.fromisoformat(data["to"]).strftime("%d.%m.%Y")
     lines = [
         f"📊 <b>{heading}</b>",
-        f"📅 {start} — {end}" if entire_period else f"📅 {start}",
+        f"📅 {start} — {end}" if scope in {"week", "period"} else f"📅 {start}",
         f"Всего: <b>{escape(money(data['total_minor'], currency))}</b>",
     ]
     for row in rows[:15]:

@@ -13,6 +13,7 @@ from fintracker.infra.asr.provider import AsrProvider
 from fintracker.sheetbot.bridge import BridgeError, SheetsBridge
 from fintracker.sheetbot.config import BotSettings
 from fintracker.sheetbot.extraction import extract
+from fintracker.sheetbot.menu import ACTIONS, REPORT_SCOPES
 from fintracker.sheetbot.messages import (
     HELP,
     WELCOME,
@@ -79,7 +80,9 @@ class SheetBot:
         if query:
             return await self.callback(event_id, user_id, query)
         text = (message.get("text") or "").strip()
-        command = text.split()[0].split("@")[0] if text.startswith("/") else ""
+        command = ACTIONS.get(text, "")
+        if not command and text.startswith("/"):
+            command = text.split()[0].split("@")[0]
         user = self.store.user(user_id)
         if command == "/start":
             return formatted(WELCOME)
@@ -87,10 +90,8 @@ class SheetBot:
             return formatted(HELP)
         if command == "/cancel":
             self.store.pending(user_id, None)
-            return notice(
-                "👌 Уточнение отменено", "Пришлите следующий расход — текстом или голосом."
-            )
-        if command in {"/today", "/summary", "/period"}:
+            return notice("👌 Ввод отменён", "Пришлите следующий расход — текстом или голосом.")
+        if command in {"/today", "/week", "/summary", "/period"}:
             catalog = await self.bridge.latest_catalog()
             reference = self.reference(message)
             if command == "/period":
@@ -98,7 +99,7 @@ class SheetBot:
             return await self.report(
                 catalog,
                 reference,
-                ReportRequest(scope="today" if command == "/today" else "period"),
+                ReportRequest(scope=REPORT_SCOPES[command]),
             )
         if command:
             return formatted(HELP)
@@ -256,22 +257,30 @@ class SheetBot:
 
     async def report(self, catalog: Catalog, reference: date, request: ReportRequest) -> Reply:
         target = reference - timedelta(days=request.scope == "yesterday")
-        if request.scope != "period" and target not in catalog.dates:
+        if request.scope in {"today", "yesterday"} and target not in catalog.dates:
             return notice(
                 "📊 Эта дата вне текущего периода",
                 f"На последнем листе «{catalog.title}» нет даты {target:%d.%m.%Y}. "
-                "Посмотреть весь период: /summary. Создать новый: /period.",
+                "Нажмите «За весь период» или «Новый период» в меню.",
             )
-        dates = catalog.dates if request.scope == "period" else [target]
+        if request.scope == "week":
+            start = reference - timedelta(days=6)
+            dates = sorted(d for d in catalog.dates if start <= d <= reference)
+            if not dates:
+                return notice(
+                    "📊 Неделя вне рабочего периода",
+                    "На последнем листе нет дат за последние 7 дней. "
+                    "Нажмите «За весь период» или «Новый период» в меню.",
+                )
+        else:
+            dates = catalog.dates if request.scope == "period" else [target]
         data = await self.bridge.summary(
             sheet_id=catalog.id,
             revision=catalog.revision,
             dates=[d.isoformat() for d in dates],
             category_ids=request.category_ids,
         )
-        return summary_message(
-            data, self.settings.sheets.currency, entire_period=request.scope == "period"
-        )
+        return summary_message(data, self.settings.sheets.currency, scope=request.scope)
 
     async def offer_period(
         self, event_id: int, user_id: int, catalog: Catalog, reference: date
@@ -419,7 +428,7 @@ class SheetBot:
         shown.text = shown.text.replace("✅ <b>Записано</b>", "✏️ <b>Что исправить?</b>", 1)
         shown.text += (
             "\n\nНапишите или скажите: «Сумма 350», «Это кафе» или «Дата — вчера»."
-            "\nОстальное сохраню. /cancel — выйти без изменений."
+            "\nОстальное сохраню. «✖️ Отменить ввод» в меню — выйти без изменений."
         )
         return shown
 

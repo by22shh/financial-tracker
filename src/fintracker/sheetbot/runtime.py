@@ -7,23 +7,21 @@ import logging
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramForbiddenError
-from aiogram.types import BotCommand, InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    KeyboardButton,
+    ReplyKeyboardMarkup,
+)
 
 from fintracker.infra.ai.openai_client import build_provider
 from fintracker.infra.asr.provider import build_asr
 from fintracker.sheetbot.bridge import SheetsBridge
 from fintracker.sheetbot.config import BotSettings
+from fintracker.sheetbot.menu import ROWS
 from fintracker.sheetbot.service import SheetBot, chat_id_for, decode_event
 from fintracker.sheetbot.store import Store
 
-COMMANDS = (
-    ("start", "Записать расход"),
-    ("today", "Расходы за сегодня"),
-    ("summary", "Сводка текущего периода"),
-    ("period", "Создать следующий период"),
-    ("cancel", "Отменить текущий ввод"),
-    ("help", "Как записать расход"),
-)
 logger = logging.getLogger(__name__)
 
 
@@ -47,7 +45,7 @@ async def run(settings: BotSettings) -> None:
                     "У бота установлен webhook. Остановите старый бот и выполните "
                     "fintracker disable-webhook перед запуском."
                 )
-            await bot.set_my_commands([BotCommand(command=c, description=d) for c, d in COMMANDS])
+            await bot.delete_my_commands()
             service = SheetBot(
                 settings,
                 store,
@@ -94,16 +92,22 @@ async def consume(bot: Bot, store: Store, service: SheetBot) -> None:
             chat_id = chat_id_for(update)
             if reply and chat_id:
                 store.save(event["id"], "reply", reply.model_dump())
-                markup = (
-                    InlineKeyboardMarkup(
+                markup: InlineKeyboardMarkup | ReplyKeyboardMarkup | None = None
+                if reply.buttons:
+                    markup = InlineKeyboardMarkup(
                         inline_keyboard=[
                             [InlineKeyboardButton(text=b.text, callback_data=b.data) for b in row]
                             for row in reply.buttons
                         ]
                     )
-                    if reply.buttons
-                    else None
-                )
+                elif chat_id in service.settings.allowed_users:
+                    markup = ReplyKeyboardMarkup(
+                        keyboard=[[KeyboardButton(text=label) for label in row] for row in ROWS],
+                        resize_keyboard=True,
+                        is_persistent=True,
+                        one_time_keyboard=False,
+                        input_field_placeholder="Напишите расход или отправьте голосовое",
+                    )
                 await bot.send_message(
                     chat_id,
                     reply.text,

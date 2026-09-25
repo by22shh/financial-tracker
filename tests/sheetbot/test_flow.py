@@ -2,12 +2,12 @@ import asyncio
 import contextlib
 import io
 import json
-from datetime import date
+from datetime import date, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
-from aiogram.types import Update
+from aiogram.types import InlineKeyboardMarkup, ReplyKeyboardMarkup, Update
 from pydantic import SecretStr
 
 from fintracker.config import ASRSettings, TelegramSettings
@@ -17,7 +17,8 @@ from fintracker.infra.asr.provider import ScriptedAsrProvider
 from fintracker.sheetbot.bridge import BridgeError, SheetsBridge
 from fintracker.sheetbot.config import BotSettings, SheetsSettings
 from fintracker.sheetbot.extraction import extract
-from fintracker.sheetbot.models import Catalog, Category, Sheet
+from fintracker.sheetbot.menu import CANCEL, HELP, NEW_PERIOD, PERIOD, ROWS, TODAY, WEEK
+from fintracker.sheetbot.models import Catalog, Category, ReportRequest, Sheet
 from fintracker.sheetbot.runtime import consume, receive
 from fintracker.sheetbot.service import SheetBot
 from fintracker.sheetbot.store import Store
@@ -163,8 +164,13 @@ async def test_real_telegram_updates_survive_inbox_and_receive_replies(setup):
     assert all(chat_id == 100 for chat_id, _, _ in sent)
     assert "последний лист" in sent[0][1]
     assert "последний лист" in sent[1][1]
-    assert all(kwargs["reply_markup"] is None for _, _, kwargs in sent[:2])
-    assert all(kwargs["reply_markup"] is not None for _, _, kwargs in sent[2:])
+    assert all(isinstance(kwargs["reply_markup"], ReplyKeyboardMarkup) for _, _, kwargs in sent[:2])
+    keyboard = sent[0][2]["reply_markup"]
+    assert keyboard.is_persistent and keyboard.resize_keyboard and not keyboard.one_time_keyboard
+    assert [[b.text for b in row] for row in keyboard.keyboard] == [list(row) for row in ROWS]
+    assert all(
+        isinstance(kwargs["reply_markup"], InlineKeyboardMarkup) for _, _, kwargs in sent[2:]
+    )
     assert all(kwargs["parse_mode"] == "HTML" for _, _, kwargs in sent)
     assert all("✅ <b>Записано</b>" in reply for _, reply, _ in sent[2:])
     assert bridge.write.await_count == 2
@@ -787,3 +793,99 @@ async def test_duplicate_offer_finishes_previous_clarification(setup):
     assert "Похожая трата" in reply.text
     assert store.user(100)["pending"] is None
     bridge.write.assert_awaited_once()
+
+
+def summary_result(**kwargs):
+    dates = kwargs["dates"]
+    return {
+        "title": "Рабочий лист",
+        "from": min(dates),
+        "to": max(dates),
+        "total_minor": 10000,
+        "categories": [],
+    }
+
+
+@pytest.mark.parametrize(
+    "label,heading",
+    [(TODAY, "Расходы за день"), (WEEK, "Расходы за неделю"), (PERIOD, "Расходы за весь период")],
+)
+async def test_menu_reports_bypass_ai_and_preserve_pending_edit(setup, label, heading):
+    _, store, bridge, ai, _ = setup
+    pending = json.dumps({"kind": "edit", "sheet_id": 10, "record_id": 999})
+    store.pending(100, pending)
+    bridge.summary.side_effect = summary_result
+    reply = await dispatch(setup, update(text=label))
+    assert heading in reply.text
+    assert "📅" in reply.text
+    assert store.user(100)["pending"] == pending
+    assert not ai.calls
+    bridge.write.assert_not_awaited()
+    bridge.amend.assert_not_awaited()
+
+
+async def test_menu_help_cancel_and_period_do_not_become_expenses(setup):
+    _, store, bridge, ai, _ = setup
+    store.pending(100, "previous input")
+    reply = await dispatch(setup, update(text=HELP))
+    assert "Меню под полем" in reply.text
+    assert "/today" not in reply.text and "/cancel" not in reply.text
+    reply = await dispatch(setup, update(2, CANCEL))
+    assert "Ввод отменён" in reply.text
+    assert store.user(100)["pending"] is None
+    reply = await dispatch(setup, update(3, NEW_PERIOD))
+    assert "ещё идёт" in reply.text
+    assert not ai.calls
+    bridge.write.assert_not_awaited()
+
+
+async def test_week_contains_last_seven_dates_and_excludes_future(setup, catalog):
+    _, _, bridge, ai, _ = setup
+    catalog.dates = [date(2026, 9, 10) + timedelta(days=i) for i in range(30)]
+    bridge.summary.side_effect = summary_result
+    reply = await dispatch(setup, update(text=WEEK))
+    assert bridge.summary.call_args.kwargs["dates"] == [f"2026-09-{i}" for i in range(19, 26)]
+    assert "📅 19.09.2026 — 25.09.2026" in reply.text
+    assert not ai.calls
+
+
+async def test_week_is_clipped_to_current_sheet_and_preserves_category_filter(setup, catalog):
+    service, _, bridge, _, _ = setup
+    bridge.summary.side_effect = summary_result
+    catalog.dates = [date(2026, 12, 31), date(2027, 1, 1), date(2027, 1, 2)]
+    reply = await service.report(
+        catalog, date(2027, 1, 1), ReportRequest(scope="week", category_ids=["food"])
+    )
+    assert bridge.summary.call_args.kwargs["dates"] == ["2026-12-31", "2027-01-01"]
+    assert bridge.summary.call_args.kwargs["category_ids"] == ["food"]
+    assert "31.12.2026 — 01.01.2027" in reply.text
+    bridge.summary.reset_mock()
+    reply = await service.report(catalog, date(2027, 2, 1), ReportRequest(scope="week"))
+    assert "Неделя вне рабочего периода" in reply.text
+    bridge.summary.assert_not_awaited()
+
+
+async def test_natural_language_week_report_cannot_write_expenses(setup):
+    _, _, bridge, ai, _ = setup
+    ai.responses = [
+        json.dumps(
+            {
+                "expenses": [],
+                "clarification": None,
+                "report": {"scope": "week", "category_ids": ["food"]},
+            }
+        )
+    ]
+    bridge.summary.side_effect = summary_result
+    reply = await dispatch(setup, update(text="Сколько потратил на продукты за неделю?"))
+    assert "Расходы за неделю" in reply.text
+    assert bridge.summary.call_args.kwargs["category_ids"] == ["food"]
+    bridge.write.assert_not_awaited()
+
+
+async def test_menu_does_not_grant_unauthorized_users_access(setup):
+    _, _, bridge, ai, _ = setup
+    reply = await dispatch(setup, update(text=WEEK, user=999))
+    assert "Доступ не настроен" in reply.text
+    bridge.summary.assert_not_awaited()
+    assert not ai.calls

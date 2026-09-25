@@ -28,9 +28,12 @@ class Expense(BaseModel):
     description: str = Field(min_length=1, max_length=300)
 
 
+ReportScope = Literal["today", "yesterday", "week", "period"]
+
+
 class ReportRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    scope: Literal["today", "yesterday", "period"]
+    scope: ReportScope
     category_ids: list[str] = Field(default_factory=list, max_length=100)
 
 
