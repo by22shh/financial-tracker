@@ -256,7 +256,7 @@ async def test_saved_expense_is_confirmed_when_category_totals_are_unavailable(s
     reply = await dispatch(setup, update())
     assert "Записано" in reply.text
     assert "Продукты / Супермаркеты" in reply.text
-    assert "временно недоступны" in reply.text
+    assert "Трата сохранена, но итог и план сейчас не загрузились" in reply.text
     assert store.record(1, 100)["expenses"][0]["amount_minor"] == 125050
     bridge.write.assert_awaited_once()
 
@@ -612,6 +612,8 @@ async def test_edit_amount_category_and_date_then_learn_only_for_owner(setup, ca
     await dispatch(setup, update())
     reply = await dispatch(setup, callback(2, "edit:1:0"))
     assert "Что исправить" in reply.text
+    assert "не загрузились" not in reply.text
+    assert "План:" not in reply.text
     reply = await dispatch(setup, update(3, "Это кафе, 350 рублей, вчера"))
     assert "Исправлено" in reply.text
     changed = bridge.amend.call_args.kwargs["expenses"][0]

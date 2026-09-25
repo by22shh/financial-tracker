@@ -75,21 +75,22 @@ def receipt(
             f"💸 <b>{escape(money(expense.amount_minor, currency))}</b>",
             f"📂 {escape(label)}",
         ]
-        status = statuses.get(expense.category_id)
-        if status:
-            lines.append(
-                f"📊 Потрачено по категории: {escape(money(status.spent_minor, currency))}"
-            )
-            lines.append(
-                "🎯 План: "
-                + (
-                    escape(money(status.plan_minor, currency))
-                    if status.plan_minor is not None
-                    else "не указан"
+        if category_status is not None:
+            status = statuses.get(expense.category_id)
+            if status:
+                lines.append(
+                    f"📊 Потрачено по категории: {escape(money(status.spent_minor, currency))}"
                 )
-            )
-        else:
-            lines.append("📊 Итог и план временно недоступны")
+                lines.append(
+                    "🎯 План: "
+                    + (
+                        escape(money(status.plan_minor, currency))
+                        if status.plan_minor is not None
+                        else "не указан"
+                    )
+                )
+            else:
+                lines.append("📊 Трата сохранена, но итог и план сейчас не загрузились")
         lines.append(f"📅 {expense.date:%d.%m.%Y}")
         blocks.append("\n".join(lines))
     return formatted("\n\n".join(blocks))
