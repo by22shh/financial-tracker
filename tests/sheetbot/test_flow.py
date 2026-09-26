@@ -698,6 +698,33 @@ async def test_cancel_edit_preserves_written_expense(setup):
     bridge.amend.assert_not_awaited()
 
 
+@pytest.mark.parametrize("started_at", [None, 0])
+async def test_stale_edit_does_not_replace_yesterday_expense(setup, catalog, started_at):
+    _, store, bridge, ai, _ = setup
+    catalog.dates.append(date(2026, 9, 26))
+    ai.responses = [result(), result(amount=200000, when="2026-09-26")]
+    await dispatch(setup, update())
+    await dispatch(setup, callback(2, "edit:1:0"))
+    pending = json.loads(store.user(100)["pending"])
+    if started_at is None:
+        pending.pop("started_at")
+    else:
+        pending["started_at"] = started_at
+    store.pending(100, json.dumps(pending))
+    message = update(3, "2000р на уход за собой Софа")
+    message["message"]["date"] = 1790388000
+
+    reply = await dispatch(setup, message)
+
+    assert "Записано" in reply.text
+    assert "Исправлено" not in reply.text
+    assert store.record(1, 100)["version"] == 0
+    assert store.record(1, 100)["expenses"][0]["amount_minor"] == 125050
+    assert store.record(3, 100)["expenses"][0]["date"] == "2026-09-26"
+    assert bridge.write.await_count == 2
+    bridge.amend.assert_not_awaited()
+
+
 async def test_voice_preview_escapes_recognized_text(setup):
     _, _, _, _, asr = setup
     asr.transcripts = ["кофе <бар> & чай 250"]

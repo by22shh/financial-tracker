@@ -30,6 +30,8 @@ from fintracker.sheetbot.messages import (
 from fintracker.sheetbot.models import Catalog, CategoryStatus, Expense, Reply, ReportRequest
 from fintracker.sheetbot.store import Store
 
+EDIT_WINDOW_SECONDS = 15 * 60
+
 
 class SheetBot:
     def __init__(
@@ -168,6 +170,16 @@ class SheetBot:
         catalog = await self.bridge.latest_catalog()
         reference = self.reference(message)
         pending = json.loads(user["pending"]) if user["pending"] else None
+        if pending and pending.get("kind") == "edit":
+            started_at = pending.get("started_at")
+            age = (
+                datetime.now(UTC).timestamp() - started_at
+                if isinstance(started_at, int | float)
+                else -1
+            )
+            if not 0 <= age <= EDIT_WINDOW_SECONDS:
+                self.store.pending(user_id, None)
+                pending = None
         if pending and pending.get("sheet_id") != catalog.id:
             self.store.pending(user_id, None)
             return notice(
@@ -451,6 +463,7 @@ class SheetBot:
                     "record_id": record_id,
                     "version": version,
                     "index": index,
+                    "started_at": datetime.now(UTC).timestamp(),
                 }
             ),
         )
@@ -459,7 +472,8 @@ class SheetBot:
         shown.text = shown.text.replace("✅ <b>Записано</b>", "✏️ <b>Что исправить?</b>", 1)
         shown.text += (
             "\n\nНапишите или скажите: «Сумма 350», «Это кафе» или «Дата — вчера»."
-            "\nОстальное сохраню. «✖️ Отменить ввод» в меню — выйти без изменений."
+            "\nОстальное сохраню. Режим исправления действует 15 минут."
+            "\n«✖️ Отменить ввод» в меню — выйти без изменений."
         )
         return shown
 
