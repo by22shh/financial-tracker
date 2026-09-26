@@ -945,10 +945,11 @@ async def test_categories_menu_shows_every_row_with_actual_and_plan(setup, catal
     reply = await dispatch(setup, update(text=CATEGORIES))
 
     assert "📋 <b>Категории и планы</b>" in reply.text
-    assert "🛒 <b>Продукты питания</b>" in reply.text
-    assert "├ Супермаркеты — <b>35 250,50 ₽</b> · план 60 000 ₽" in reply.text
-    assert "└ Доставка — <b>0 ₽</b> · план 1 500 ₽" in reply.text
-    assert "📁 <b>Дом &lt;&amp;&gt;</b> — <b>0 ₽</b> · план не задан" in reply.text
+    assert "🛒 <b>Продукты питания</b> — <b>35 250,50 ₽</b>" in reply.text
+    assert "├ Супермаркеты — <b>35 250,50 ₽</b> из 60 000 ₽" in reply.text
+    assert "└ Доставка — <b>0 ₽</b> из 1 500 ₽" in reply.text
+    assert "📁 <b>Дом &lt;&amp;&gt;</b> — <b>0 ₽</b> (план не задан)" in reply.text
+    assert " · " not in reply.text
     assert "Указано в планах" in reply.text
     assert store.user(100)["pending"] == pending
     assert not ai.calls

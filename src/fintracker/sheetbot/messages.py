@@ -219,10 +219,10 @@ def category_overview_message(
     )
 
     def values(item: CategoryStatus) -> str:
-        plan = (
-            escape(money(item.plan_minor, currency)) if item.plan_minor is not None else "не задан"
-        )
-        return f"<b>{escape(money(item.spent_minor, currency))}</b> · план {plan}"
+        spent = f"<b>{escape(money(item.spent_minor, currency))}</b>"
+        if item.plan_minor is None:
+            return f"{spent} (план не задан)"
+        return f"{spent} из {escape(money(item.plan_minor, currency))}"
 
     group_blocks = []
     for parent, entries in groups.items():
@@ -232,7 +232,7 @@ def category_overview_message(
             continue
         if len(entries) > 1:
             group_spent = sum(item.spent_minor for _, item in entries)
-            title += f" · <b>{escape(money(group_spent, currency))}</b>"
+            title += f" — <b>{escape(money(group_spent, currency))}</b>"
         lines = [title]
         for index, (subcategory, item) in enumerate(entries):
             branch = "└" if index == len(entries) - 1 else "├"
