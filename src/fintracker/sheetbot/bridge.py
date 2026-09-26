@@ -75,10 +75,17 @@ class SheetsBridge:
     async def category_status(
         self, *, sheet_id: int, revision: str, category_ids: list[str]
     ) -> list[CategoryStatus]:
-        body = await self.call(
-            "category_status", sheet_id=sheet_id, revision=revision, category_ids=category_ids
-        )
-        return [CategoryStatus.model_validate(item) for item in body["categories"]]
+        statuses: list[CategoryStatus] = []
+        for offset in range(0, len(category_ids), 20):
+            chunk = category_ids[offset : offset + 20]
+            body = await self.call(
+                "category_status", sheet_id=sheet_id, revision=revision, category_ids=chunk
+            )
+            rows = [CategoryStatus.model_validate(item) for item in body["categories"]]
+            if len(rows) != len(chunk) or {item.id for item in rows} != set(chunk):
+                raise BridgeError("Не удалось получить все категории таблицы.")
+            statuses.extend(rows)
+        return statuses
 
     async def period(self, **payload: Any) -> dict[str, Any]:
         return await self.call("period", **payload)

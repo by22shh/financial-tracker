@@ -17,7 +17,7 @@ WELCOME = (
     "Выбирать ничего не нужно. Когда появится новая вкладка, "
     "следующие расходы пойдут в неё.\n\n"
     "<b>Начнём?</b> Пришлите первую трату.\n\n"
-    "👇 Сводки и помощь — на кнопках под полем сообщения."
+    "👇 Сводки, категории и помощь — на кнопках под полем сообщения."
 )
 
 HELP = (
@@ -34,6 +34,7 @@ HELP = (
     "📊 Спросите: «Сколько потратил сегодня?» или «Расходы на продукты за период».\n\n"
     "👇 <b>Меню под полем сообщения</b>\n"
     "«Сегодня», «За неделю», «За весь период» — сводки расходов.\n"
+    "«Категории» — все категории последнего листа: потрачено и план.\n"
     "Неделя — последние 7 дней, включая сегодня, в пределах рабочего листа.\n"
     "«Новый период» — создать следующий лист по шаблону.\n"
     "«Отменить ввод» — выйти из уточнения или исправления."
@@ -194,3 +195,72 @@ def summary_message(data: dict[str, Any], currency: str, *, scope: ReportScope) 
     if categories:
         blocks.append("📂 <b>По категориям</b>\n" + "\n\n".join(categories))
     return formatted("\n\n".join(blocks))
+
+
+def category_overview_message(
+    catalog: Catalog, statuses: list[CategoryStatus], currency: str, *, page: int = 0
+) -> Reply:
+    by_id = {item.id: item for item in statuses}
+    groups: dict[str, list[tuple[str | None, CategoryStatus]]] = {}
+    for category in catalog.categories:
+        parent, separator, child = category.label.partition(" / ")
+        groups.setdefault(parent, []).append((child if separator else None, by_id[category.id]))
+
+    start, end = min(catalog.dates), max(catalog.dates)
+    spent = sum(item.spent_minor for item in statuses)
+    planned = sum(item.plan_minor or 0 for item in statuses)
+    missing_plans = sum(item.plan_minor is None for item in statuses)
+    plan_label = "План" if not missing_plans else "Указано в планах"
+    header = (
+        "📋 <b>Категории и планы</b>\n"
+        f"📅 {start:%d.%m.%Y} — {end:%d.%m.%Y}\n\n"
+        f"💸 Потрачено: <b>{escape(money(spent, currency))}</b>\n"
+        f"🎯 {plan_label}: <b>{escape(money(planned, currency))}</b>"
+    )
+
+    def values(item: CategoryStatus) -> str:
+        plan = (
+            escape(money(item.plan_minor, currency)) if item.plan_minor is not None else "не задан"
+        )
+        return f"<b>{escape(money(item.spent_minor, currency))}</b> · план {plan}"
+
+    group_blocks = []
+    for parent, entries in groups.items():
+        title = f"{GROUP_EMOJIS.get(parent, '📁')} <b>{escape(parent[:80])}</b>"
+        if len(entries) == 1 and entries[0][0] is None:
+            group_blocks.append(f"{title} — {values(entries[0][1])}")
+            continue
+        if len(entries) > 1:
+            group_spent = sum(item.spent_minor for _, item in entries)
+            title += f" · <b>{escape(money(group_spent, currency))}</b>"
+        lines = [title]
+        for index, (subcategory, item) in enumerate(entries):
+            branch = "└" if index == len(entries) - 1 else "├"
+            lines.append(
+                f"{branch} {escape((subcategory or 'Без подкатегории')[:80])} — {values(item)}"
+            )
+        group_blocks.append("\n".join(lines))
+
+    pages: list[list[str]] = []
+    current: list[str] = []
+    for block in group_blocks:
+        candidate = header + "\n\n" + "\n\n".join([*current, block])
+        if current and len(candidate) > 3500:
+            pages.append(current)
+            current = [block]
+        else:
+            current.append(block)
+    if current:
+        pages.append(current)
+    if not pages:
+        return formatted(header)
+
+    page = max(0, min(page, len(pages) - 1))
+    marker = f"\nСтраница {page + 1} из {len(pages)}" if len(pages) > 1 else ""
+    reply = formatted(header + marker + "\n\n" + "\n\n".join(pages[page]))
+    buttons = []
+    if page:
+        buttons.append(("⬅️ Назад", f"categories:{page - 1}"))
+    if page + 1 < len(pages):
+        buttons.append(("Далее ➡️", f"categories:{page + 1}"))
+    return with_buttons(reply, [buttons]) if buttons else reply

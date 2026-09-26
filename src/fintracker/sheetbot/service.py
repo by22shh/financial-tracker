@@ -18,6 +18,7 @@ from fintracker.sheetbot.menu import ACTIONS, REPORT_SCOPES
 from fintracker.sheetbot.messages import (
     HELP,
     WELCOME,
+    category_overview_message,
     clarification,
     formatted,
     notice,
@@ -98,6 +99,8 @@ class SheetBot:
         if command == "/cancel":
             self.store.pending(user_id, None)
             return notice("👌 Ввод отменён", "Пришлите следующий расход — текстом или голосом.")
+        if command == "/categories":
+            return await self.current_category_overview(page=0)
         if command in {"/today", "/week", "/summary", "/period"}:
             catalog = await self.bridge.latest_catalog()
             reference = self.reference(message)
@@ -289,6 +292,22 @@ class SheetBot:
         )
         return summary_message(data, self.settings.sheets.currency, scope=request.scope)
 
+    async def current_category_overview(self, *, page: int) -> Reply:
+        try:
+            catalog = await self.bridge.latest_catalog()
+            statuses = await self.bridge.category_status(
+                sheet_id=catalog.id,
+                revision=catalog.revision,
+                category_ids=[category.id for category in catalog.categories],
+            )
+        except BridgeError as exc:
+            if exc.retryable:
+                raise
+            return notice("⚠️ Не удалось показать категории", str(exc))
+        return category_overview_message(
+            catalog, statuses, self.settings.sheets.currency, page=page
+        )
+
     async def offer_period(
         self, event_id: int, user_id: int, catalog: Catalog, reference: date
     ) -> Reply:
@@ -351,6 +370,8 @@ class SheetBot:
     async def callback(self, event_id: int, user_id: int, query: dict[str, Any]) -> Reply:
         parts = str(query.get("data", "")).split(":")
         action = parts[0]
+        if action == "categories" and len(parts) == 2 and parts[1].isdigit():
+            return await self.current_category_overview(page=int(parts[1]))
         expired = notice(
             "⌛ Эта кнопка больше не актуальна",
             "Используйте кнопки под последней квитанцией этой траты.",

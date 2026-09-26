@@ -17,7 +17,7 @@ from fintracker.infra.asr.provider import ScriptedAsrProvider
 from fintracker.sheetbot.bridge import BridgeError, SheetsBridge
 from fintracker.sheetbot.config import BotSettings, SheetsSettings
 from fintracker.sheetbot.extraction import extract
-from fintracker.sheetbot.menu import CANCEL, HELP, NEW_PERIOD, PERIOD, ROWS, TODAY, WEEK
+from fintracker.sheetbot.menu import CANCEL, CATEGORIES, HELP, NEW_PERIOD, PERIOD, ROWS, TODAY, WEEK
 from fintracker.sheetbot.messages import summary_message
 from fintracker.sheetbot.models import Catalog, Category, CategoryStatus, ReportRequest, Sheet
 from fintracker.sheetbot.runtime import consume, receive
@@ -547,6 +547,34 @@ async def test_bridge_uses_secret_and_propagates_permanent_error(monkeypatch):
     assert not error.value.retryable
 
 
+async def test_category_status_reads_all_rows_in_bridge_sized_batches():
+    bridge = SheetsBridge(SheetsSettings())
+    ids = [f"row-{index}" for index in range(45)]
+
+    async def response(_action, **payload):
+        assert len(payload["category_ids"]) <= 20
+        return {
+            "categories": [
+                {"id": category_id, "spent_minor": 0, "plan_minor": 10000}
+                for category_id in payload["category_ids"]
+            ]
+        }
+
+    bridge.call = AsyncMock(side_effect=response)
+    statuses = await bridge.category_status(sheet_id=10, revision="rev1", category_ids=ids)
+    assert [item.id for item in statuses] == ids
+    assert [len(call.kwargs["category_ids"]) for call in bridge.call.call_args_list] == [20, 20, 5]
+
+
+async def test_category_status_rejects_incomplete_batch():
+    bridge = SheetsBridge(SheetsSettings())
+    bridge.call = AsyncMock(
+        return_value={"categories": [{"id": "food", "spent_minor": 0, "plan_minor": 10000}]}
+    )
+    with pytest.raises(BridgeError, match="все категории"):
+        await bridge.category_status(sheet_id=10, revision="rev1", category_ids=["food", "home"])
+
+
 def callback(number, data, user=100):
     return {
         "update_id": number,
@@ -868,6 +896,70 @@ async def test_menu_reports_bypass_ai_and_preserve_pending_edit(setup, label, he
     assert not ai.calls
     bridge.write.assert_not_awaited()
     bridge.amend.assert_not_awaited()
+
+
+async def test_categories_menu_shows_every_row_with_actual_and_plan(setup, catalog):
+    _, store, bridge, ai, _ = setup
+    catalog.categories[0].label = "Продукты питания / Супермаркеты"
+    catalog.categories.extend(
+        [
+            Category(id="delivery", label="Продукты питания / Доставка"),
+            Category(id="home", label="Дом <&>"),
+        ]
+    )
+    bridge.category_status.return_value = [
+        CategoryStatus(id="food", spent_minor=3525050, plan_minor=6000000),
+        CategoryStatus(id="delivery", spent_minor=0, plan_minor=150000),
+        CategoryStatus(id="home", spent_minor=0, plan_minor=None),
+    ]
+    pending = json.dumps({"kind": "edit", "sheet_id": 10, "record_id": 999})
+    store.pending(100, pending)
+
+    reply = await dispatch(setup, update(text=CATEGORIES))
+
+    assert "📋 <b>Категории и планы</b>" in reply.text
+    assert "🛒 <b>Продукты питания</b>" in reply.text
+    assert "├ Супермаркеты — <b>35 250,50 ₽</b> · план 60 000 ₽" in reply.text
+    assert "└ Доставка — <b>0 ₽</b> · план 1 500 ₽" in reply.text
+    assert "📁 <b>Дом &lt;&amp;&gt;</b> — <b>0 ₽</b> · план не задан" in reply.text
+    assert "Указано в планах" in reply.text
+    assert store.user(100)["pending"] == pending
+    assert not ai.calls
+    bridge.category_status.assert_awaited_once_with(
+        sheet_id=10, revision="rev1", category_ids=["food", "delivery", "home"]
+    )
+    bridge.write.assert_not_awaited()
+
+
+async def test_categories_menu_paginates_without_losing_rows(setup, catalog):
+    _, _, bridge, _, _ = setup
+    catalog.categories = [
+        Category(id=str(index), label=f"Категория {index:02} очень длинное название для меню")
+        for index in range(60)
+    ]
+    bridge.category_status.return_value = [
+        CategoryStatus(id=str(index), spent_minor=index * 100, plan_minor=10000)
+        for index in range(60)
+    ]
+    reply = await dispatch(setup, update(text=CATEGORIES))
+    pages = [reply.text]
+    next_event = 2
+    while reply.buttons:
+        next_button = next(
+            (button for row in reply.buttons for button in row if button.text.startswith("Далее")),
+            None,
+        )
+        if next_button is None:
+            break
+        reply = await dispatch(setup, callback(next_event, next_button.data))
+        pages.append(reply.text)
+        next_event += 1
+        assert next_event < 20
+    assert len(pages) > 1
+    assert all(len(page) < 4096 for page in pages)
+    for index in range(60):
+        assert sum(f"Категория {index:02}" in page for page in pages) == 1
+    assert bridge.category_status.await_count == len(pages)
 
 
 async def test_menu_help_cancel_and_period_do_not_become_expenses(setup):
